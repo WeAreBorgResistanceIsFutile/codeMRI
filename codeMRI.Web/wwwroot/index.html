@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>codeMRI.Web</title>
+    <base href="/" />
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="codeMRI.Web.styles.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+    
+    <!-- Mermaid.js for diagram rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        window.renderMermaid = async () => {
+            console.log("Starting Mermaid render process...");
+            // Wait for the DOM to update
+            await new Promise(r => setTimeout(r, 100));
+            
+            // Initialize
+            mermaid.initialize({ startOnLoad: false, theme: 'default' });
+            
+            // Find all code blocks with language-mermaid class or just mermaid class
+            // Markdig usually produces code.language-mermaid
+            const elements = document.querySelectorAll('code.language-mermaid, div.mermaid-block');
+            console.log(`Found ${elements.length} potential mermaid elements.`);
+            
+            // Process them
+            for (const element of elements) {
+                // Skip if already processed
+                if (element.getAttribute('data-processed')) continue;
+                
+                try {
+                    // Get the code text. If it's inside 'pre', textContent preserves newlines best.
+                    // Decode HTML entities if Markdig encoded them (e.g. &gt;)
+                    let graphDefinition = element.textContent;
+                    
+                    console.log("Rendering graph:", graphDefinition.substring(0, 50) + "...");
+                    
+                    // Create a container div for the diagram
+                    const id = "mermaid-" + Math.random().toString(36).substr(2, 9);
+                    const container = document.createElement('div');
+                    container.id = id;
+                    container.className = 'mermaid';
+                    container.style.textAlign = 'center'; // Center diagrams usually looks better
+                    
+                    // Replace the code block with the container
+                    // If inside PRE, replace PRE.
+                    const preParent = element.parentElement;
+                    if (preParent && preParent.tagName === 'PRE') {
+                        preParent.parentNode.replaceChild(container, preParent);
+                    } else {
+                        element.parentNode.replaceChild(container, element);
+                    }
+                    
+                    // Render
+                    const { svg } = await mermaid.render(id, graphDefinition);
+                    container.innerHTML = svg;
+                    container.setAttribute('data-processed', 'true');
+                    console.log(`Rendered ${id} successfully.`);
+                } catch (e) {
+                    console.error('Mermaid rendering failed:', e);
+                    // Show error in place
+                    const errorDiv = document.createElement('div');
+                    errorDiv.style.color = 'red';
+                    errorDiv.style.border = '1px solid red';
+                    errorDiv.style.padding = '10px';
+                    errorDiv.innerText = `Mermaid Error: ${e.message}\n\nSource:\n${element.textContent}`;
+                    
+                    const preParent = element.parentElement;
+                    if (preParent && preParent.tagName === 'PRE') {
+                        preParent.parentNode.insertBefore(errorDiv, preParent.nextSibling);
+                    } else {
+                        element.parentNode.appendChild(errorDiv);
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+
+</html>

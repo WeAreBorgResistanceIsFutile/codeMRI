@@ -1,0 +1,242 @@
+@page "/"
+@using codeMRI.Shared.DTOs
+@using codeMRI.Shared.Models
+@using codeMRI.Web.Services
+@inject WikiApiClient WikiApi
+@inject IJSRuntime JS
+
+<PageTitle>codeMRI</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-3 bg-light sidebar p-3" style="min-height: 100vh;">
+            <h3>codeMRI</h3>
+            
+            <div class="mb-3">
+                <label>Repository Path (Local)</label>
+                <input @bind="repoPath" class="form-control" placeholder="/path/to/repo" />
+            </div>
+            
+            <button class="btn btn-primary w-100 mb-2" @onclick="IngestRepo" disabled="@isBusy">
+                @(isBusy ? "Processing..." : "1. Ingest Repo")
+            </button>
+            
+            <button class="btn btn-secondary w-100 mb-4" @onclick="GenerateStructure" disabled="@(isBusy || string.IsNullOrEmpty(repoPath))">
+                2. Generate Structure
+            </button>
+
+            @if (structure != null)
+            {
+                <h5>Structure</h5>
+                <ul class="list-unstyled">
+                    @foreach (var wikiSection in structure.Sections)
+                    {
+                        <li class="mb-2">
+                            <strong>@wikiSection.Title</strong>
+                            <ul class="ps-3">
+                                @foreach (var pageRef in wikiSection.PageRefs)
+                                {
+                                    <li>
+                                        <a href="javascript:void(0)" @onclick="() => LoadPage(pageRef)">
+                                            @pageRef
+                                        </a>
+                                    </li>
+                                }
+                            </ul>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-9 p-4">
+            @if (!string.IsNullOrEmpty(message))
+            {
+                <div class="alert alert-info">@message</div>
+            }
+
+            @if (currentPage != null)
+            {
+                <h1>@currentPage.Title</h1>
+                <div class="wiki-content">
+                    @((MarkupString)RenderMarkdown(currentPage.Content))
+                </div>
+                
+                <hr />
+                <details>
+                    <summary>Source Files</summary>
+                    <ul>
+                        @foreach(var file in currentPage.RelevantFiles)
+                        {
+                            <li>@file</li>
+                        }
+                    </ul>
+                </details>
+            }
+            else
+            {
+                <div class="text-center mt-5">
+                    <h2>Welcome to codeMRI</h2>
+                    <p>Select a page from the structure or start by ingesting a repository.</p>
+                </div>
+            }
+            
+            <!-- Chat Interface -->
+            <div class="chat-box mt-5 border-top pt-3">
+                <h4>RAG Chat</h4>
+                <div class="history mb-3" style="max-height: 300px; overflow-y: auto;">
+                    @foreach (var msg in chatHistory)
+                    {
+                        <div class="@(msg.Role == "user" ? "text-end" : "text-start") mb-2">
+                            <span class="badge @(msg.Role == "user" ? "bg-primary" : "bg-secondary")">@msg.Role</span>
+                            <div class="p-2 bg-light d-inline-block rounded">@msg.Content</div>
+                        </div>
+                    }
+                </div>
+                <div class="input-group">
+                    <input @bind="chatQuery" class="form-control" placeholder="Ask about the code..." @onkeyup="HandleChatKeyUp" />
+                    <button class="btn btn-info" @onclick="SendChat">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string repoPath = "/Users/levente/AI/OllamaRAG5"; // Default for convenience
+    private bool isBusy = false;
+    private string message = "";
+    
+    private WikiStructure? structure;
+    private codeMRI.Shared.Models.WikiPage? currentPage;
+    
+    // Chat
+    private string chatQuery = "";
+    private List<ChatMessage> chatHistory = new();
+
+    private async Task IngestRepo()
+    {
+        if (string.IsNullOrEmpty(repoPath)) return;
+        isBusy = true;
+        message = "Ingesting repository... This might take a while.";
+        StateHasChanged();
+        
+        try 
+        {
+            var msg = await WikiApi.IngestRepoAsync(repoPath);
+            message = msg;
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task GenerateStructure()
+    {
+        if (string.IsNullOrEmpty(repoPath)) return;
+        isBusy = true;
+        message = "Generating wiki structure...";
+        StateHasChanged();
+        
+        try 
+        {
+            structure = await WikiApi.GenerateStructureAsync(repoPath);
+            message = "Structure generated!";
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task LoadPage(string pageTitle)
+    {
+        isBusy = true;
+        message = $"Generating page '{pageTitle}'...";
+        StateHasChanged();
+        
+        try 
+        {
+            // We assume relevant files are found by the backend or we pass empty list and backend finds them via RAG?
+            // The current WikiController needs file paths. 
+            // For MVP, I'll just pass the Title and let the Backend figure out files (Wait, I implemented logic to read files if paths provided, but NOT to Find them).
+            // To fix this, I'll pass the Title as a "FilePath" or hope the backend uses RAG to find context if no files provided.
+            // Actually, the Structure generation logic returned 'page_ref' which are titles. It did NOT return file mappings in the simplified XML parsing I wrote.
+            // I should probably update WikiGenerationService to include relevant files in the structure, but for now, I'll send an empty list.
+            // AND I will update `WikiGenerationService.GeneratePageAsync` to perform a Search if no files are provided!
+            
+            // Temporary Fix: Send title as title, empty files. 
+            // I need to update Backend to handle this case (Auto-Search).
+            
+            currentPage = await WikiApi.GeneratePageAsync(pageTitle, new List<string>());
+            
+            // Fix: The backend currently needs files. I'll update the backend in a moment to use RAG if files are missing.
+            
+            message = $"Page '{pageTitle}' generated.";
+            
+            // Give the DOM a moment to render the markdown before invoking Mermaid
+            StateHasChanged();
+            await JS.InvokeVoidAsync("renderMermaid");
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task SendChat()
+    {
+        if (string.IsNullOrWhiteSpace(chatQuery)) return;
+        
+        var userMsg = new ChatMessage { Role = "user", Content = chatQuery };
+        chatHistory.Add(userMsg);
+        var currentQuery = chatQuery;
+        chatQuery = "";
+        
+        var assistantMsg = new ChatMessage { Role = "assistant", Content = "" };
+        chatHistory.Add(assistantMsg);
+        StateHasChanged();
+
+        try 
+        {
+            await foreach (var chunk in WikiApi.ChatAsync(currentQuery, chatHistory.Take(chatHistory.Count - 1).ToList()))
+            {
+                assistantMsg.Content += chunk;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+             assistantMsg.Content += $"\n[Error: {ex.Message}]";
+        }
+    }
+    
+    private async Task HandleChatKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SendChat();
+        }
+    }
+
+    private string RenderMarkdown(string markdown)
+    {
+        // Fallback to simple ToHtml if extensions are not found or problematic
+        return Markdig.Markdown.ToHtml(markdown ?? "");
+    }
+}
