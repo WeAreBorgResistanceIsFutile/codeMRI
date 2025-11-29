@@ -1,0 +1,12 @@
+/.idea/
+/codeMRI.Api/bin/
+/codeMRI.Api/obj/
+/codeMRI.Shared/bin/
+/codeMRI.Shared/obj/
+/codeMRI.Core/bin/
+/codeMRI.Core/obj/
+/codeMRI.Infrastructure/bin/
+/codeMRI.Infrastructure/obj/
+/codeMRI.Web/bin/
+/codeMRI.Web/obj/
+
