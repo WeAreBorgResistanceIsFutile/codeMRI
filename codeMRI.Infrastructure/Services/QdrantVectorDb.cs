@@ -9,14 +9,14 @@ namespace codeMRI.Infrastructure.Services;
 
 public class QdrantVectorDb : IVectorDatabase
 {
-    private readonly QdrantClient _client;
+    private readonly IQdrantClient _client;
     private readonly QdrantSettings _settings;
     private string _collectionName = "coremri_docs";
 
-    public QdrantVectorDb(IOptions<QdrantSettings> settings)
+    public QdrantVectorDb(IQdrantClient client, IOptions<QdrantSettings> settings)
     {
         _settings = settings.Value;
-        _client = new QdrantClient(_settings.Host, _settings.Port, apiKey: string.IsNullOrEmpty(_settings.ApiKey) ? null : _settings.ApiKey);
+        _client = client;
     }
 
     public async Task InitializeAsync(string collectionName)
@@ -54,7 +54,7 @@ public class QdrantVectorDb : IVectorDatabase
             var point = new PointStruct
             {
                 Id = id,
-                Vectors = doc.Embedding
+                Vectors = new Vectors { Vector = new Vector { Data = { doc.Embedding } } }
             };
             
             foreach (var kvp in payload)

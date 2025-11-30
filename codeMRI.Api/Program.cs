@@ -2,6 +2,8 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Services;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
+using Microsoft.Extensions.Options;
+using Qdrant.Client;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +21,14 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IEmbedder, OllamaEmbedderService>();
 builder.Services.AddSingleton<ILLMClient, OllamaLLMService>();
 builder.Services.AddSingleton<IDocumentProcessor, TextSplitterService>();
+
+// Register QdrantClient
+builder.Services.AddSingleton<IQdrantClient>(sp =>
+{
+    var settings = sp.GetRequiredService<IOptions<QdrantSettings>>().Value;
+    return new QdrantClient(settings.Host, settings.Port, apiKey: string.IsNullOrEmpty(settings.ApiKey) ? null : settings.ApiKey);
+});
+
 builder.Services.AddSingleton<IVectorDatabase, QdrantVectorDb>();
 builder.Services.AddSingleton<IWikiRepository, JsonWikiRepository>();
 

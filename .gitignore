@@ -1,12 +1,15 @@
 /.idea/
 /codeMRI.Api/bin/
 /codeMRI.Api/obj/
+/codeMRI.Api/data/
 /codeMRI.Shared/bin/
 /codeMRI.Shared/obj/
 /codeMRI.Core/bin/
 /codeMRI.Core/obj/
 /codeMRI.Infrastructure/bin/
 /codeMRI.Infrastructure/obj/
+/codeMRI.Infrastructure.Tests/bin/
+/codeMRI.Infrastructure.Tests/obj/
 /codeMRI.Web/bin/
 /codeMRI.Web/obj/
 /codeMRI.E2E/bin/
