@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using codeMRI.Core.Models;
 
 namespace codeMRI.Core.Interfaces;
 
@@ -9,7 +10,8 @@ public interface IEnhancedDependencyGraphService
     Task<List<string>> IdentifyEntryPointsAsync(EnhancedDependencyGraph graph, CancellationToken cancellationToken = default);
     Task<Dictionary<string, double>> CalculateImportanceScoresAsync(EnhancedDependencyGraph graph, CancellationToken cancellationToken = default);
     Task<Dictionary<string, double>> EstimateTokensAsync(EnhancedDependencyGraph graph, CancellationToken cancellationToken = default);
-    Task<ModuleTree> DecomposeHierarchicallyAsync(EnhancedDependencyGraph graph, int maxTokensPerModule = 32768, CancellationToken cancellationToken = default);
+    Task<Models.ModuleTree> DecomposeHierarchicallyAsync(EnhancedDependencyGraph graph, int maxTokensPerModule = 32768, CancellationToken cancellationToken = default);
+    Task<List<CodeComponent>> GetComponentsAsync(string repositoryPath, CancellationToken cancellationToken = default);
     Task<Dictionary<string, HashSet<string>>> PartitionByDirectoryStructureAsync(EnhancedDependencyGraph graph, CancellationToken cancellationToken = default);
 }
 
@@ -136,45 +138,4 @@ public class GraphStatistics
     public int MaxOutDegree { get; set; }
     public double Density { get; set; }
     public int ConnectedComponents { get; set; }
-}
-
-public class ModuleNode
-{
-    public string Id { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public HashSet<string> Components { get; set; } = new();
-    public List<ModuleNode> Children { get; set; } = new();
-    public ModuleNode? Parent { get; set; }
-    public int Level { get; set; }
-    public bool IsLeaf { get; set; }
-    public int EstimatedTokens { get; set; }
-    public double ComplexityScore { get; set; }
-}
-
-public class ModuleTree
-{
-    public ModuleNode Root { get; set; } = new();
-    public Dictionary<string, ModuleNode> Nodes { get; set; } = new();
-    
-    public List<ModuleNode> GetAllLeaves()
-    {
-        var leaves = new List<ModuleNode>();
-        CollectLeaves(Root, leaves);
-        return leaves;
-    }
-    
-    private void CollectLeaves(ModuleNode node, List<ModuleNode> leaves)
-    {
-        if (node.IsLeaf)
-        {
-            leaves.Add(node);
-        }
-        else
-        {
-            foreach (var child in node.Children)
-            {
-                CollectLeaves(child, leaves);
-            }
-        }
-    }
 }

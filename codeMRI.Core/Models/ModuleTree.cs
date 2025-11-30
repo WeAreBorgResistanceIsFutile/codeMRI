@@ -34,6 +34,31 @@ namespace codeMRI.Core.Models
         /// </summary>
         public ModuleNode? GetNode(string id) => 
             Nodes.TryGetValue(id, out var node) ? node : null;
+
+        /// <summary>
+        /// Gets all leaf nodes in the tree
+        /// </summary>
+        public List<ModuleNode> GetAllLeaves()
+        {
+            var leaves = new List<ModuleNode>();
+            CollectLeaves(Root, leaves);
+            return leaves;
+        }
+
+        private void CollectLeaves(ModuleNode node, List<ModuleNode> leaves)
+        {
+            if (node.Children.Count == 0)
+            {
+                leaves.Add(node);
+            }
+            else
+            {
+                foreach (var child in node.Children)
+                {
+                    CollectLeaves(child, leaves);
+                }
+            }
+        }
     }
 
     /// <summary>

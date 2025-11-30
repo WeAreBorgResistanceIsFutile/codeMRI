@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Models;
+using ModuleTree = codeMRI.Core.Models.ModuleTree;
+using ModuleNode = codeMRI.Core.Models.ModuleNode;
 
 namespace codeMRI.Core.Services;
 
@@ -485,7 +488,7 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         return await Task.FromResult(tokenEstimates);
     }
     
-    public async Task<ModuleTree> DecomposeHierarchicallyAsync(EnhancedDependencyGraph graph, int maxTokensPerModule = 32768, CancellationToken cancellationToken = default)
+    public async Task<Models.ModuleTree> DecomposeHierarchicallyAsync(EnhancedDependencyGraph graph, int maxTokensPerModule = 32768, CancellationToken cancellationToken = default)
     {
         var moduleTree = new ModuleTree();
         var allComponentIds = graph.GetNodes().Select(n => n.ComponentId).ToHashSet();
@@ -607,6 +610,19 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         }
         
         return await Task.FromResult(partitions);
+    }
+    
+    public async Task<List<CodeComponent>> GetComponentsAsync(string repositoryPath, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Identifying components in repository: {Path}", repositoryPath);
+        
+        // This is a placeholder implementation - in a real implementation, this would:
+        // 1. Scan the repository for source files
+        // 2. Parse each file to identify components
+        // 3. Return the list of components
+        
+        // For now, return an empty list
+        return await Task.FromResult(new List<CodeComponent>());
     }
     
     private string ExtractDirectoryName(string filePath)

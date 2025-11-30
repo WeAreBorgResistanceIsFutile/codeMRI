@@ -1,8 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using codeMRI.Shared.Models;
+using ModuleTree = codeMRI.Core.Models.ModuleTree;
+using ModuleNode = codeMRI.Core.Models.ModuleNode;
 
 namespace codeMRI.Core.Tests;
 
@@ -35,7 +38,21 @@ public class DocumentationGenerationPipelineTests
         };
 
         // Act & Assert - This test will now pass since we implemented the service
-        var pipeline = new DocumentationGenerationPipeline(_componentService, _mockPipelineLogger.Object);
+        var mockDecompositionService = new Mock<IHierarchicalDecompositionService>();
+        mockDecompositionService
+            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string path, CancellationToken ct) => new ModuleTree
+            {
+                Root = new ModuleNode
+                {
+                    Id = "root",
+                    Name = "Repository",
+                    Children = new List<ModuleNode>(),
+                    Components = new HashSet<string>()
+                }
+            });
+            
+        var pipeline = new DocumentationGenerationPipeline(_componentService, mockDecompositionService.Object, _mockPipelineLogger.Object);
         var result = await pipeline.GenerateDocumentationAsync(_testRepoPath, options);
         
         Assert.NotNull(result);
@@ -67,7 +84,21 @@ public class DocumentationGenerationPipelineTests
         };
 
         // Act & Assert - This test will now pass since we implemented the service
-        var pipeline = new DocumentationGenerationPipeline(_componentService, _mockPipelineLogger.Object);
+        var mockDecompositionService = new Mock<IHierarchicalDecompositionService>();
+        mockDecompositionService
+            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string path, CancellationToken ct) => new ModuleTree
+            {
+                Root = new ModuleNode
+                {
+                    Id = "root",
+                    Name = "Repository",
+                    Children = new List<ModuleNode>(),
+                    Components = new HashSet<string>()
+                }
+            });
+            
+        var pipeline = new DocumentationGenerationPipeline(_componentService, mockDecompositionService.Object, _mockPipelineLogger.Object);
         var result = await pipeline.GenerateComponentDocumentationAsync(component, context);
         
         Assert.NotNull(result);
@@ -90,7 +121,21 @@ public class DocumentationGenerationPipelineTests
         };
 
         // Act & Assert - This test will now pass since we implemented the service
-        var pipeline = new DocumentationGenerationPipeline(_componentService, _mockPipelineLogger.Object);
+        var mockDecompositionService = new Mock<IHierarchicalDecompositionService>();
+        mockDecompositionService
+            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string path, CancellationToken ct) => new ModuleTree
+            {
+                Root = new ModuleNode
+                {
+                    Id = "root",
+                    Name = "Repository",
+                    Children = new List<ModuleNode>(),
+                    Components = new HashSet<string>()
+                }
+            });
+            
+        var pipeline = new DocumentationGenerationPipeline(_componentService, mockDecompositionService.Object, _mockPipelineLogger.Object);
         var result = await pipeline.GenerateOverviewPagesAsync(structure, components);
         
         Assert.NotNull(result);

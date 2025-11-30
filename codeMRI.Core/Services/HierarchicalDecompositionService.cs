@@ -1,316 +1,342 @@
-using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Models;
+using Microsoft.Extensions.Logging;
+using ModuleTree = codeMRI.Core.Models.ModuleTree;
+using ModuleNode = codeMRI.Core.Models.ModuleNode;
 
-namespace codeMRI.Core.Services;
-
-public class HierarchicalDecompositionService : IHierarchicalDecompositionService
+namespace codeMRI.Core.Services
 {
-    private readonly ILogger<HierarchicalDecompositionService> _logger;
-    private readonly IEnhancedDependencyGraphService _graphService;
-
-    public HierarchicalDecompositionService(
-        ILogger<HierarchicalDecompositionService> logger,
-        IEnhancedDependencyGraphService graphService)
+    /// <summary>
+    /// Service for performing semantic hierarchical decomposition of codebases
+    /// </summary>
+    public class HierarchicalDecompositionService : IHierarchicalDecompositionService
     {
-        _logger = logger;
-        _graphService = graphService;
-    }
+        private readonly ILogger<HierarchicalDecompositionService> _logger;
+        private readonly IEnhancedDependencyGraphService _graphService;
+        private const int MaxTokensPerModule = 32768;
 
-    public async Task<ModuleTree> DecomposeRepositoryAsync(
-        List<CodeComponent> components, 
-        int maxTokensPerModule = 32768,
-        CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation("Starting hierarchical decomposition for {ComponentCount} components", components.Count);
-
-        // Build dependency graph
-        var graph = await _graphService.BuildGraphAsync(components, cancellationToken);
-        
-        // Create module tree
-        var moduleTree = await CreateModuleTreeAsync(graph, maxTokensPerModule, cancellationToken);
-        
-        _logger.LogInformation("Created module tree with {NodeCount} nodes and {LeafCount} leaves", 
-            moduleTree.Nodes.Count, moduleTree.GetAllLeaves().Count);
-
-        return moduleTree;
-    }
-
-    private async Task<ModuleTree> CreateModuleTreeAsync(
-        EnhancedDependencyGraph graph, 
-        int maxTokensPerModule, 
-        CancellationToken cancellationToken)
-    {
-        var moduleTree = new ModuleTree();
-        
-        // Create root node
-        moduleTree.Root = new ModuleNode
+        public HierarchicalDecompositionService(
+            ILogger<HierarchicalDecompositionService> logger,
+            IEnhancedDependencyGraphService graphService)
         {
-            Id = "root",
-            Name = "Repository",
-            Components = new HashSet<string>(),
-            Level = 0,
-            IsLeaf = false,
-            EstimatedTokens = 0,
-            ComplexityScore = 0
-        };
-        
-        moduleTree.Nodes["root"] = moduleTree.Root;
+            _logger = logger;
+            _graphService = graphService;
+        }
 
-        // Get all component IDs
-        var allComponentIds = graph.GetNodes().Select(n => n.ComponentId).ToHashSet();
-        
-        // Decompose using multiple strategies
-        var decompositionStrategies = new IPartitioningStrategy[]
+        /// <summary>
+        /// Performs hierarchical decomposition of the repository
+        /// </summary>
+        public async Task<Models.ModuleTree> DecomposeHierarchicallyAsync(
+            string repositoryPath, 
+            CancellationToken cancellationToken = default)
         {
-            new DirectoryStructurePartitioningStrategy(),
-            new SemanticClusteringPartitioningStrategy(),
-            new BalancedPartitioningStrategy()
-        };
+            _logger.LogInformation("Starting hierarchical decomposition for repository: {Path}", repositoryPath);
 
-        foreach (var strategy in decompositionStrategies)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
+            // Get components and build dependency graph
+            var components = await _graphService.GetComponentsAsync(repositoryPath, cancellationToken);
+            var graph = await _graphService.BuildGraphAsync(components, cancellationToken);
+
+            // Create initial module tree
+            var moduleTree = new ModuleTree();
+
+            // Perform semantic clustering
+            var semanticClusters = await PerformSemanticClusteringAsync(graph, cancellationToken);
+
+            // Build hierarchical structure
+            await BuildHierarchyAsync(moduleTree, semanticClusters, graph, cancellationToken);
+
+            // Ensure token limits are respected
+            await EnforceTokenLimitsAsync(moduleTree, graph, cancellationToken);
+
+            _logger.LogInformation("Completed hierarchical decomposition. Total modules: {Count}", moduleTree.Nodes.Count);
             
-            var partitions = await strategy.PartitionAsync(graph, allComponentIds, cancellationToken);
+            return moduleTree;
+        }
+
+        /// <summary>
+        /// Performs semantic clustering of components
+        /// </summary>
+        private async Task<Dictionary<string, List<string>>> PerformSemanticClusteringAsync(
+            EnhancedDependencyGraph graph, 
+            CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Performing semantic clustering on {NodeCount} components", graph.NodeCount);
             
-            foreach (var partition in partitions)
+            var clusters = new Dictionary<string, List<string>>();
+            var unassignedNodes = graph.GetNodes().Select(n => n.ComponentId).ToHashSet();
+
+            // Group by architectural role (e.g., Controllers, Services, etc.)
+            var roleGroups = graph.GetNodes()
+                .GroupBy(n => DetermineArchitecturalRole(n))
+                .OrderByDescending(g => g.Count());
+
+            foreach (var group in roleGroups)
             {
-                var childNode = await CreateModuleNodeFromPartitionAsync(
-                    graph, partition.Key, partition.Value, 1, maxTokensPerModule, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var groupNodes = group.Select(n => n.ComponentId).ToList();
+                clusters[group.Key] = groupNodes;
+                unassignedNodes.ExceptWith(groupNodes);
+            }
+
+            // For remaining nodes, perform Louvain-like community detection
+            if (unassignedNodes.Any())
+            {
+                var communityClusters = await DetectCommunitiesAsync(graph, unassignedNodes, cancellationToken);
+                foreach (var cluster in communityClusters)
+                {
+                    clusters[$"Module_{Guid.NewGuid().ToString("N").Substring(0, 6)}"] = cluster.Value;
+                }
+            }
+
+            return clusters;
+        }
+
+        /// <summary>
+        /// Builds the hierarchical module structure
+        /// </summary>
+        private async Task BuildHierarchyAsync(
+            ModuleTree moduleTree,
+            Dictionary<string, List<string>> clusters,
+            EnhancedDependencyGraph graph,
+            CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Building module hierarchy from {ClusterCount} clusters", clusters.Count);
+
+            // Create top-level modules from clusters
+            foreach (var (clusterName, componentIds) in clusters)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var module = new ModuleNode
+                {
+                    Id = $"module_{clusterName.ToLowerInvariant()}",
+                    Name = clusterName,
+                    Level = 1,
+                    IsLeaf = true
+                };
+
+                // Add components to module
+                foreach (var componentId in componentIds)
+                {
+                    var node = graph.GetNode(componentId);
+                    if (node != null)
+                    {
+                        module.Components.Add(componentId);
+                        module.EstimatedTokens += node.Metadata.EstimatedTokens;
+                        module.ComplexityScore += node.Metadata.CyclomaticComplexity;
+                    }
+                }
+
+                moduleTree.Root.AddChild(module);
+                moduleTree.AddNode(module);
+            }
+        }
+
+        /// <summary>
+        /// Ensures no module exceeds the token limit by splitting large modules
+        /// </summary>
+        private async Task EnforceTokenLimitsAsync(
+            ModuleTree moduleTree,
+            EnhancedDependencyGraph graph,
+            CancellationToken cancellationToken)
+        {
+            var modulesToSplit = new Queue<ModuleNode>();
+            
+            // Collect all leaf modules that exceed token limit
+            foreach (var module in moduleTree.Nodes.Values.Where(m => m.IsLeaf))
+            {
+                if (module.EstimatedTokens > MaxTokensPerModule)
+                {
+                    modulesToSplit.Enqueue(module);
+                }
+            }
+
+            // Process modules that need splitting
+            while (modulesToSplit.Count > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
                 
-                if (childNode != null)
+                var module = modulesToSplit.Dequeue();
+                await SplitModuleAsync(moduleTree, module, graph, modulesToSplit, cancellationToken);
+            }
+        }
+
+        /// <summary>
+        /// Splits a module that exceeds the token limit
+        /// </summary>
+        private async Task SplitModuleAsync(
+            ModuleTree moduleTree,
+            ModuleNode module,
+            EnhancedDependencyGraph graph,
+            Queue<ModuleNode> modulesToSplit,
+            CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Splitting module {ModuleId} (Tokens: {Tokens})", module.Id, module.EstimatedTokens);
+
+            // Create subgraph for this module
+            var subGraph = await CreateSubgraphAsync(graph, module.Components, cancellationToken);
+            
+            // Recursively decompose the subgraph
+            var subClusters = await PerformSemanticClusteringAsync(subGraph, cancellationToken);
+            
+            // Remove the original module
+            module.Parent?.Children.Remove(module);
+            moduleTree.Nodes.Remove(module.Id);
+
+            // Add new child modules
+            foreach (var (clusterName, componentIds) in subClusters)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var childModule = new ModuleNode
                 {
-                    childNode.Parent = moduleTree.Root;
-                    moduleTree.Root.Children.Add(childNode);
-                    moduleTree.Nodes[childNode.Id] = childNode;
+                    Id = $"{module.Id}_{clusterName.ToLowerInvariant()}",
+                    Name = $"{module.Name} - {clusterName}",
+                    Level = module.Level + 1,
+                    IsLeaf = true
+                };
+
+                // Add components to child module
+                foreach (var componentId in componentIds)
+                {
+                    var node = graph.GetNode(componentId);
+                    if (node != null)
+                    {
+                        childModule.Components.Add(componentId);
+                        childModule.EstimatedTokens += node.Metadata.EstimatedTokens;
+                        childModule.ComplexityScore += node.Metadata.CyclomaticComplexity;
+                    }
+                }
+
+                module.Parent?.AddChild(childModule);
+                moduleTree.AddNode(childModule);
+
+                // Check if new module needs further splitting
+                if (childModule.EstimatedTokens > MaxTokensPerModule)
+                {
+                    modulesToSplit.Enqueue(childModule);
                 }
             }
         }
 
-        return moduleTree;
-    }
-
-    private async Task<ModuleNode?> CreateModuleNodeFromPartitionAsync(
-        EnhancedDependencyGraph graph,
-        string name,
-        HashSet<string> componentIds,
-        int level,
-        int maxTokensPerModule,
-        CancellationToken cancellationToken)
-    {
-        if (!componentIds.Any()) return null;
-
-        var estimatedTokens = componentIds.Sum(id => 
-            graph.GetNode(id)?.Metadata.EstimatedTokens ?? 0);
-
-        // If under threshold, create leaf node
-        if (estimatedTokens <= maxTokensPerModule * 0.8) // 80% threshold
+        /// <summary>
+        /// Creates a subgraph containing only the specified components
+        /// </summary>
+        private async Task<EnhancedDependencyGraph> CreateSubgraphAsync(
+            EnhancedDependencyGraph fullGraph,
+            HashSet<string> componentIds,
+            CancellationToken cancellationToken)
         {
-            return new ModuleNode
-            {
-                Id = $"module_{Guid.NewGuid():N}[..8]",
-                Name = name,
-                Components = componentIds,
-                Level = level,
-                IsLeaf = true,
-                EstimatedTokens = (int)estimatedTokens,
-                ComplexityScore = componentIds.Sum(id => 
-                    graph.GetNode(id)?.Metadata.CyclomaticComplexity ?? 0)
-            };
-        }
-
-        // Otherwise, split further
-        return await SplitPartitionAsync(
-            graph, name, componentIds, level, maxTokensPerModule, cancellationToken);
-    }
-
-    private async Task<ModuleNode> SplitPartitionAsync(
-        EnhancedDependencyGraph graph,
-        string name,
-        HashSet<string> componentIds,
-        int level,
-        int maxTokensPerModule,
-        CancellationToken cancellationToken)
-    {
-        var parent = new ModuleNode
-        {
-            Id = $"module_{Guid.NewGuid():N}[..8]",
-            Name = name,
-            Components = new HashSet<string>(),
-            Level = level,
-            IsLeaf = false,
-            EstimatedTokens = (int)componentIds.Sum(id => 
-                graph.GetNode(id)?.Metadata.EstimatedTokens ?? 0),
-            ComplexityScore = 0
-        };
-
-        // Use balanced partitioning for large modules
-        var strategy = new BalancedPartitioningStrategy();
-        var subPartitions = await strategy.PartitionAsync(graph, componentIds, cancellationToken);
-
-        foreach (var subPartition in subPartitions)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var childNode = await CreateModuleNodeFromPartitionAsync(
-                graph, subPartition.Key, subPartition.Value, level + 1, maxTokensPerModule, cancellationToken);
-
-            if (childNode != null)
-            {
-                childNode.Parent = parent;
-                parent.Children.Add(childNode);
-                // parent.Nodes doesn't exist - remove this line
-            }
-        }
-
-        return parent;
-    }
-}
-
-public interface IHierarchicalDecompositionService
-{
-    Task<ModuleTree> DecomposeRepositoryAsync(
-        List<CodeComponent> components, 
-        int maxTokensPerModule = 32768,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IPartitioningStrategy
-{
-    Task<Dictionary<string, HashSet<string>>> PartitionAsync(
-        EnhancedDependencyGraph graph, 
-        HashSet<string> componentIds, 
-        CancellationToken cancellationToken);
-}
-
-public class DirectoryStructurePartitioningStrategy : IPartitioningStrategy
-{
-    public async Task<Dictionary<string, HashSet<string>>> PartitionAsync(
-        EnhancedDependencyGraph graph, 
-        HashSet<string> componentIds, 
-        CancellationToken cancellationToken)
-    {
-        var partitions = new Dictionary<string, HashSet<string>>();
-
-        foreach (var componentId in componentIds)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var node = graph.GetNode(componentId);
-            if (node?.Metadata.FilePath == null) continue;
-
-            var directory = ExtractDirectoryName(node.Metadata.FilePath);
+            var subGraph = new EnhancedDependencyGraph();
             
-            if (!partitions.ContainsKey(directory))
+            // Add nodes
+            foreach (var componentId in componentIds)
             {
-                partitions[directory] = new HashSet<string>();
-            }
-            
-            partitions[directory].Add(componentId);
-        }
-
-        return await Task.FromResult(partitions);
-    }
-
-    private string ExtractDirectoryName(string filePath)
-    {
-        if (string.IsNullOrEmpty(filePath)) return "Root";
-
-        var parts = filePath.Split('/', '\\');
-        return parts.Length > 1 ? parts[^2] : "Root";
-    }
-}
-
-public class SemanticClusteringPartitioningStrategy : IPartitioningStrategy
-{
-    public async Task<Dictionary<string, HashSet<string>>> PartitionAsync(
-        EnhancedDependencyGraph graph, 
-        HashSet<string> componentIds, 
-        CancellationToken cancellationToken)
-    {
-        var partitions = new Dictionary<string, HashSet<string>>();
-        var componentNames = new Dictionary<string, string>();
-
-        // Extract component names for semantic analysis
-        foreach (var componentId in componentIds)
-        {
-            var node = graph.GetNode(componentId);
-            componentNames[componentId] = node?.Metadata.Type ?? "Unknown";
-        }
-
-        // Group by component type (simple semantic clustering)
-        var typeGroups = componentIds.GroupBy(id => componentNames[id]);
-
-        foreach (var group in typeGroups)
-        {
-            var partitionName = $"{group.Key}_Components";
-            partitions[partitionName] = group.ToHashSet();
-        }
-
-        return await Task.FromResult(partitions);
-    }
-}
-
-public class BalancedPartitioningStrategy : IPartitioningStrategy
-{
-    public async Task<Dictionary<string, HashSet<string>>> PartitionAsync(
-        EnhancedDependencyGraph graph, 
-        HashSet<string> componentIds, 
-        CancellationToken cancellationToken)
-    {
-        var partitions = new Dictionary<string, HashSet<string>>();
-        var componentSizes = new Dictionary<string, double>();
-
-        // Calculate component sizes
-        foreach (var componentId in componentIds)
-        {
-            var node = graph.GetNode(componentId);
-            componentSizes[componentId] = node?.Metadata.EstimatedTokens ?? 0;
-        }
-
-        // Sort components by size (descending)
-        var sortedComponents = componentIds
-            .OrderByDescending(id => componentSizes[id])
-            .ToList();
-
-        // Use First-Fit-Decreasing bin packing
-        const int targetSize = 16000; // Half of max tokens
-        var bins = new List<HashSet<string>>();
-        var binSizes = new List<double>();
-
-        foreach (var componentId in sortedComponents)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var componentSize = componentSizes[componentId];
-            var placed = false;
-
-            // Try to place in existing bin
-            for (int i = 0; i < bins.Count; i++)
-            {
-                if (binSizes[i] + componentSize <= targetSize)
+                var node = fullGraph.GetNode(componentId);
+                if (node != null)
                 {
-                    bins[i].Add(componentId);
-                    binSizes[i] += componentSize;
-                    placed = true;
-                    break;
+                    subGraph.AddNode(componentId, node.Metadata);
                 }
             }
 
-            // Create new bin if couldn't place
-            if (!placed)
+            // Add edges between included nodes
+            foreach (var componentId in componentIds)
             {
-                bins.Add(new HashSet<string> { componentId });
-                binSizes.Add(componentSize);
+                var node = fullGraph.GetNode(componentId);
+                if (node == null) continue;
+
+                foreach (var outEdge in node.OutEdges)
+                {
+                    if (componentIds.Contains(outEdge))
+                    {
+                        subGraph.AddEdge(componentId, outEdge, EdgeType.Dependency, 1.0);
+                    }
+                }
             }
+
+            return await Task.FromResult(subGraph);
         }
 
-        // Convert to dictionary
-        for (int i = 0; i < bins.Count; i++)
+        /// <summary>
+        /// Detects communities in the graph using a Louvain-like algorithm
+        /// </summary>
+        private async Task<Dictionary<string, List<string>>> DetectCommunitiesAsync(
+            EnhancedDependencyGraph graph,
+            HashSet<string> nodeIds,
+            CancellationToken cancellationToken)
         {
-            partitions[$"partition_{i}"] = bins[i];
+            _logger.LogInformation("Detecting communities in graph with {Count} nodes", nodeIds.Count);
+            
+            // Simplified community detection - in practice, use a proper implementation
+            var communities = new Dictionary<string, List<string>>();
+            var visited = new HashSet<string>();
+            
+            foreach (var nodeId in nodeIds)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                if (visited.Contains(nodeId)) continue;
+                
+                var community = new List<string> { nodeId };
+                visited.Add(nodeId);
+                
+                // Simple BFS to find connected components
+                var queue = new Queue<string>();
+                queue.Enqueue(nodeId);
+                
+                while (queue.Count > 0)
+                {
+                    var current = queue.Dequeue();
+                    var currentNode = graph.GetNode(current);
+                    if (currentNode == null) continue;
+                    
+                    foreach (var neighbor in currentNode.OutEdges.Concat(currentNode.InEdges))
+                    {
+                        if (nodeIds.Contains(neighbor) && !visited.Contains(neighbor))
+                        {
+                            visited.Add(neighbor);
+                            community.Add(neighbor);
+                            queue.Enqueue(neighbor);
+                        }
+                    }
+                }
+                
+                communities[$"Community_{communities.Count + 1}"] = community;
+            }
+
+            return communities;
         }
 
-        return await Task.FromResult(partitions);
+        /// <summary>
+        /// Determines the architectural role of a component
+        /// </summary>
+        private string DetermineArchitecturalRole(GraphNode node)
+        {
+            // Simple heuristic-based role detection
+            var name = node.ComponentId.ToLowerInvariant();
+            var type = node.Metadata.Type?.ToLowerInvariant() ?? "";
+
+            if (name.Contains("controller") || type.Contains("controller"))
+                return "Controllers";
+            if (name.Contains("service") || type.Contains("service"))
+                return "Services";
+            if (name.Contains("repository") || type.Contains("repository"))
+                return "Repositories";
+            if (name.Contains("model") || type.Contains("model") || type.Contains("dto"))
+                return "Models";
+            if (name.Contains("view") || name.Contains("page") || name.Contains("component"))
+                return "UI Components";
+            if (name.Contains("util") || name.Contains("helper"))
+                return "Utilities";
+            
+            return "Other";
+        }
     }
+
 }

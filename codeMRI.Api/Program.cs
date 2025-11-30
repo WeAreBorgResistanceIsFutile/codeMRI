@@ -40,8 +40,18 @@ builder.Services.AddSingleton<IWikiRepository>(sp =>
 });
 
 // Core Services
+builder.Services.AddScoped<IComponentIdentificationService, ComponentIdentificationService>();
+builder.Services.AddScoped<IEnhancedDependencyGraphService, EnhancedDependencyGraphService>();
 builder.Services.AddScoped<RAGService>();
 builder.Services.AddScoped<WikiGenerationService>();
+builder.Services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
+builder.Services.AddScoped<IDocumentationGenerationPipeline>(sp => 
+    new DocumentationGenerationPipeline(
+        sp.GetRequiredService<IComponentIdentificationService>(),
+        sp.GetRequiredService<IHierarchicalDecompositionService>(),
+        sp.GetRequiredService<ILogger<DocumentationGenerationPipeline>>()
+    )
+);
 
 // CORS
 builder.Services.AddCors(options =>
