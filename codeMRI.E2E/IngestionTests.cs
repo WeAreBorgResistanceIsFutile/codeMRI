@@ -33,7 +33,7 @@ public class IngestionTests
 
         var request = new IngestRequest
         {
-            RepoPath = "/Users/levente/AI/nhibernate-core"
+            RepoPath = "/Users/levente/AI/OllamaRAG5"
         };
 
         // Act

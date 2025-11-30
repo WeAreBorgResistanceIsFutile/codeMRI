@@ -33,7 +33,7 @@ public class StructureTests
 
         var request = new StructureRequest
         {
-            RepoPath = "/Users/levente/AI/nhibernate-core",
+            RepoPath = "/Users/levente/AI/OllamaRAG5",
             ReadmeContent = "This is a RAG application using Ollama and Qdrant.",
             ForceRegenerate = true // Force generation to test the LLM interaction
         };
