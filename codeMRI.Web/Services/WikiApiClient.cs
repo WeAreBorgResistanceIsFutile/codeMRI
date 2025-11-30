@@ -15,9 +15,14 @@ public class WikiApiClient
         _httpClient = httpClient;
     }
 
-    public async Task<string> IngestRepoAsync(string repoPath)
+    public async Task<string> IngestRepoAsync(string repoPath, bool force = false, bool delete = false)
     {
-        var response = await _httpClient.PostAsJsonAsync("api/ingest", new IngestRequest { RepoPath = repoPath });
+        var response = await _httpClient.PostAsJsonAsync("api/ingest", new IngestRequest 
+        { 
+            RepoPath = repoPath, 
+            Force = force,
+            Delete = delete
+        });
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
         return result.GetProperty("message").GetString() ?? "Ingestion complete";

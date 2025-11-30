@@ -9,4 +9,7 @@
 /codeMRI.Infrastructure/obj/
 /codeMRI.Web/bin/
 /codeMRI.Web/obj/
+/codeMRI.E2E/bin/
+/codeMRI.E2E/obj/
+/data/
 

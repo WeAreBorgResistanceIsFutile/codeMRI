@@ -1,3 +1,4 @@
+using codeMRI.Core.Interfaces;
 using codeMRI.Core.Services;
 using codeMRI.Shared.DTOs;
 using Microsoft.AspNetCore.Mvc;
@@ -9,15 +10,28 @@ namespace codeMRI.Api.Controllers;
 public class WikiController : ControllerBase
 {
     private readonly WikiGenerationService _wikiService;
+    private readonly IWikiRepository _wikiRepo;
 
-    public WikiController(WikiGenerationService wikiService)
+    public WikiController(WikiGenerationService wikiService, IWikiRepository wikiRepo)
     {
         _wikiService = wikiService;
+        _wikiRepo = wikiRepo;
     }
 
     [HttpPost("structure")]
     public async Task<IActionResult> GenerateStructure([FromBody] StructureRequest request)
     {
+        if (!request.ForceRegenerate)
+        {
+            var existing = await _wikiRepo.GetStructureAsync(request.RepoPath);
+            if (existing != null) return Ok(existing);
+        }
+        else
+        {
+            // If regenerating structure, wipe the old one (including pages) to avoid orphans
+            await _wikiRepo.DeleteStructureAsync(request.RepoPath);
+        }
+
         // Simple file tree generation
         string fileTree = "Files:\n" + string.Join("\n", Directory.GetFiles(request.RepoPath, "*.*", SearchOption.AllDirectories)
             .Select(f => Path.GetRelativePath(request.RepoPath, f))
@@ -25,12 +39,21 @@ public class WikiController : ControllerBase
             .Take(200)); // Limit for prompt context
 
         var structure = await _wikiService.GenerateStructureAsync(fileTree, request.ReadmeContent, request.Language);
+        
+        await _wikiRepo.SaveStructureAsync(request.RepoPath, structure);
+        
         return Ok(structure);
     }
 
     [HttpPost("page")]
     public async Task<IActionResult> GeneratePage([FromBody] PageGenerationRequest request)
     {
+        if (!request.ForceRegenerate)
+        {
+            var existing = await _wikiRepo.GetPageByTitleAsync(request.RepoPath, request.Title);
+            if (existing != null) return Ok(existing);
+        }
+
         if (request.FileContents == null)
         {
             request.FileContents = new Dictionary<string, string>();
@@ -50,6 +73,9 @@ public class WikiController : ControllerBase
         }
 
         var page = await _wikiService.GeneratePageAsync(request.Title, request.FilePaths, request.FileContents, request.Language);
+        
+        await _wikiRepo.SavePageAsync(request.RepoPath, page);
+        
         return Ok(page);
     }
 }

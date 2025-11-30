@@ -87,6 +87,17 @@ public class QdrantVectorDb : IVectorDatabase
         });
     }
 
+    public async Task DeleteByMetadataAsync(string key, string value)
+    {
+        // Create a filter to match the payload key/value
+        var filter = new Filter
+        {
+            Must = { new Condition { Field = new FieldCondition { Key = key, Match = new Match { Keyword = value } } } }
+        };
+
+        await _client.DeleteAsync(_collectionName, filter);
+    }
+
     private Value ConvertToValue(object? obj)
     {
         if (obj == null) return new Value { NullValue = NullValue.NullValue };

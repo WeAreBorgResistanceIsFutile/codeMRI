@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using codeMRI.Core.Interfaces;
 using codeMRI.Shared.DTOs;
 using codeMRI.Shared.Models;
@@ -12,19 +14,28 @@ public class IngestController : ControllerBase
     private readonly IDocumentProcessor _processor;
     private readonly IEmbedder _embedder;
     private readonly IVectorDatabase _vectorDb;
+    private readonly IWikiRepository _wikiRepo;
     private readonly ILogger<IngestController> _logger;
 
-    public IngestController(IDocumentProcessor processor, IEmbedder embedder, IVectorDatabase vectorDb, ILogger<IngestController> logger)
+    public IngestController(IDocumentProcessor processor, IEmbedder embedder, IVectorDatabase vectorDb, IWikiRepository wikiRepo, ILogger<IngestController> logger)
     {
         _processor = processor;
         _embedder = embedder;
         _vectorDb = vectorDb;
+        _wikiRepo = wikiRepo;
         _logger = logger;
     }
 
     [HttpPost]
     public async Task<IActionResult> IngestRepo([FromBody] IngestRequest request)
     {
+        if (request.Delete)
+        {
+            await _vectorDb.DeleteByMetadataAsync("repo_path", request.RepoPath);
+            await _wikiRepo.DeleteIngestionManifestAsync(request.RepoPath);
+            return Ok(new { Message = "Repository data deleted successfully." });
+        }
+
         if (!Directory.Exists(request.RepoPath))
             return BadRequest($"Directory not found: {request.RepoPath}");
 
@@ -42,15 +53,25 @@ public class IngestController : ControllerBase
 
         try
         {
+            // Handle Force Ingest: Wipe clean first
+            if (request.Force)
+            {
+                await _vectorDb.DeleteByMetadataAsync("repo_path", request.RepoPath);
+                await _wikiRepo.DeleteIngestionManifestAsync(request.RepoPath);
+            }
+
+            var manifest = await _wikiRepo.GetIngestionManifestAsync(request.RepoPath);
+            
             // 2. Safe Directory Walk
-            var files = SafeGetFiles(request.RepoPath);
+            var allFiles = SafeGetFiles(request.RepoPath);
             
             var documents = new List<Document>();
             int processedFiles = 0;
-            int skippedFiles = 0;
+            int upToDateFiles = 0;
+            int skippedErrorFiles = 0;
             var errors = new List<string>();
 
-            foreach (var file in files)
+            foreach (var file in allFiles)
             {
                 try 
                 {
@@ -58,11 +79,30 @@ public class IngestController : ControllerBase
                     if (!IsTextFile(file)) continue;
 
                     var content = await System.IO.File.ReadAllTextAsync(file);
+                    var currentHash = CalculateHash(content);
+                    var relativePath = Path.GetRelativePath(request.RepoPath, file);
+
+                    // Check if changed
+                    if (manifest.TryGetValue(relativePath, out var storedHash) && storedHash == currentHash)
+                    {
+                        upToDateFiles++;
+                        continue;
+                    }
+
+                    // If updating an existing file, clear its old chunks first to avoid duplicates
+                    if (manifest.ContainsKey(relativePath))
+                    {
+                        // We rely on the relative path being stored in metadata as "file_path"
+                        // Note: QdrantVectorDb implementation of DeleteByMetadataAsync uses exact match.
+                        await _vectorDb.DeleteByMetadataAsync("file_path", relativePath);
+                    }
+
                     var doc = new Document
                     {
-                        FilePath = Path.GetRelativePath(request.RepoPath, file),
+                        FilePath = relativePath,
                         Content = content
                     };
+                    doc.Metadata.Add("repo_path", request.RepoPath);
 
                     // Split into chunks
                     var chunks = _processor.Split(doc).ToList();
@@ -74,22 +114,27 @@ public class IngestController : ControllerBase
                         documents.Add(chunk);
                     }
                     
+                    // Update manifest
+                    manifest[relativePath] = currentHash;
                     processedFiles++;
                 }
                 catch (Exception fileEx)
                 {
                     _logger.LogWarning(fileEx, "Failed to process file: {FilePath}", file);
-                    skippedFiles++;
+                    skippedErrorFiles++;
                     if (errors.Count < 5) errors.Add($"{Path.GetFileName(file)}: {fileEx.Message}");
                 }
             }
 
             if (documents.Count > 0)
-            {
+            {  
                 await _vectorDb.UpsertAsync(documents);
             }
             
-            var msg = $"Ingested {processedFiles} files ({documents.Count} chunks). Skipped {skippedFiles} errors.";
+            // Save updated manifest
+            await _wikiRepo.SaveIngestionManifestAsync(request.RepoPath, manifest);
+            
+            var msg = $"Ingested {processedFiles} new/changed files ({documents.Count} chunks). {upToDateFiles} files up-to-date. Skipped {skippedErrorFiles} errors.";
             if (errors.Any()) msg += " Sample errors: " + string.Join(", ", errors);
             
             return Ok(new { Message = msg });
@@ -99,6 +144,14 @@ public class IngestController : ControllerBase
             _logger.LogError(ex, "Error ingesting repo");
             return StatusCode(500, $"Critical Error: {ex.Message}");
         }
+    }
+
+    private string CalculateHash(string input)
+    {
+        using var md5 = MD5.Create();
+        var inputBytes = Encoding.UTF8.GetBytes(input);
+        var hashBytes = md5.ComputeHash(inputBytes);
+        return Convert.ToHexString(hashBytes);
     }
 
     private List<string> SafeGetFiles(string rootPath)

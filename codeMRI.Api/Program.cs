@@ -20,6 +20,7 @@ builder.Services.AddSingleton<IEmbedder, OllamaEmbedderService>();
 builder.Services.AddSingleton<ILLMClient, OllamaLLMService>();
 builder.Services.AddSingleton<IDocumentProcessor, TextSplitterService>();
 builder.Services.AddSingleton<IVectorDatabase, QdrantVectorDb>();
+builder.Services.AddSingleton<IWikiRepository, JsonWikiRepository>();
 
 // Core Services
 builder.Services.AddScoped<RAGService>();
@@ -57,3 +58,5 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+public partial class Program { }

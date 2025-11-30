@@ -18,9 +18,26 @@
                 <input @bind="repoPath" class="form-control" placeholder="/path/to/repo" />
             </div>
             
-            <button class="btn btn-primary w-100 mb-2" @onclick="IngestRepo" disabled="@isBusy">
-                @(isBusy ? "Processing..." : "1. Ingest Repo")
-            </button>
+            <div class="d-grid gap-2 mb-2">
+                <button class="btn btn-primary" @onclick="() => IngestRepo(false, false)" disabled="@isBusy">
+                    @(isBusy ? "Processing..." : "1. Smart Ingest")
+                </button>
+                <div class="btn-group" role="group">
+                    <button class="btn btn-warning" @onclick="() => IngestRepo(true, false)" disabled="@isBusy">
+                        Force Re-ingest
+                    </button>
+                    <button class="btn btn-danger" @onclick="() => IngestRepo(false, true)" disabled="@isBusy">
+                        Delete Data
+                    </button>
+                </div>
+            </div>
+            
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" @bind="forceStructureRegen" id="forceRegenCheck">
+                <label class="form-check-label" for="forceRegenCheck">
+                    Force Regenerate
+                </label>
+            </div>
             
             <button class="btn btn-secondary w-100 mb-4" @onclick="GenerateStructure" disabled="@(isBusy || string.IsNullOrEmpty(repoPath))">
                 2. Generate Structure
@@ -107,6 +124,7 @@
 @code {
     private string repoPath = "/Users/levente/AI/OllamaRAG5"; // Default for convenience
     private bool isBusy = false;
+    private bool forceStructureRegen = false;
     private string message = "";
     
     private WikiStructure? structure;
@@ -116,16 +134,20 @@
     private string chatQuery = "";
     private List<ChatMessage> chatHistory = new();
 
-    private async Task IngestRepo()
+    private async Task IngestRepo(bool force = false, bool delete = false)
     {
         if (string.IsNullOrEmpty(repoPath)) return;
         isBusy = true;
-        message = "Ingesting repository... This might take a while.";
+        
+        if (delete) message = "Deleting repository data...";
+        else if (force) message = "Force re-ingesting repository... This might take a while.";
+        else message = "Smart ingesting repository... Checking for changes.";
+        
         StateHasChanged();
         
         try 
         {
-            var msg = await WikiApi.IngestRepoAsync(repoPath);
+            var msg = await WikiApi.IngestRepoAsync(repoPath, force, delete);
             message = msg;
         }
         catch (Exception ex)
