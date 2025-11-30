@@ -30,6 +30,19 @@ public class CodeComponent
     public string Description { get; set; } = string.Empty;
     public int LineCount { get; set; }
     public int ComplexityScore { get; set; }
+    public ComponentMetadata Metadata { get; set; } = new();
+}
+
+public class ComponentMetadata
+{
+    public int Loc { get; set; }
+    public int CyclomaticComplexity { get; set; }
+    public int NestingDepth { get; set; }
+    public int FanIn { get; set; }
+    public int FanOut { get; set; }
+    public bool IsPublic { get; set; }
+    public bool DocstringPresent { get; set; }
+    public double EstimatedTokens { get; set; }
 }
 
 public class ComponentRelationships
@@ -37,6 +50,7 @@ public class ComponentRelationships
     public List<Dependency> Dependencies { get; set; } = new();
     public List<Inheritance> InheritanceHierarchy { get; set; } = new();
     public List<Composition> Compositions { get; set; } = new();
+    public List<string> EntryPoints { get; set; } = new();
 }
 
 public class Dependency
