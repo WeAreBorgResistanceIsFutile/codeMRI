@@ -8,6 +8,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
 {
     private readonly ILogger<ComponentIdentificationService> _logger;
     private readonly RoslynCSharpAnalyzer _roslynAnalyzer;
+    private readonly IASTServiceClient? _astServiceClient;
     private readonly Dictionary<string, string> _languagePatterns = new()
     {
         { ".cs", "C#" },
@@ -21,10 +22,13 @@ public class ComponentIdentificationService : IComponentIdentificationService
         { ".rs", "Rust" }
     };
 
-    public ComponentIdentificationService(ILogger<ComponentIdentificationService> logger)
+    public ComponentIdentificationService(
+        ILogger<ComponentIdentificationService> logger,
+        IASTServiceClient? astServiceClient = null)
     {
         _logger = logger;
         _roslynAnalyzer = new RoslynCSharpAnalyzer();
+        _astServiceClient = astServiceClient;
     }
 
     public async Task<RepositoryStructure> AnalyzeRepositoryAsync(string repositoryPath)
@@ -164,17 +168,112 @@ public class ComponentIdentificationService : IComponentIdentificationService
                 components.AddRange(await _roslynAnalyzer.AnalyzeCSharpFileAsync(filePath));
                 break;
             case "Java":
-                components.AddRange(AnalyzeJavaFile(filePath, content));
-                break;
             case "Python":
-                components.AddRange(AnalyzePythonFile(filePath, content));
+            case "JavaScript":
+            case "TypeScript":
+            case "C++":
+            case "C":
+                // Try to use AST Service if available
+                if (_astServiceClient != null && await _astServiceClient.IsHealthyAsync())
+                {
+                    try
+                    {
+                        var astResult = await _astServiceClient.ParseCodeAsync(content, language, filePath);
+                        if (astResult != null)
+                        {
+                            var astComponents = await _astServiceClient.ConvertToCodeComponentsAsync(astResult);
+                            components.AddRange(astComponents);
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "AST Service failed to parse {FilePath}, falling back to basic analysis", filePath);
+                    }
+                }
+                
+                // Fallback to basic analysis
+                if (language == "Java")
+                    components.AddRange(AnalyzeJavaFile(filePath, content));
+                else if (language == "Python")
+                    components.AddRange(AnalyzePythonFile(filePath, content));
+                else
+                    components.AddRange(AnalyzeGenericFile(filePath, content));
+                break;
+            default:
+                // Basic regex-based analysis for unsupported languages
+                components.AddRange(AnalyzeGenericFile(filePath, content));
                 break;
         }
 
         return components;
     }
 
+    private List<CodeComponent> AnalyzeGenericFile(string filePath, string content)
+    {
+        var components = new List<CodeComponent>();
+        var lines = content.Split('\n');
+        var fileName = Path.GetFileNameWithoutExtension(filePath);
+        var componentCounter = 1;
+        
+        // Generic class/function detection for various languages
+        var classPatterns = new[]
+        {
+            @"\bclass\s+(\w+)",
+            @"\binterface\s+(\w+)",
+            @"\bstruct\s+(\w+)",
+            @"\benum\s+(\w+)"
+        };
 
+        var functionPatterns = new[]
+        {
+            @"\bfunction\s+(\w+)",
+            @"\bdef\s+(\w+)",
+            @"\bfunc\s+(\w+)",
+            @"\bpublic\s+\w+\s+(\w+)\s*\(",
+            @"\bprivate\s+\w+\s+(\w+)\s*\("
+        };
+
+        foreach (var pattern in classPatterns)
+        {
+            foreach (Match match in Regex.Matches(content, pattern, RegexOptions.IgnoreCase))
+            {
+                var componentName = match.Groups[1].Value;
+                components.Add(new CodeComponent
+                {
+                    Id = $"{fileName}_{componentName}_{componentCounter++}",
+                    Name = componentName,
+                    Type = "Class",
+                    FilePath = filePath,
+                    Language = "Unknown",
+                    LineCount = lines.Length,
+                    ComplexityScore = CalculateComplexity(content),
+                    Metadata = CreateComponentMetadata(filePath, content, componentName)
+                });
+            }
+        }
+
+        foreach (var pattern in functionPatterns)
+        {
+            foreach (Match match in Regex.Matches(content, pattern, RegexOptions.IgnoreCase))
+            {
+                var componentName = match.Groups[1].Value;
+                components.Add(new CodeComponent
+                {
+                    Id = $"{fileName}_{componentName}_{componentCounter++}",
+                    Name = componentName,
+                    Type = "Function",
+                    FilePath = filePath,
+                    Language = "Unknown",
+                    LineCount = lines.Length,
+                    ComplexityScore = CalculateComplexity(content),
+                    Metadata = CreateComponentMetadata(filePath, content, componentName)
+                });
+            }
+        }
+
+        return components;
+    }
 
     private List<CodeComponent> AnalyzeJavaFile(string filePath, string content)
     {

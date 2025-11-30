@@ -15,12 +15,14 @@ builder.Services.AddSwaggerGen();
 // Configuration
 builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<QdrantSettings>(builder.Configuration.GetSection("Qdrant"));
+builder.Services.Configure<ASTServiceSettings>(builder.Configuration.GetSection("ASTService"));
 
 // Infrastructure
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IEmbedder, OllamaEmbedderService>();
 builder.Services.AddSingleton<ILLMClient, OllamaLLMService>();
 builder.Services.AddSingleton<IDocumentProcessor, TextSplitterService>();
+builder.Services.AddSingleton<IASTServiceClient, ASTServiceClient>();
 
 // Register QdrantClient
 builder.Services.AddSingleton<IQdrantClient>(sp =>
