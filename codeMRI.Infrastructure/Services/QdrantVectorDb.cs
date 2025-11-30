@@ -23,7 +23,7 @@ public class QdrantVectorDb : IVectorDatabase
     {
         _collectionName = collectionName;
         var collections = await _client.ListCollectionsAsync();
-        if (!collections.Any(c => c == _collectionName))
+        if (collections.All(c => c != _collectionName))
         {
             await _client.CreateCollectionAsync(_collectionName, new VectorParams { Size = (ulong)_settings.VectorSize, Distance = Distance.Cosine });
         }

@@ -1,0 +1,1102 @@
+# Detailed Implementation Plan: Component Identification & Evaluation Metrics System
+
+## Overview
+This plan covers implementing two critical CodeWiki subsystems: (1) Component Identification for hierarchical decomposition, and (2) the CodeWikiBench evaluation framework with hierarchical rubrics and LLM-based assessment.
+
+---
+
+## Part A: Component Identification & Hierarchical Decomposition System
+
+### Phase 1: Graph Analysis Foundation (Week 1-2)
+
+#### 1.1 Dependency Graph Enhancement
+```python
+class EnhancedDependencyGraph:
+    """Extended graph with analysis capabilities"""
+    
+    def __init__(self):
+        self.graph = nx.DiGraph()
+        self.component_metadata = {}  # Store complexity metrics
+        self.entry_points = set()
+        
+    def compute_in_degrees(self) -> Dict[str, int]:
+        """Calculate in-degree for each node"""
+        pass
+    
+    def compute_out_degrees(self) -> Dict[str, int]:
+        """Calculate out-degree (dependencies count)"""
+        pass
+    
+    def identify_strongly_connected_components(self) -> List[Set[str]]:
+        """Find circular dependency groups"""
+        return list(nx.strongly_connected_components(self.graph))
+    
+    def compute_page_rank(self) -> Dict[str, float]:
+        """Identify central/important components"""
+        return nx.pagerank(self.graph)
+```
+
+**Deliverables:**
+- Graph traversal algorithms (BFS, DFS, topological sort)
+- Centrality metrics (PageRank, betweenness)
+- Cycle detection and handling
+- Dependency depth calculation
+
+#### 1.2 Component Metadata Collection
+```python
+@dataclass
+class ComponentMetadata:
+    """Metrics for each code component"""
+    id: str
+    type: str  # function, class, module, etc.
+    loc: int  # Lines of code
+    cyclomatic_complexity: int
+    nesting_depth: int
+    fan_in: int  # Number of incoming dependencies
+    fan_out: int  # Number of outgoing dependencies
+    is_public: bool
+    docstring_present: bool
+    
+class ComplexityAnalyzer:
+    def analyze_component(self, ast_node, source_code: str) -> ComponentMetadata:
+        """Calculate all complexity metrics"""
+        pass
+    
+    def compute_cyclomatic_complexity(self, ast_node) -> int:
+        """Count decision points (if, while, for, case, etc.)"""
+        pass
+    
+    def compute_nesting_depth(self, ast_node) -> int:
+        """Maximum nesting level of control structures"""
+        pass
+```
+
+**Implementation steps:**
+1. Integrate with radon/mccabe for Python complexity
+2. Implement language-specific complexity calculators
+3. Build AST traversal for nesting depth
+4. Cache metrics for performance
+
+---
+
+### Phase 2: Entry Point Identification (Week 3)
+
+#### 2.1 Zero In-Degree Detection
+```python
+class EntryPointIdentifier:
+    """Identify components where users interact with codebase"""
+    
+    def identify_entry_points(self, graph: EnhancedDependencyGraph) -> Set[str]:
+        """Find zero in-degree nodes (no incoming dependencies)"""
+        entry_points = set()
+        
+        for node in graph.nodes():
+            if graph.in_degree(node) == 0:
+                entry_points.add(node)
+        
+        return entry_points
+    
+    def identify_public_interfaces(self, components: List[Component]) -> Set[str]:
+        """
+        Find public APIs:
+        - main() functions
+        - __init__.py exports
+        - @app.route decorators
+        - public class methods
+        - CLI entry points (argparse)
+        """
+        pass
+    
+    def rank_by_importance(self, entry_points: Set[str]) -> List[str]:
+        """
+        Rank by:
+        - PageRank score
+        - Number of downstream dependencies
+        - Presence in setup.py/package.json
+        """
+        pass
+```
+
+**Detection heuristics by language:**
+- **Python:** `if __name__ == "__main__"`, Flask/Django routes, `__init__.py` `__all__`
+- **JavaScript/TypeScript:** `export default`, package.json main/exports
+- **Java:** `public static void main`, @RestController annotations
+- **C/C++:** `int main()`, header file public declarations
+- **C#:** `static void Main`, public API classes
+
+---
+
+### Phase 3: Hierarchical Module Decomposition (Week 4-5)
+
+#### 3.1 Module Tree Data Structure
+```python
+@dataclass
+class ModuleNode:
+    """Node in the hierarchical module tree"""
+    id: str
+    name: str
+    components: Set[str]  # Component IDs in this module
+    children: List['ModuleNode']
+    parent: Optional['ModuleNode']
+    level: int
+    is_leaf: bool
+    estimated_tokens: int
+    complexity_score: float
+    
+class ModuleTree:
+    """Hierarchical decomposition of repository"""
+    
+    def __init__(self):
+        self.root = ModuleNode(
+            id="root",
+            name="Repository",
+            components=set(),
+            children=[],
+            parent=None,
+            level=0,
+            is_leaf=False,
+            estimated_tokens=0,
+            complexity_score=0.0
+        )
+        self.nodes: Dict[str, ModuleNode] = {"root": self.root}
+    
+    def add_child(self, parent_id: str, child: ModuleNode):
+        """Add child node to parent"""
+        pass
+    
+    def get_all_leaves(self) -> List[ModuleNode]:
+        """Return all leaf nodes for agent processing"""
+        pass
+    
+    def update_token_estimates(self):
+        """Recalculate token counts bottom-up"""
+        pass
+```
+
+#### 3.2 Decomposition Strategy (Dynamic Programming Approach)
+```python
+class HierarchicalDecomposer:
+    """Recursive module decomposition algorithm"""
+    
+    def __init__(self, max_tokens_per_module: int = 32768):
+        self.max_tokens = max_tokens_per_module
+        self.token_threshold = 0.8 * max_tokens  # 80% threshold
+    
+    def decompose(
+        self, 
+        components: Set[str],
+        dependency_graph: EnhancedDependencyGraph,
+        parent_name: str = "Repository"
+    ) -> ModuleNode:
+        """
+        Recursively partition components into manageable modules
+        
+        Algorithm:
+        1. Estimate token count for all components
+        2. If under threshold, create leaf module
+        3. Otherwise, partition and recurse
+        """
+        
+        estimated_tokens = self._estimate_tokens(components)
+        
+        if estimated_tokens < self.token_threshold:
+            # Base case: Create leaf module
+            return ModuleNode(
+                id=f"module_{uuid.uuid4().hex[:8]}",
+                name=parent_name,
+                components=components,
+                children=[],
+                parent=None,
+                level=0,
+                is_leaf=True,
+                estimated_tokens=estimated_tokens,
+                complexity_score=self._compute_complexity(components)
+            )
+        
+        # Recursive case: Partition and decompose
+        partitions = self._partition_components(components, dependency_graph)
+        
+        parent = ModuleNode(
+            id=f"module_{uuid.uuid4().hex[:8]}",
+            name=parent_name,
+            components=set(),
+            children=[],
+            parent=None,
+            level=0,
+            is_leaf=False,
+            estimated_tokens=estimated_tokens,
+            complexity_score=0.0
+        )
+        
+        for partition_name, partition_components in partitions.items():
+            child = self.decompose(
+                partition_components, 
+                dependency_graph,
+                partition_name
+            )
+            child.parent = parent
+            parent.children.append(child)
+        
+        return parent
+    
+    def _partition_components(
+        self, 
+        components: Set[str],
+        graph: EnhancedDependencyGraph
+    ) -> Dict[str, Set[str]]:
+        """
+        Partition components using multiple strategies:
+        1. Feature-based clustering (by directory structure)
+        2. Dependency-based clustering (strongly connected components)
+        3. Semantic clustering (using component names/docstrings)
+        """
+        pass
+    
+    def _estimate_tokens(self, components: Set[str]) -> int:
+        """
+        Estimate token count for documentation:
+        - Source code tokens (using tiktoken)
+        - Expected documentation overhead (1.5x multiplier)
+        """
+        pass
+```
+
+#### 3.3 Partitioning Strategies
+```python
+class PartitioningStrategy:
+    """Different approaches to module partitioning"""
+    
+    @staticmethod
+    def by_directory_structure(components: Set[str]) -> Dict[str, Set[str]]:
+        """Group by filesystem hierarchy"""
+        partitions = defaultdict(set)
+        for comp_id in components:
+            # Extract directory from component path
+            directory = Path(comp_id).parent.name
+            partitions[directory].add(comp_id)
+        return dict(partitions)
+    
+    @staticmethod
+    def by_strongly_connected_components(
+        components: Set[str],
+        graph: nx.DiGraph
+    ) -> Dict[str, Set[str]]:
+        """Group tightly coupled components"""
+        subgraph = graph.subgraph(components)
+        sccs = nx.strongly_connected_components(subgraph)
+        
+        partitions = {}
+        for idx, scc in enumerate(sccs):
+            partitions[f"component_group_{idx}"] = scc
+        return partitions
+    
+    @staticmethod
+    def by_semantic_similarity(
+        components: Set[str],
+        embeddings: Dict[str, np.ndarray]
+    ) -> Dict[str, Set[str]]:
+        """Cluster by semantic similarity using embeddings"""
+        from sklearn.cluster import AgglomerativeClustering
+        
+        comp_list = list(components)
+        embedding_matrix = np.array([embeddings[c] for c in comp_list])
+        
+        clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=0.5)
+        labels = clustering.fit_predict(embedding_matrix)
+        
+        partitions = defaultdict(set)
+        for comp, label in zip(comp_list, labels):
+            partitions[f"cluster_{label}"].add(comp)
+        
+        return dict(partitions)
+    
+    @staticmethod
+    def balanced_partition(
+        components: Set[str],
+        target_size: int,
+        component_sizes: Dict[str, int]
+    ) -> Dict[str, Set[str]]:
+        """Partition to balance module sizes (bin packing)"""
+        # Use First-Fit-Decreasing algorithm
+        sorted_components = sorted(
+            components, 
+            key=lambda c: component_sizes[c],
+            reverse=True
+        )
+        
+        bins = []
+        bin_sizes = []
+        
+        for comp in sorted_components:
+            comp_size = component_sizes[comp]
+            
+            # Find bin with enough space
+            placed = False
+            for i, bin_size in enumerate(bin_sizes):
+                if bin_size + comp_size <= target_size:
+                    bins[i].add(comp)
+                    bin_sizes[i] += comp_size
+                    placed = True
+                    break
+            
+            if not placed:
+                bins.append({comp})
+                bin_sizes.append(comp_size)
+        
+        return {f"partition_{i}": bin_set for i, bin_set in enumerate(bins)}
+```
+
+---
+
+## Part B: CodeWikiBench Evaluation System
+
+### Phase 4: Hierarchical Rubric Generation (Week 6-7)
+
+#### 4.1 Official Documentation Parser
+```python
+class DocumentationParser:
+    """Parse official docs into structured format"""
+    
+    def parse_documentation_directory(
+        self, 
+        docs_path: Path
+    ) -> Dict[str, Any]:
+        """
+        Parse documentation into hierarchical JSON:
+        {
+            "title": "Main Documentation",
+            "children": [
+                {
+                    "title": "Getting Started",
+                    "content": "...",
+                    "children": [...]
+                }
+            ]
+        }
+        """
+        pass
+    
+    def extract_from_markdown(self, md_file: Path) -> Dict[str, Any]:
+        """
+        Parse markdown using headers as hierarchy:
+        # Level 1 -> top level
+        ## Level 2 -> child
+        ### Level 3 -> grandchild
+        """
+        import markdown
+        from bs4 import BeautifulSoup
+        
+        with open(md_file) as f:
+            md_text = f.read()
+        
+        html = markdown.markdown(md_text)
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Build hierarchy from headers
+        return self._build_hierarchy_from_headers(soup)
+    
+    def _build_hierarchy_from_headers(self, soup) -> Dict[str, Any]:
+        """Convert flat header list to nested structure"""
+        pass
+```
+
+#### 4.2 Rubric Generator Agent
+```python
+class RubricGeneratorAgent:
+    """LLM agent that generates evaluation rubrics"""
+    
+    def __init__(self, model_name: str):
+        self.llm = self._initialize_llm(model_name)
+        self.tools = self._setup_tools()
+    
+    def generate_rubric(
+        self,
+        doc_structure: Dict[str, Any],
+        repository_info: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Generate hierarchical rubric from documentation structure
+        
+        System Prompt:
+        You are a technical documentation evaluator. Given the official 
+        documentation structure for a repository, generate a comprehensive 
+        evaluation rubric that captures:
+        1. Core architectural components
+        2. Key features and capabilities
+        3. API/interface specifications
+        4. Usage patterns and examples
+        
+        The rubric should be hierarchical with weighted requirements.
+        """
+        
+        prompt = self._build_rubric_generation_prompt(doc_structure, repository_info)
+        
+        rubric_json = self.llm.generate(
+            prompt,
+            temperature=0.0,
+            max_tokens=32768,
+            response_format={"type": "json_object"}
+        )
+        
+        return json.loads(rubric_json)
+    
+    def _build_rubric_generation_prompt(
+        self,
+        doc_structure: Dict[str, Any],
+        repo_info: Dict[str, Any]
+    ) -> str:
+        """Construct detailed prompt for rubric generation"""
+        return f"""
+Repository: {repo_info['name']}
+Language: {repo_info['language']}
+LOC: {repo_info['loc']}
+
+Official Documentation Structure:
+{json.dumps(doc_structure, indent=2)}
+
+Generate a hierarchical evaluation rubric with the following structure:
+{{
+    "title": "Repository Name Documentation Evaluation",
+    "weight": 1.0,
+    "children": [
+        {{
+            "title": "Component Category",
+            "weight": 0.3,
+            "children": [
+                {{
+                    "title": "Specific Requirement",
+                    "weight": 0.5,
+                    "is_leaf": true,
+                    "description": "What should be documented"
+                }}
+            ]
+        }}
+    ]
+}}
+
+Ensure:
+- Leaf nodes are specific, measurable requirements
+- Weights sum to 1.0 at each level
+- Hierarchy reflects documentation importance
+- 40-100 total leaf requirements
+"""
+```
+
+#### 4.3 Multi-Model Rubric Synthesis
+```python
+class MultiModelRubricSynthesizer:
+    """Generate consensus rubric from multiple models"""
+    
+    def __init__(self, model_names: List[str]):
+        self.generators = [
+            RubricGeneratorAgent(model) 
+            for model in model_names
+        ]
+    
+    def generate_consensus_rubric(
+        self,
+        doc_structure: Dict[str, Any],
+        repo_info: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Generate rubrics with multiple models and synthesize
+        
+        Steps:
+        1. Generate rubric with each model independently
+        2. Extract all unique requirements (semantic deduplication)
+        3. Compute consensus weights
+        4. Rebuild hierarchical structure
+        """
+        
+        # Generate from each model
+        rubrics = []
+        for generator in self.generators:
+            rubric = generator.generate_rubric(doc_structure, repo_info)
+            rubrics.append(rubric)
+        
+        # Synthesize consensus
+        consensus = self._synthesize_rubrics(rubrics)
+        
+        return consensus
+    
+    def _synthesize_rubrics(
+        self, 
+        rubrics: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Merge rubrics using:
+        1. Semantic similarity for requirement matching
+        2. Weighted averaging for importance
+        3. Structure alignment
+        """
+        pass
+    
+    def _extract_all_requirements(
+        self,
+        rubrics: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Flatten all rubrics to leaf requirements"""
+        all_requirements = []
+        
+        for rubric in rubrics:
+            requirements = self._get_leaf_nodes(rubric)
+            all_requirements.extend(requirements)
+        
+        return all_requirements
+    
+    def _deduplicate_requirements(
+        self,
+        requirements: List[Dict[str, Any]],
+        similarity_threshold: float = 0.85
+    ) -> List[Dict[str, Any]]:
+        """Remove duplicate requirements using embeddings"""
+        from sentence_transformers import SentenceTransformer
+        
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        
+        # Embed all requirement descriptions
+        texts = [req['description'] for req in requirements]
+        embeddings = model.encode(texts)
+        
+        # Cluster similar requirements
+        from sklearn.cluster import DBSCAN
+        clustering = DBSCAN(eps=1-similarity_threshold, metric='cosine')
+        labels = clustering.fit_predict(embeddings)
+        
+        # Keep one from each cluster
+        unique_requirements = []
+        seen_clusters = set()
+        
+        for req, label in zip(requirements, labels):
+            if label not in seen_clusters:
+                unique_requirements.append(req)
+                seen_clusters.add(label)
+        
+        return unique_requirements
+```
+
+---
+
+### Phase 5: Documentation Assessment System (Week 8-9)
+
+#### 5.1 Judge Agent Architecture
+```python
+class JudgeAgent:
+    """LLM agent that evaluates documentation against rubric"""
+    
+    def __init__(self, model_name: str):
+        self.llm = self._initialize_llm(model_name)
+        self.search_tool = DocumentationSearchTool()
+    
+    def evaluate_requirement(
+        self,
+        requirement: Dict[str, Any],
+        documentation: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Evaluate single leaf requirement
+        
+        Returns:
+        {
+            "requirement_id": "...",
+            "score": 0 or 1,
+            "reasoning": "Brief explanation",
+            "evidence": ["doc sections that support this"]
+        }
+        """
+        
+        prompt = f"""
+You are evaluating generated documentation against specific requirements.
+
+Requirement: {requirement['title']}
+Description: {requirement['description']}
+
+Documentation Structure (content hidden, use search tool):
+{self._format_doc_structure(documentation)}
+
+Task:
+1. Search the documentation for content related to this requirement
+2. Determine if the requirement is adequately satisfied (binary: yes/no)
+3. Provide brief reasoning (max 50 words)
+
+Score 1 if:
+- The documentation clearly addresses this requirement
+- Information is accurate and complete
+- Examples are provided where appropriate
+
+Score 0 if:
+- Requirement is not mentioned
+- Information is incomplete or unclear
+- Critical details are missing
+"""
+        
+        # Agent uses search tool to explore documentation
+        result = self.llm.generate_with_tools(
+            prompt,
+            tools=[self.search_tool],
+            temperature=0.0
+        )
+        
+        return {
+            "requirement_id": requirement['id'],
+            "score": result['score'],
+            "reasoning": result['reasoning'],
+            "evidence": result['evidence']
+        }
+    
+    def _format_doc_structure(self, documentation: Dict[str, Any]) -> str:
+        """Show structure but hide content to force tool use"""
+        def recurse(node, depth=0):
+            lines = [f"{'  ' * depth}- {node['title']} [use search_doc tool]"]
+            for child in node.get('children', []):
+                lines.extend(recurse(child, depth + 1))
+            return lines
+        
+        return '\n'.join(recurse(documentation))
+
+class DocumentationSearchTool:
+    """Tool for judge agents to search documentation"""
+    
+    def __init__(self):
+        self.description = "Search documentation for specific content"
+    
+    def search(
+        self,
+        documentation: Dict[str, Any],
+        query: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Semantic search over documentation sections
+        
+        Returns top-k most relevant sections with content
+        """
+        pass
+```
+
+#### 5.2 Multi-Judge Assessment
+```python
+class MultiJudgeEvaluator:
+    """Coordinate multiple judge agents for reliability"""
+    
+    def __init__(self, judge_models: List[str]):
+        self.judges = [JudgeAgent(model) for model in judge_models]
+    
+    def evaluate_requirement(
+        self,
+        requirement: Dict[str, Any],
+        documentation: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Get assessments from all judges and aggregate
+        
+        Returns:
+        {
+            "requirement_id": "...",
+            "mean_score": 0.667,
+            "std_dev": 0.471,
+            "individual_scores": [1, 0, 1],
+            "reasoning": ["judge1 reason", "judge2 reason", "judge3 reason"]
+        }
+        """
+        
+        assessments = []
+        for judge in self.judges:
+            assessment = judge.evaluate_requirement(requirement, documentation)
+            assessments.append(assessment)
+        
+        scores = [a['score'] for a in assessments]
+        
+        return {
+            "requirement_id": requirement['id'],
+            "mean_score": np.mean(scores),
+            "std_dev": np.std(scores, ddof=1),
+            "individual_scores": scores,
+            "reasoning": [a['reasoning'] for a in assessments],
+            "evidence": [a['evidence'] for a in assessments]
+        }
+```
+
+---
+
+### Phase 6: Hierarchical Score Aggregation (Week 10)
+
+#### 6.1 Score Propagation Algorithm
+```python
+class HierarchicalScoreAggregator:
+    """Compute final scores with uncertainty propagation"""
+    
+    def aggregate_scores(
+        self,
+        rubric: Dict[str, Any],
+        leaf_assessments: Dict[str, Dict[str, float]]
+    ) -> Dict[str, Any]:
+        """
+        Bottom-up weighted aggregation with std dev propagation
+        
+        For leaf node ℓ with assessments s₁, s₂, ..., sₘ:
+        S(ℓ) = mean(s₁, s₂, ..., sₘ)
+        σ_ℓ = std(s₁, s₂, ..., sₘ)
+        
+        For internal node n with children c₁, ..., cₖ:
+        S(n) = Σ(w(cᵢ) · S(cᵢ)) / Σ(w(cᵢ))
+        σ_n = sqrt(Σ(w(cᵢ)² · σ²_cᵢ)) / Σ(w(cᵢ))
+        """
+        
+        def aggregate_node(node: Dict[str, Any]) -> Tuple[float, float]:
+            """Returns (score, std_dev) for a node"""
+            
+            if node.get('is_leaf', False):
+                # Leaf node: get from assessments
+                assessment = leaf_assessments[node['id']]
+                return assessment['mean_score'], assessment['std_dev']
+            
+            # Internal node: aggregate from children
+            child_scores = []
+            child_stds = []
+            child_weights = []
+            
+            for child in node['children']:
+                score, std = aggregate_node(child)
+                child_scores.append(score)
+                child_stds.append(std)
+                child_weights.append(child['weight'])
+            
+            # Weighted average for score
+            total_weight = sum(child_weights)
+            weighted_score = sum(
+                w * s for w, s in zip(child_weights, child_scores)
+            ) / total_weight
+            
+            # Propagate uncertainty
+            weighted_variance = sum(
+                (w ** 2) * (std ** 2) 
+                for w, std in zip(child_weights, child_stds)
+            ) / (total_weight ** 2)
+            
+            propagated_std = np.sqrt(weighted_variance)
+            
+            # Store in node
+            node['score'] = weighted_score
+            node['std_dev'] = propagated_std
+            
+            return weighted_score, propagated_std
+        
+        final_score, final_std = aggregate_node(rubric)
+        
+        return {
+            "rubric": rubric,  # Now includes scores at all levels
+            "final_score": final_score,
+            "final_std_dev": final_std,
+            "confidence": 1 - final_std  # Simple confidence measure
+        }
+```
+
+#### 6.2 Reliability Metrics
+```python
+class ReliabilityAnalyzer:
+    """Analyze reliability of evaluation methodology"""
+    
+    def compute_semantic_reliability(
+        self,
+        rubrics: List[Dict[str, Any]]
+    ) -> float:
+        """
+        Compute semantic consistency across model-generated rubrics
+        
+        For rubrics R₁, R₂, ..., Rₙ:
+        1. Extract all requirement texts
+        2. Compute pairwise similarities
+        3. Average across all pairs
+        """
+        from sentence_transformers import SentenceTransformer
+        from sklearn.metrics.pairwise import cosine_similarity
+        
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        
+        # Extract requirements from each rubric
+        all_requirements = []
+        for rubric in rubrics:
+            reqs = self._extract_leaf_requirements(rubric)
+            all_requirements.append(reqs)
+        
+        # Compute pairwise similarities
+        similarities = []
+        n = len(rubrics)
+        
+        for i in range(n):
+            for j in range(i + 1, n):
+                sim = self._bidirectional_similarity(
+                    all_requirements[i],
+                    all_requirements[j],
+                    model
+                )
+                similarities.append(sim)
+        
+        return np.mean(similarities)
+    
+    def _bidirectional_similarity(
+        self,
+        reqs_i: List[str],
+        reqs_j: List[str],
+        model
+    ) -> float:
+        """
+        Compute bidirectional semantic similarity:
+        sim(Rᵢ, Rⱼ) = 1/(mᵢ + mⱼ) * [Σ max_sim(tᵢ, Tⱼ) + Σ max_sim(tⱼ, Tᵢ)]
+        """
+        
+        embeddings_i = model.encode(reqs_i)
+        embeddings_j = model.encode(reqs_j)
+        
+        # For each req in i, find best match in j
+        sims_i_to_j = []
+        for emb_i in embeddings_i:
+            sims = cosine_similarity([emb_i], embeddings_j)[0]
+            sims_i_to_j.append(np.max(sims))
+        
+        # For each req in j, find best match in i
+        sims_j_to_i = []
+        for emb_j in embeddings_j:
+            sims = cosine_similarity([emb_j], embeddings_i)[0]
+            sims_j_to_i.append(np.max(sims))
+        
+        total = sum(sims_i_to_j) + sum(sims_j_to_i)
+        return total / (len(reqs_i) + len(reqs_j))
+    
+    def compute_structural_reliability(
+        self,
+        rubrics: List[Dict[str, Any]]
+    ) -> float:
+        """
+        Compute structural consistency:
+        - Depth similarity
+        - Item count similarity  
+        - Weight distribution similarity
+        """
+        
+        features = []
+        for rubric in rubrics:
+            features.append({
+                'depth': self._max_depth(rubric),
+                'items': self._count_items(rubric),
+                'weights': self._weight_distribution(rubric)
+            })
+        
+        # Compute pairwise structural similarities
+        similarities = []
+        n = len(rubrics)
+        
+        for i in range(n):
+            for j in range(i + 1, n):
+                depth_sim = 1 - abs(features[i]['depth'] - features[j]['depth']) / max(features[i]['depth'], features[j]['depth'])
+                items_sim = 1 - abs(features[i]['items'] - features[j]['items']) / max(features[i]['items'], features[j]['items'])
+                weights_sim = self._weight_overlap(features[i]['weights'], features[j]['weights'])
+                
+                avg_sim = (depth_sim + items_sim + weights_sim) / 3
+                similarities.append(avg_sim)
+        
+        return np.mean(similarities)
+```
+
+---
+
+### Phase 7: Integration & Testing (Week 11-12)
+
+#### 7.1 End-to-End Evaluation Pipeline
+```python
+class CodeWikiBenchPipeline:
+    """Complete evaluation pipeline"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.rubric_generators = config['rubric_models']
+        self.judge_models = config['judge_models']
+        self.parser = DocumentationParser()
+        self.synthesizer = MultiModelRubricSynthesizer(self.rubric_generators)
+        self.evaluator = MultiJudgeEvaluator(self.judge_models)
+        self.aggregator = HierarchicalScoreAggregator()
+    
+    def evaluate_repository(
+        self,
+        repo_name: str,
+        official_docs_path: Path,
+        generated_docs_path: Path
+    ) -> Dict[str, Any]:
+        """
+        Complete evaluation workflow:
+        1. Parse official documentation
+        2. Generate consensus rubric
+        3. Evaluate generated docs
+        4. Aggregate scores
+        """
+        
+        print(f"Evaluating {repo_name}...")
+        
+        # Step 1: Parse official docs
+        print("Parsing official documentation...")
+        doc_structure = self.parser.parse_documentation_directory(official_docs_path)
+        
+        # Step 2: Generate rubric
+        print("Generating evaluation rubric...")
+        rubric = self.synthesizer.generate_consensus_rubric(
+            doc_structure,
+            {"name": repo_name}
+        )
+        
+        # Step 3: Load generated documentation
+        generated_docs = self._load_generated_docs(generated_docs_path)
+        
+        # Step 4: Evaluate each leaf requirement
+        print("Evaluating requirements...")
+        leaf_requirements = self._get_leaf_requirements(rubric)
+        leaf_assessments = {}
+        
+        for req in tqdm(leaf_requirements):
+            assessment = self.evaluator.evaluate_requirement(req, generated_docs)
+            leaf_assessments[req['id']] = assessment
+        
+        # Step 5: Aggregate scores
+        print("Aggregating scores...")
+        results = self.aggregator.aggregate_scores(rubric, leaf_assessments)
+        
+        # Step 6: Generate report
+        report = self._generate_report(repo_name, results)
+                                               
+                                               return {
+                                                   "repo_name": repo_name,
+                                                   "final_score": results['final_score'],
+                                                   "std_dev": results['final_std_dev'],
+                                                   "total_requirements": len(leaf_requirements),
+                                                   "satisfied_requirements": sum(
+                                                       1 for a in leaf_assessments.values() 
+                                                       if a['mean_score'] >= 0.5
+                                                   ),
+                                                   "rubric": results['rubric'],
+                                                   "report": report
+                                               }
+                                       ```
+                                       
+                                       #### 7.2 Testing Strategy
+                                       ```python
+                                       def test_component_identification():
+                                           """Test entry point detection and decomposition"""
+                                           
+                                           # Test case 1: Simple Python project
+                                           test_repo = create_test_repo([
+                                               "main.py",  # Entry point
+                                               "utils.py",
+                                               "models.py"
+                                           ])
+                                           
+                                           analyzer = DependencyAnalyzer("python")
+                                           graph = analyzer.extract_dependencies(test_repo)
+                                           
+                                           identifier = EntryPointIdentifier()
+                                           entry_points = identifier.identify_entry_points(graph)
+                                           
+                                           assert "main.py::main" in entry_points
+                                           
+                                           # Test case 2: Large repo requiring decomposition
+                                           large_repo = create_large_test_repo(200_000)  # 200K LOC
+                                           
+                                           decomposer = HierarchicalDecomposer(max_tokens_per_module=32768)
+                                           module_tree = decomposer.decompose(large_repo.components, large_repo.graph)
+                                           
+                                           # Verify all leaves are under threshold
+                                           for leaf in module_tree.get_all_leaves():
+                                               assert leaf.estimated_tokens < 32768
+                                           
+                                       def test_rubric_generation():
+                                           """Test rubric generation and reliability"""
+                                           
+                                           doc_structure = load_test_documentation("flask")
+                                           
+                                           # Generate with multiple models
+                                           synthesizer = MultiModelRubricSynthesizer([
+                                               "claude-sonnet-4",
+                                               "gemini-2.5-pro",
+                                               "kimi-k2-instruct"
+                                           ])
+                                           
+                                           rubric = synthesizer.generate_consensus_rubric(doc_structure, {"name": "Flask"})
+                                           
+                                           # Verify structure
+                                           assert rubric['weight'] == 1.0
+                                           assert len(rubric['children']) > 0
+                                           
+                                           # Verify leaf nodes
+                                           leaves = get_leaf_nodes(rubric)
+                                           assert all(leaf['is_leaf'] for leaf in leaves)
+                                           assert 40 <= len(leaves) <= 100  # Per paper requirements
+                                       
+                                       def test_evaluation_pipeline():
+                                           """Test complete evaluation"""
+                                           
+                                           pipeline = CodeWikiBenchPipeline({
+                                               'rubric_models': ['claude-sonnet-4', 'gemini-2.5-pro'],
+                                               'judge_models': ['gemini-2.5-flash', 'gpt-4o', 'kimi-k2-instruct']
+                                           })
+                                           
+                                           results = pipeline.evaluate_repository(
+                                               "test-repo",
+                                               Path("test/official_docs"),
+                                               Path("test/generated_docs")
+                                           )
+                                           
+                                           assert 0 <= results['final_score'] <= 1
+                                           assert results['std_dev'] >= 0
+                                           assert results['satisfied_requirements'] <= results['total_requirements']
+                                       ```
+                                       
+                                       ---
+                                       
+                                       ## Deliverables Summary
+                                       
+                                       ### Week-by-Week Outputs
+                                       
+                                       **Weeks 1-2:** Dependency graph with complexity metrics  
+                                       **Week 3:** Entry point identification system  
+                                       **Weeks 4-5:** Hierarchical decomposition algorithm  
+                                       **Weeks 6-7:** Rubric generation with multi-model synthesis  
+                                       **Weeks 8-9:** Multi-judge evaluation system  
+                                       **Week 10:** Score aggregation with uncertainty propagation  
+                                       **Weeks 11-12:** Integration, testing, and documentation
+                                       
+                                       ### Key Metrics to Track
+                                       
+                                       1. **Component Identification:**
+                                          - Entry point detection accuracy
+                                          - Decomposition balance (token distribution)
+                                          - Module cohesion scores
+                                       
+                                       2. **Evaluation System:**
+                                          - Semantic reliability: Target 73%+
+                                          - Structural reliability: Target 70%+
+                                          - Judge agreement (Cohen's kappa): Target 0.6+
+                                          - Evaluation consistency (std dev): Target <5%
+                                       
+                                       ### Configuration Files
+                                       
+                                       ```yaml
+                                       # config/evaluation.yaml
+                                       rubric_generation:
+                                         models:
+                                           - claude-sonnet-4-20250514
+                                           - gemini-2.5-pro
+                                           - kimi-k2-instruct-0905
+                                         max_tokens: 32768
+                                         temperature: 0.0
+                                       
+                                       assessment:
+                                         judge_models:
+                                           - gemini-2.5-flash
+                                           - gpt-oss-120b
+                                           - kimi-k2-instruct-0905
+                                         scoring: binary  # 0 or 1
+                                         
+                                       decomposition:
+                                         max_tokens_per_module: 32768
+                                         token_threshold_ratio: 0.8
+                                         max_delegation_depth: 3
+                                       ```
+                                       
+                                       This implementation plan provides a complete, production-ready system for component identification and evaluation as described in the CodeWiki paper.

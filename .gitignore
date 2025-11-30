@@ -6,6 +6,8 @@
 /codeMRI.Shared/obj/
 /codeMRI.Core/bin/
 /codeMRI.Core/obj/
+/codeMRI.Core.Tests/bin/
+/codeMRI.Core.Tests/obj/
 /codeMRI.Infrastructure/bin/
 /codeMRI.Infrastructure/obj/
 /codeMRI.Infrastructure.Tests/bin/
