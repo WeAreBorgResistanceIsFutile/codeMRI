@@ -18,5 +18,9 @@
 /codeMRI.E2E/obj/
 /codeMRI.ASTService/build/
 /codeMRI.ASTService/node_modules/
+/codeMRI.Agents/bin/
+/codeMRI.Agents/obj/
+/codeMRI.Agents.Tests/bin/
+/codeMRI.Agents.Tests/obj/
 /data/
 

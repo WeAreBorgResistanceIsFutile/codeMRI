@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj" />
+    <ProjectReference Include="..\codeMRI.Agents\codeMRI.Agents.csproj" />
   </ItemGroup>
 
 </Project>

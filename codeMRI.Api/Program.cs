@@ -2,6 +2,9 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Services;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
+using codeMRI.Agents.Services;
+using codeMRI.Agents.Interfaces;
+using codeMRI.Agents.Agents;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
 
@@ -39,19 +42,22 @@ builder.Services.AddSingleton<IWikiRepository>(sp =>
     return new SqliteWikiRepository(connectionString);
 });
 
+// Agent Services
+builder.Services.AddSingleton<AgentMessageBus>();
+builder.Services.AddSingleton<DelegationService>();
+builder.Services.AddScoped<IAgent, AnalyzerAgent>();
+builder.Services.AddScoped<IAgent, DocumenterAgent>();
+builder.Services.AddScoped<IAgent, SynthesizerAgent>();
+builder.Services.AddScoped<IAgent, ValidatorAgent>();
+builder.Services.AddScoped<IAgentCoordinator, AgentCoordinator>();
+
 // Core Services
 builder.Services.AddScoped<IComponentIdentificationService, ComponentIdentificationService>();
 builder.Services.AddScoped<IEnhancedDependencyGraphService, EnhancedDependencyGraphService>();
 builder.Services.AddScoped<RAGService>();
 builder.Services.AddScoped<WikiGenerationService>();
 builder.Services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
-builder.Services.AddScoped<IDocumentationGenerationPipeline>(sp => 
-    new DocumentationGenerationPipeline(
-        sp.GetRequiredService<IComponentIdentificationService>(),
-        sp.GetRequiredService<IHierarchicalDecompositionService>(),
-        sp.GetRequiredService<ILogger<DocumentationGenerationPipeline>>()
-    )
-);
+builder.Services.AddScoped<IDocumentationGenerationPipeline, DocumentationGenerationPipeline>();
 
 // CORS
 builder.Services.AddCors(options =>

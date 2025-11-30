@@ -1,144 +1,60 @@
+using codeMRI.Agents.Interfaces;
+using codeMRI.Agents.Models;
+using codeMRI.Agents.Services;
+using codeMRI.Core.Models;
+using codeMRI.Core.Interfaces;
+using codeMRI.Shared.Models;
 using Microsoft.Extensions.Logging;
 using Moq;
-using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
-using codeMRI.Core.Services;
-using codeMRI.Shared.Models;
-using ModuleTree = codeMRI.Core.Models.ModuleTree;
-using ModuleNode = codeMRI.Core.Models.ModuleNode;
+using Xunit;
 
 namespace codeMRI.Core.Tests;
 
 public class DocumentationGenerationPipelineTests
 {
-    private readonly Mock<ILogger<ComponentIdentificationService>> _mockComponentLogger;
-    private readonly Mock<ILogger<DocumentationGenerationPipeline>> _mockPipelineLogger;
-    private readonly IComponentIdentificationService _componentService;
-    private readonly string _testRepoPath;
+    private readonly Mock<IAgentCoordinator> _mockCoordinator;
+    private readonly Mock<ILogger<DocumentationGenerationPipeline>> _mockLogger;
+    private readonly DocumentationGenerationPipeline _pipeline;
 
     public DocumentationGenerationPipelineTests()
     {
-        _mockComponentLogger = new Mock<ILogger<ComponentIdentificationService>>();
-        _mockPipelineLogger = new Mock<ILogger<DocumentationGenerationPipeline>>();
-        _componentService = new ComponentIdentificationService(_mockComponentLogger.Object);
-        _testRepoPath = Path.Combine(Path.GetTempPath(), "test_repo");
+        _mockCoordinator = new Mock<IAgentCoordinator>();
+        _mockLogger = new Mock<ILogger<DocumentationGenerationPipeline>>();
+        _pipeline = new DocumentationGenerationPipeline(_mockCoordinator.Object, _mockLogger.Object);
     }
 
     [Fact]
-    public async Task GenerateDocumentationAsync_ShouldReturnWikiStructure_WhenValidRepositoryProvided()
+    public async Task GenerateDocumentationAsync_ShouldOrchestrateAgents()
     {
         // Arrange
-        Directory.CreateDirectory(_testRepoPath);
-        
-        var options = new DocumentationOptions
-        {
-            IncludeArchitecture = true,
-            IncludeApiDocumentation = true,
-            TargetAudience = "Developers"
-        };
+        var repoPath = "/test/repo";
+        var options = new DocumentationOptions();
 
-        // Act & Assert - This test will now pass since we implemented the service
-        var mockDecompositionService = new Mock<IHierarchicalDecompositionService>();
-        mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string path, CancellationToken ct) => new ModuleTree
-            {
-                Root = new ModuleNode
-                {
-                    Id = "root",
-                    Name = "Repository",
-                    Children = new List<ModuleNode>(),
-                    Components = new HashSet<string>()
-                }
-            });
-            
-        var pipeline = new DocumentationGenerationPipeline(_componentService, mockDecompositionService.Object, _mockPipelineLogger.Object);
-        var result = await pipeline.GenerateDocumentationAsync(_testRepoPath, options);
-        
-        Assert.NotNull(result);
-        Assert.Equal("test_repo Documentation", result.Title);
-        
-        // Cleanup
-        if (Directory.Exists(_testRepoPath))
-        {
-            Directory.Delete(_testRepoPath, true);
-        }
-    }
-
-    [Fact]
-    public async Task GenerateComponentDocumentationAsync_ShouldReturnWikiPage_WhenValidComponentProvided()
-    {
-        // Arrange
-        var component = new CodeComponent
-        {
-            Id = "test_component",
-            Name = "TestComponent",
-            Type = "Class",
-            FilePath = "/test/path/TestComponent.cs",
-            Language = "C#"
+        // Mock Analyzer
+        var analysisResult = new AnalysisResult 
+        { 
+            Structure = new RepositoryStructure { Name = "TestRepo" }, 
+            Components = new List<CodeComponent> { new CodeComponent { Id = "comp1", Name = "Component1" } } 
         };
-        var context = new RepositoryStructure
-        {
-            Name = "TestRepo",
-            Language = "C#"
-        };
+        _mockCoordinator.Setup(c => c.CoordinateTaskAsync(It.Is<AgentTask>(t => t.Type == "Analyzer"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentResult { Success = true, Output = analysisResult });
 
-        // Act & Assert - This test will now pass since we implemented the service
-        var mockDecompositionService = new Mock<IHierarchicalDecompositionService>();
-        mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string path, CancellationToken ct) => new ModuleTree
-            {
-                Root = new ModuleNode
-                {
-                    Id = "root",
-                    Name = "Repository",
-                    Children = new List<ModuleNode>(),
-                    Components = new HashSet<string>()
-                }
-            });
-            
-        var pipeline = new DocumentationGenerationPipeline(_componentService, mockDecompositionService.Object, _mockPipelineLogger.Object);
-        var result = await pipeline.GenerateComponentDocumentationAsync(component, context);
-        
-        Assert.NotNull(result);
-        Assert.Equal("TestComponent", result.Title);
-    }
+        // Mock Documenter
+        _mockCoordinator.Setup(c => c.CoordinateTaskAsync(It.Is<AgentTask>(t => t.Type == "Documenter"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentResult { Success = true, Output = new WikiPage { Id = "comp1", Title = "Component1" } });
 
-    [Fact]
-    public async Task GenerateOverviewPagesAsync_ShouldReturnListOfWikiPages_WhenValidStructureProvided()
-    {
-        // Arrange
-        var structure = new RepositoryStructure
-        {
-            Name = "TestRepo",
-            Language = "C#"
-        };
-        var components = new List<CodeComponent>
-        {
-            new CodeComponent { Id = "comp1", Name = "Component1", Type = "Class" },
-            new CodeComponent { Id = "comp2", Name = "Component2", Type = "Interface" }
-        };
+        // Mock Synthesizer
+        var expectedStructure = new WikiStructure { Title = "TestRepo Documentation" };
+        _mockCoordinator.Setup(c => c.CoordinateTaskAsync(It.Is<AgentTask>(t => t.Type == "Synthesizer"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentResult { Success = true, Output = expectedStructure });
 
-        // Act & Assert - This test will now pass since we implemented the service
-        var mockDecompositionService = new Mock<IHierarchicalDecompositionService>();
-        mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string path, CancellationToken ct) => new ModuleTree
-            {
-                Root = new ModuleNode
-                {
-                    Id = "root",
-                    Name = "Repository",
-                    Children = new List<ModuleNode>(),
-                    Components = new HashSet<string>()
-                }
-            });
-            
-        var pipeline = new DocumentationGenerationPipeline(_componentService, mockDecompositionService.Object, _mockPipelineLogger.Object);
-        var result = await pipeline.GenerateOverviewPagesAsync(structure, components);
-        
-        Assert.NotNull(result);
-        Assert.Equal(2, result.Count); // Should generate architecture and components overview
+        // Act
+        var result = await _pipeline.GenerateDocumentationAsync(repoPath, options);
+
+        // Assert
+        Assert.Equal(expectedStructure, result);
+        _mockCoordinator.Verify(c => c.CoordinateTaskAsync(It.Is<AgentTask>(t => t.Type == "Analyzer"), It.IsAny<CancellationToken>()), Times.Once);
+        _mockCoordinator.Verify(c => c.CoordinateTaskAsync(It.Is<AgentTask>(t => t.Type == "Documenter"), It.IsAny<CancellationToken>()), Times.Once);
+        _mockCoordinator.Verify(c => c.CoordinateTaskAsync(It.Is<AgentTask>(t => t.Type == "Synthesizer"), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

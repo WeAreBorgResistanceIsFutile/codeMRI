@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\codeMRI.Infrastructure\codeMRI.Infrastructure.csproj" />
     <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj" />
+    <ProjectReference Include="..\codeMRI.Agents\codeMRI.Agents.csproj" />
     <ProjectReference Include="..\codeMRI.Shared\codeMRI.Shared.csproj" />
   </ItemGroup>
 
