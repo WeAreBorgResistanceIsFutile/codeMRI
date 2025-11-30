@@ -16,5 +16,7 @@
 /codeMRI.Web/obj/
 /codeMRI.E2E/bin/
 /codeMRI.E2E/obj/
+/codeMRI.ASTService/build/
+/codeMRI.ASTService/node_modules/
 /data/
 

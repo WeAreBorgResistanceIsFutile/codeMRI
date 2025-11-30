@@ -1,0 +1,43 @@
+{
+  "name": "codemri-ast-service",
+  "version": "1.0.0",
+  "description": "AST parsing microservice using tree-sitter",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/mock-app.js",
+    "dev": "nodemon src/mock-app.js",
+    "start:full": "node src/app.js",
+    "test": "mocha tests/**/*.test.js --timeout 10000",
+    "test:unit": "mocha tests/unit/*.test.js --timeout 10000",
+    "test:integration": "mocha tests/integration/*.test.js --timeout 10000"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "lodash": "^4.17.21",
+    "tree-sitter": "0.21.1",
+    "tree-sitter-c": "^0.24.1",
+    "tree-sitter-c-sharp": "^0.23.1",
+    "tree-sitter-cpp": "^0.23.4",
+    "tree-sitter-java": "^0.23.5",
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-python": "^0.25.0",
+    "tree-sitter-sql": "^0.1.0",
+    "tree-sitter-typescript": "^0.23.2",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "chai": "^4.3.7",
+    "mocha": "^10.0.0",
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "ast",
+    "tree-sitter",
+    "parser",
+    "microservice"
+  ],
+  "author": "codeMRI",
+  "license": "MIT"
+}
