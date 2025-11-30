@@ -30,7 +30,12 @@ builder.Services.AddSingleton<IQdrantClient>(sp =>
 });
 
 builder.Services.AddSingleton<IVectorDatabase, QdrantVectorDb>();
-builder.Services.AddSingleton<IWikiRepository, JsonWikiRepository>();
+builder.Services.AddSingleton<IWikiRepository>(sp =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("WikiDb") 
+                           ?? "Data Source=data/sqlite/codemri.db";
+    return new SqliteWikiRepository(connectionString);
+});
 
 // Core Services
 builder.Services.AddScoped<RAGService>();
