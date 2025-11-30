@@ -210,12 +210,12 @@ public class ASTServiceClient : IASTServiceClient
         return null;
     }
 
-    public async Task<List<CodeComponent>> ConvertToCodeComponentsAsync(ASTParseResult astResult, CancellationToken cancellationToken = default)
+    public Task<List<CodeComponent>> ConvertToCodeComponentsAsync(ASTParseResult astResult, CancellationToken cancellationToken = default)
     {
         var components = new List<CodeComponent>();
         
         if (astResult?.HierarchicalStructure == null)
-            return components;
+            return Task.FromResult(components);
 
         var fileName = Path.GetFileNameWithoutExtension(astResult.FilePath);
         var componentCounter = 1;
@@ -278,7 +278,7 @@ public class ASTServiceClient : IASTServiceClient
             _logger.LogError(ex, "Failed to convert AST result to components");
         }
 
-        return components;
+        return Task.FromResult(components);
     }
 
     private List<string> ExtractMethodsDynamic(dynamic classInfo)

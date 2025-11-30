@@ -58,7 +58,7 @@ public class RoslynCSharpAnalyzer
         return components;
     }
 
-    private async Task<CodeComponent?> AnalyzeClassOrInterfaceAsync(
+    private Task<CodeComponent?> AnalyzeClassOrInterfaceAsync(
         BaseTypeDeclarationSyntax declaration, 
         SemanticModel semanticModel, 
         string filePath, 
@@ -105,16 +105,16 @@ public class RoslynCSharpAnalyzer
         // Generate description
         component.Description = GenerateComponentDescription(symbol, semanticModel);
 
-        return component;
+        return Task.FromResult<CodeComponent?>(component);
     }
 
-    private async Task<CodeComponent?> AnalyzeRecordAsync(
+    private Task<CodeComponent?> AnalyzeRecordAsync(
         RecordDeclarationSyntax declaration,
         SemanticModel semanticModel,
         string filePath)
     {
         var symbol = semanticModel.GetDeclaredSymbol(declaration);
-        if (symbol == null) return null;
+        if (symbol == null) return Task.FromResult<CodeComponent?>(null);
 
         var component = new CodeComponent
         {
@@ -156,7 +156,7 @@ public class RoslynCSharpAnalyzer
         // Generate description
         component.Description = GenerateComponentDescription(symbol, semanticModel);
 
-        return component;
+        return Task.FromResult<CodeComponent?>(component);
     }
 
     private string DetermineComponentType(INamedTypeSymbol symbol, string baseType)

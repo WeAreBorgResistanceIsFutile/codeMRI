@@ -100,7 +100,7 @@ namespace codeMRI.Core.Services
         /// <summary>
         /// Builds the hierarchical module structure
         /// </summary>
-        private async Task BuildHierarchyAsync(
+        private Task BuildHierarchyAsync(
             ModuleTree moduleTree,
             Dictionary<string, List<string>> clusters,
             EnhancedDependencyGraph graph,
@@ -136,6 +136,8 @@ namespace codeMRI.Core.Services
                 moduleTree.Root.AddChild(module);
                 moduleTree.AddNode(module);
             }
+            
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -266,7 +268,7 @@ namespace codeMRI.Core.Services
         /// <summary>
         /// Detects communities in the graph using a Louvain-like algorithm
         /// </summary>
-        private async Task<Dictionary<string, List<string>>> DetectCommunitiesAsync(
+        private Task<Dictionary<string, List<string>>> DetectCommunitiesAsync(
             EnhancedDependencyGraph graph,
             HashSet<string> nodeIds,
             CancellationToken cancellationToken)
@@ -310,7 +312,7 @@ namespace codeMRI.Core.Services
                 communities[$"Community_{communities.Count + 1}"] = community;
             }
 
-            return communities;
+            return Task.FromResult(communities);
         }
 
         /// <summary>

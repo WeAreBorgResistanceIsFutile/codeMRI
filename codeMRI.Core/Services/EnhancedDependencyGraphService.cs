@@ -136,7 +136,7 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         return importanceScores;
     }
     
-    private async Task<Dictionary<string, double>> CalculatePageRankAsync(EnhancedDependencyGraph graph, CancellationToken cancellationToken)
+    private Task<Dictionary<string, double>> CalculatePageRankAsync(EnhancedDependencyGraph graph, CancellationToken cancellationToken)
     {
         const double dampingFactor = 0.85;
         const int maxIterations = 100;
@@ -146,7 +146,7 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         var nodes = graph.GetNodes().ToList();
         var n = nodes.Count;
         
-        if (n == 0) return pageRank;
+        if (n == 0) return Task.FromResult(pageRank);
         
         // Initialize PageRank values
         foreach (var node in nodes)
@@ -189,7 +189,7 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
             }
         }
         
-        return pageRank;
+        return Task.FromResult(pageRank);
     }
 
     public async Task<Dictionary<string, double>> CalculateBetweennessCentralityAsync(EnhancedDependencyGraph graph, CancellationToken cancellationToken = default)
