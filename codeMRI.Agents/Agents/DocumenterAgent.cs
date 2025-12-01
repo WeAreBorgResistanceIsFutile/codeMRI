@@ -11,8 +11,8 @@ public class DocumenterAgent : BaseAgent
 {
     public override string Role => "Documenter";
 
-    public DocumenterAgent(AgentMessageBus messageBus, ILogger<DocumenterAgent> logger) 
-        : base(messageBus, logger)
+    public DocumenterAgent(AgentMessageBus messageBus, ILogger<DocumenterAgent> logger, IASTServiceClient? astService = null) 
+        : base(messageBus, logger, astService)
     {
     }
 

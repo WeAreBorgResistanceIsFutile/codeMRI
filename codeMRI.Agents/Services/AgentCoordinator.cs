@@ -39,13 +39,25 @@ public class AgentCoordinator : IAgentCoordinator
         }
 
         // Check delegation
-        var delegationRequest = await agent.ShouldDelegate(task, cancellationToken);
+        DelegationRequest? delegationRequest = null;
+        try
+        {
+            delegationRequest = await agent.ShouldDelegate(task, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking delegation for task {TaskId}", task.Id);
+        }
+
         if (delegationRequest != null)
         {
-            _logger.LogInformation("Task {TaskId} delegated to {Target}", task.Id, delegationRequest.TargetAgentType);
-            // Recursive coordination or dispatch to specific agent
-            // For simplicity, we just execute the subtask
-            return await CoordinateTaskAsync(delegationRequest.SubTask, cancellationToken);
+            _logger.LogInformation("Task {TaskId} delegated to {Target}. Reason: {Reason}", task.Id, delegationRequest.TargetAgentType, delegationRequest.Reason);
+            
+            // Ensure SubTask has the correct target type
+            var subTask = delegationRequest.SubTask with { Type = delegationRequest.TargetAgentType };
+            
+            // Recursive coordination
+            return await CoordinateTaskAsync(subTask, cancellationToken);
         }
 
         // Execute

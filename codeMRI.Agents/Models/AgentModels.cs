@@ -34,3 +34,10 @@ public record AgentMessage
     public object? Content { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
 }
+
+public record CodeComplexityMetrics
+{
+    public int TokenCount { get; init; }
+    public int CyclomaticComplexity { get; init; }
+    public int NestingDepth { get; init; }
+}

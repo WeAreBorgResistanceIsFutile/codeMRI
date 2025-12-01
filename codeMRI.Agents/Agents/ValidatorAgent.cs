@@ -1,6 +1,7 @@
 using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
+using codeMRI.Core.Interfaces;
 using codeMRI.Shared.Models;
 using Microsoft.Extensions.Logging;
 
@@ -10,8 +11,8 @@ public class ValidatorAgent : BaseAgent
 {
     public override string Role => "Validator";
 
-    public ValidatorAgent(AgentMessageBus messageBus, ILogger<ValidatorAgent> logger) 
-        : base(messageBus, logger)
+    public ValidatorAgent(AgentMessageBus messageBus, ILogger<ValidatorAgent> logger, IASTServiceClient? astService = null) 
+        : base(messageBus, logger, astService)
     {
     }
 

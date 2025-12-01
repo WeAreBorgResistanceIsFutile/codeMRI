@@ -1,6 +1,7 @@
 using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
+using codeMRI.Core.Interfaces;
 using codeMRI.Shared.Models;
 using Microsoft.Extensions.Logging;
 
@@ -10,8 +11,8 @@ public class SynthesizerAgent : BaseAgent
 {
     public override string Role => "Synthesizer";
 
-    public SynthesizerAgent(AgentMessageBus messageBus, ILogger<SynthesizerAgent> logger) 
-        : base(messageBus, logger)
+    public SynthesizerAgent(AgentMessageBus messageBus, ILogger<SynthesizerAgent> logger, IASTServiceClient? astService = null) 
+        : base(messageBus, logger, astService)
     {
     }
 

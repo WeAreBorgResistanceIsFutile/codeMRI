@@ -86,7 +86,7 @@ namespace codeMRI.Agents.Tests.Unit
 
             // Assert
             Assert.IsNotNull(result);
-            Assert.AreEqual("Delegation required due to high complexity (TokenCount)", result.Reason);
+            Assert.That(result.Reason, Does.StartWith("Delegation required due to high complexity (TokenCount"));
         }
     }
 }

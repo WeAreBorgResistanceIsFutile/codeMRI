@@ -16,8 +16,9 @@ public class AnalyzerAgent : BaseAgent
     public AnalyzerAgent(
         AgentMessageBus messageBus,
         IComponentIdentificationService componentService,
-        ILogger<AnalyzerAgent> logger) 
-        : base(messageBus, logger)
+        ILogger<AnalyzerAgent> logger,
+        IASTServiceClient? astService = null) 
+        : base(messageBus, logger, astService)
     {
         _componentService = componentService;
     }
