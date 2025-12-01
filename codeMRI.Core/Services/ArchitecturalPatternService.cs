@@ -10,75 +10,72 @@ namespace codeMRI.Core.Services
     {
         public ArchitecturalPattern RecognizePattern(ModuleNode module, EnhancedDependencyGraph graph)
         {
-            var pattern = new ArchitecturalPattern
-            {
-                Type = ArchitecturalPatternType.Unknown,
-                Name = "Unknown",
-                Confidence = 0.0
-            };
+            var nodes = GetModuleNodes(module, graph);
+            if (nodes.Count == 0) return new ArchitecturalPattern { Type = ArchitecturalPatternType.Unknown };
 
-            // Get all nodes in the module
-            var nodes = new List<GraphNode>();
-            foreach (var componentId in module.Components)
-            {
-                var node = graph.GetNode(componentId);
-                if (node != null)
-                {
-                    nodes.Add(node);
-                }
-            }
-
-            if (nodes.Count == 0) return pattern;
-
-            // Check for Layered Architecture
-            var layeredScore = CalculateLayeredScore(nodes, graph);
-            if (layeredScore > 0.6)
-            {
-                return new ArchitecturalPattern
-                {
-                    Type = ArchitecturalPatternType.Layered,
-                    Name = "Layered Architecture",
-                    Confidence = layeredScore
-                };
-            }
-
-            // Check for Microservices
-            var microservicesScore = CalculateMicroservicesScore(nodes, graph);
-            if (microservicesScore > 0.7)
+            // Check patterns in order of specificity
+            
+            // 1. Microservices (High confidence if detected)
+            if (IsMicroservices(nodes, graph, out double msConfidence))
             {
                 return new ArchitecturalPattern
                 {
                     Type = ArchitecturalPatternType.Microservices,
                     Name = "Microservices",
-                    Confidence = microservicesScore
+                    Confidence = msConfidence
                 };
             }
 
-            // Check for EventDriven
-            var eventDrivenScore = CalculateEventDrivenScore(nodes, graph);
-            if (eventDrivenScore > 0.6)
+            // 2. Event-Driven
+            if (IsEventDriven(nodes, graph, out double edConfidence))
             {
                 return new ArchitecturalPattern
                 {
                     Type = ArchitecturalPatternType.EventDriven,
                     Name = "Event-Driven",
-                    Confidence = eventDrivenScore
+                    Confidence = edConfidence
                 };
             }
 
-            // Check for MVC
-            var mvcScore = CalculateMVCScore(nodes);
-            if (mvcScore > 0.6 && mvcScore > layeredScore)
+            // 3. Clean Architecture / Hexagonal
+            if (IsCleanArchitecture(nodes, graph, out double caConfidence))
+            {
+                 return new ArchitecturalPattern
+                {
+                    Type = ArchitecturalPatternType.CleanArchitecture,
+                    Name = "Clean Architecture",
+                    Confidence = caConfidence
+                };
+            }
+
+            // 4. MVC
+            if (IsMVC(nodes, out double mvcConfidence))
             {
                 return new ArchitecturalPattern
                 {
                     Type = ArchitecturalPatternType.MVC,
                     Name = "Model-View-Controller",
-                    Confidence = mvcScore
+                    Confidence = mvcConfidence
                 };
             }
 
-            return pattern;
+            // 5. Layered (General fallback)
+            if (IsLayeredArchitecture(nodes, graph, out double layeredConfidence))
+            {
+                return new ArchitecturalPattern
+                {
+                    Type = ArchitecturalPatternType.Layered,
+                    Name = "Layered Architecture",
+                    Confidence = layeredConfidence
+                };
+            }
+
+            return new ArchitecturalPattern
+            {
+                Type = ArchitecturalPatternType.Unknown,
+                Name = "Unknown",
+                Confidence = 0.0
+            };
         }
 
         public ArchitecturalLayerType DetermineLayer(GraphNode node)
@@ -86,25 +83,232 @@ namespace codeMRI.Core.Services
             var name = node.ComponentId;
             var type = node.Metadata.Type;
 
-            if (ContainsAny(name, type, "Controller", "View", "Page", "DTO", "ViewModel", "Presenter"))
+            // Language-agnostic & Language-specific heuristics
+            
+            // Presentation / UI
+            if (ContainsAny(name, type, "Controller", "View", "Page", "DTO", "ViewModel", "Presenter", "Component", "Screen", "Route"))
                 return ArchitecturalLayerType.Presentation;
 
-            if (ContainsAny(name, type, "Service", "Manager", "Handler", "UseCase", "Command", "Query"))
+            // Application / Business Logic
+            if (ContainsAny(name, type, "Service", "Manager", "Handler", "UseCase", "Command", "Query", "Workflow", "Orchestrator"))
                 return ArchitecturalLayerType.Application;
 
-            if (ContainsAny(name, type, "Entity", "Domain", "ValueObject", "Aggregate"))
+            // Domain / Core
+            if (ContainsAny(name, type, "Entity", "Domain", "ValueObject", "Aggregate", "Model", "Core", "Shared", "Interfaces"))
                 return ArchitecturalLayerType.Domain;
 
-            if (ContainsAny(name, type, "Repository", "DbContext", "Dao"))
+            // Data / Infrastructure
+            if (ContainsAny(name, type, "Repository", "DbContext", "Dao", "Storage", "Cache", "Database", "Sql", "Mongo", "Redis"))
                 return ArchitecturalLayerType.Data;
 
-            if (ContainsAny(name, type, "Gateway", "Client"))
+            // Infrastructure / External
+            if (ContainsAny(name, type, "Gateway", "Client", "Adapter", "Proxy", "External", "Infra", "Config"))
                 return ArchitecturalLayerType.Infrastructure;
             
-            if (ContainsAny(name, type, "Util", "Helper", "Extensions", "Common"))
+            // Cross-Cutting
+            if (ContainsAny(name, type, "Util", "Helper", "Extensions", "Common", "Logging", "Security", "Auth", "Exception"))
                 return ArchitecturalLayerType.CrossCutting;
 
             return ArchitecturalLayerType.Unknown;
+        }
+
+        private List<GraphNode> GetModuleNodes(ModuleNode module, EnhancedDependencyGraph graph)
+        {
+            var nodes = new List<GraphNode>();
+            foreach (var componentId in module.Components)
+            {
+                var node = graph.GetNode(componentId);
+                if (node != null) nodes.Add(node);
+            }
+            return nodes;
+        }
+
+        private bool IsMicroservices(List<GraphNode> nodes, EnhancedDependencyGraph graph, out double confidence)
+        {
+            confidence = 0.0;
+            // Heuristic: Multiple independent "Service" entry points with little direct coupling
+            var serviceNodes = nodes.Where(n => 
+                ContainsAny(n.ComponentId, n.Metadata.Type, "Service", "API", "Microservice") &&
+                !ContainsAny(n.ComponentId, n.Metadata.Type, "ApplicationService", "DomainService")
+            ).ToList();
+
+            if (serviceNodes.Count < 2) return false;
+
+            int linksBetweenServices = 0;
+            foreach(var s1 in serviceNodes)
+            {
+                foreach(var s2 in serviceNodes)
+                {
+                    if (s1 == s2) continue;
+                    if (s1.OutEdges.Contains(s2.ComponentId)) linksBetweenServices++;
+                }
+            }
+            
+            double connectivity = (double)linksBetweenServices / (serviceNodes.Count * (serviceNodes.Count - 1));
+            
+            if (connectivity < 0.2) // Very low coupling
+            {
+                confidence = 0.8;
+                return true;
+            }
+            if (connectivity < 0.4)
+            {
+                confidence = 0.5;
+                return true;
+            }
+            return false;
+        }
+
+        private bool IsEventDriven(List<GraphNode> nodes, EnhancedDependencyGraph graph, out double confidence)
+        {
+            confidence = 0.0;
+            int eventComponents = 0;
+            int eventLinks = 0;
+            
+            foreach(var node in nodes)
+            {
+                if (ContainsAny(node.ComponentId, node.Metadata.Type, "Event", "Message", "Bus", "Queue", "Topic", "Publisher", "Subscriber", "Handler", "Listener"))
+                {
+                    eventComponents++;
+                    foreach(var neighborId in node.OutEdges)
+                    {
+                         var neighbor = graph.GetNode(neighborId);
+                         if (neighbor != null && ContainsAny(neighbor.ComponentId, neighbor.Metadata.Type, "Event", "Message", "Handler"))
+                             eventLinks++;
+                    }
+                }
+            }
+
+            if (nodes.Count == 0) return false;
+            
+            double ratio = (double)eventComponents / nodes.Count;
+            if (ratio > 0.25 || (eventComponents >= 3 && eventLinks >= 1))
+            {
+                confidence = Math.Min(0.9, 0.5 + ratio);
+                return true;
+            }
+            
+            return false;
+        }
+
+        private bool IsCleanArchitecture(List<GraphNode> nodes, EnhancedDependencyGraph graph, out double confidence)
+        {
+            confidence = 0.0;
+            // Check for concentric layers: Domain <- Application <- Infrastructure/Presentation
+            // Key indicator: Domain depends on NOTHING (or only Utils)
+            
+            var domainNodes = nodes.Where(n => DetermineLayer(n) == ArchitecturalLayerType.Domain).ToList();
+            if (domainNodes.Count == 0) return false;
+
+            int domainViolations = 0;
+            foreach(var domainNode in domainNodes)
+            {
+                foreach(var targetId in domainNode.OutEdges)
+                {
+                    // Check if target is inside module but outside domain
+                    if (nodes.Any(n => n.ComponentId == targetId))
+                    {
+                         var targetNode = graph.GetNode(targetId);
+                         if (targetNode != null)
+                         {
+                             var layer = DetermineLayer(targetNode);
+                             if (layer != ArchitecturalLayerType.Domain && layer != ArchitecturalLayerType.CrossCutting && layer != ArchitecturalLayerType.Unknown)
+                             {
+                                 domainViolations++;
+                             }
+                         }
+                    }
+                }
+            }
+
+            if (domainViolations == 0 && domainNodes.Count > 0)
+            {
+                confidence = 0.85;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool IsMVC(List<GraphNode> nodes, out double confidence)
+        {
+            confidence = 0.0;
+            int models = 0, views = 0, controllers = 0;
+            
+            foreach(var node in nodes)
+            {
+                if (ContainsAny(node.ComponentId, node.Metadata.Type, "Model")) models++;
+                if (ContainsAny(node.ComponentId, node.Metadata.Type, "View", "Page", "Razor")) views++;
+                if (ContainsAny(node.ComponentId, node.Metadata.Type, "Controller")) controllers++;
+            }
+
+            if (models > 0 && views > 0 && controllers > 0)
+            {
+                confidence = 0.9;
+                return true;
+            }
+            if ((models > 0 && controllers > 0) || (views > 0 && controllers > 0))
+            {
+                confidence = 0.6;
+                return true;
+            }
+            return false;
+        }
+
+        private bool IsLayeredArchitecture(List<GraphNode> nodes, EnhancedDependencyGraph graph, out double confidence)
+        {
+            confidence = 0.0;
+            int correctFlows = 0;
+            int totalFlows = 0;
+
+            foreach (var node in nodes)
+            {
+                var sourceLayer = DetermineLayer(node);
+                if (sourceLayer == ArchitecturalLayerType.Unknown) continue;
+
+                foreach (var targetId in node.OutEdges)
+                {
+                    if (!nodes.Any(n => n.ComponentId == targetId)) continue;
+
+                    var targetNode = graph.GetNode(targetId);
+                    if (targetNode == null) continue;
+
+                    var targetLayer = DetermineLayer(targetNode);
+                    if (targetLayer == ArchitecturalLayerType.Unknown) continue;
+                    if (sourceLayer == targetLayer) continue;
+
+                    totalFlows++;
+                    if (IsValidLayerFlow(sourceLayer, targetLayer))
+                    {
+                        correctFlows++;
+                    }
+                }
+            }
+
+            if (totalFlows == 0) return false;
+            
+            var layersPresent = nodes.Select(DetermineLayer).Where(l => l != ArchitecturalLayerType.Unknown).Distinct().Count();
+            if (layersPresent < 2) return false;
+
+            confidence = (double)correctFlows / totalFlows;
+            return confidence > 0.5;
+        }
+
+        private bool IsValidLayerFlow(ArchitecturalLayerType source, ArchitecturalLayerType target)
+        {
+            switch (source)
+            {
+                case ArchitecturalLayerType.Presentation:
+                    return target == ArchitecturalLayerType.Application || target == ArchitecturalLayerType.Domain;
+                case ArchitecturalLayerType.Application:
+                    return target == ArchitecturalLayerType.Domain || target == ArchitecturalLayerType.Infrastructure || target == ArchitecturalLayerType.Data;
+                case ArchitecturalLayerType.Infrastructure:
+                    return target == ArchitecturalLayerType.Domain || target == ArchitecturalLayerType.Data;
+                case ArchitecturalLayerType.Domain:
+                    return false;
+                default:
+                    return false;
+            }
         }
 
         private bool ContainsAny(string name, string type, params string[] keywords)
@@ -117,150 +321,6 @@ namespace codeMRI.Core.Services
             }
             return false;
         }
-
-        private double CalculateMicroservicesScore(List<GraphNode> nodes, EnhancedDependencyGraph graph)
-        {
-            // Heuristic: Look for multiple independent "Service" or "API" components
-            // that are likely entry points or main services
-            var serviceNodes = nodes.Where(n => 
-                ContainsAny(n.ComponentId, n.Metadata.Type, "Service", "API", "Microservice") &&
-                !ContainsAny(n.ComponentId, n.Metadata.Type, "ApplicationService", "DomainService") // Exclude internal services if possible
-            ).ToList();
-
-            if (serviceNodes.Count < 2) return 0.0;
-
-            // Check connectivity between these services
-            int linksBetweenServices = 0;
-            foreach(var s1 in serviceNodes)
-            {
-                foreach(var s2 in serviceNodes)
-                {
-                    if (s1 == s2) continue;
-                    // Check direct dependency
-                    if (s1.OutEdges.Contains(s2.ComponentId)) linksBetweenServices++;
-                }
-            }
-            
-            // If they are mostly independent (low links), it supports Microservices (at this level of abstraction)
-            double connectivity = (double)linksBetweenServices / (serviceNodes.Count * (serviceNodes.Count - 1));
-            
-            if (connectivity < 0.3) return 0.8; // Low coupling between services
-            
-            return 0.4;
-        }
-
-        private double CalculateEventDrivenScore(List<GraphNode> nodes, EnhancedDependencyGraph graph)
-        {
-            int eventComponents = 0;
-            int eventLinks = 0;
-            
-            foreach(var node in nodes)
-            {
-                if (ContainsAny(node.ComponentId, node.Metadata.Type, "Event", "Message", "Bus", "Queue", "Topic", "Publisher", "Subscriber", "Handler"))
-                {
-                    eventComponents++;
-                    
-                    // Check if edges involve events
-                    foreach(var neighborId in node.OutEdges)
-                    {
-                         var neighbor = graph.GetNode(neighborId);
-                         if (neighbor != null && ContainsAny(neighbor.ComponentId, neighbor.Metadata.Type, "Event", "Message", "Handler"))
-                         {
-                             eventLinks++;
-                         }
-                    }
-                }
-            }
-
-            if (nodes.Count == 0) return 0.0;
-            
-            double ratio = (double)eventComponents / nodes.Count;
-            if (ratio > 0.3 || (eventComponents >= 3 && eventLinks >= 1)) return 0.9;
-            
-            return 0.0;
-        }
-
-        private double CalculateLayeredScore(List<GraphNode> nodes, EnhancedDependencyGraph graph)
-        {
-            // Check if dependencies flow in correct direction (Presentation -> Application -> Domain/Infrastructure)
-            // And typically Infrastructure -> Domain (Dependency Inversion) or Application -> Infrastructure (traditional)
-            
-            int correctFlows = 0;
-            int totalFlows = 0;
-
-            foreach (var node in nodes)
-            {
-                var sourceLayer = DetermineLayer(node);
-                if (sourceLayer == ArchitecturalLayerType.Unknown) continue;
-
-                foreach (var targetId in node.OutEdges)
-                {
-                    // Only consider internal dependencies within the module
-                    if (!nodes.Any(n => n.ComponentId == targetId)) continue;
-
-                    var targetNode = graph.GetNode(targetId);
-                    if (targetNode == null) continue;
-
-                    var targetLayer = DetermineLayer(targetNode);
-                    if (targetLayer == ArchitecturalLayerType.Unknown) continue;
-                    if (sourceLayer == targetLayer) continue; // Same layer calls are neutral
-
-                    totalFlows++;
-                    if (IsValidLayerFlow(sourceLayer, targetLayer))
-                    {
-                        correctFlows++;
-                    }
-                }
-            }
-
-            if (totalFlows == 0) return 0.0;
-            
-            // Also check if we have representation from multiple layers
-            var layersPresent = nodes.Select(DetermineLayer).Where(l => l != ArchitecturalLayerType.Unknown).Distinct().Count();
-            if (layersPresent < 2) return 0.0;
-
-            return (double)correctFlows / totalFlows;
-        }
-
-        private bool IsValidLayerFlow(ArchitecturalLayerType source, ArchitecturalLayerType target)
-        {
-            // Traditional Layered: Presentation -> Application -> Domain/Data
-            // Strict Layered: Presentation -> Application, Application -> Domain, etc.
-            
-            switch (source)
-            {
-                case ArchitecturalLayerType.Presentation:
-                    return target == ArchitecturalLayerType.Application || target == ArchitecturalLayerType.Domain; // Relaxed
-                case ArchitecturalLayerType.Application:
-                    return target == ArchitecturalLayerType.Domain || target == ArchitecturalLayerType.Infrastructure || target == ArchitecturalLayerType.Data;
-                case ArchitecturalLayerType.Infrastructure:
-                    // In Clean Architecture, Infra depends on Domain. In traditional, App depends on Infra.
-                    // Let's assume correct flow is "Downwards" or "Towards Domain"
-                    return target == ArchitecturalLayerType.Domain || target == ArchitecturalLayerType.Data;
-                case ArchitecturalLayerType.Domain:
-                    return false; // Domain should not depend on outer layers
-                default:
-                    return false;
-            }
-        }
-
-        private double CalculateMVCScore(List<GraphNode> nodes)
-        {
-            int models = 0, views = 0, controllers = 0;
-            
-            foreach(var node in nodes)
-            {
-                if (ContainsAny(node.ComponentId, node.Metadata.Type, "Model")) models++;
-                if (ContainsAny(node.ComponentId, node.Metadata.Type, "View", "Page")) views++;
-                if (ContainsAny(node.ComponentId, node.Metadata.Type, "Controller")) controllers++;
-            }
-
-            if (models > 0 && views > 0 && controllers > 0)
-                return 0.8;
-            if ((models > 0 && controllers > 0) || (views > 0 && controllers > 0))
-                return 0.5;
-            
-            return 0.0;
-        }
     }
 }
+

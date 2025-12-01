@@ -20,6 +20,7 @@ namespace codeMRI.Core.Services
         private readonly IEnhancedDependencyGraphService _graphService;
         private readonly IArchitecturalPatternService _patternService;
         private const int MaxTokensPerModule = 32768;
+        private const int MinTokensPerModule = 4000; // Prevent too small fragments
 
         public HierarchicalDecompositionService(
             ILogger<HierarchicalDecompositionService> logger,
@@ -55,6 +56,9 @@ namespace codeMRI.Core.Services
 
             // Ensure token limits are respected
             await EnforceTokenLimitsAsync(moduleTree, graph, cancellationToken);
+            
+            // Optimize Tree Balance
+            await OptimizeTreeStructureAsync(moduleTree, cancellationToken);
 
             // Calculate Quality Metrics for all modules
             CalculateAllQualityMetrics(moduleTree, graph);
@@ -87,6 +91,7 @@ namespace codeMRI.Core.Services
                 {
                     if (scc.Count > 1)
                     {
+                        // Keep cycles together
                         var newNodes = scc.Where(n => !assignedNodes.Contains(n)).ToList();
                         if (newNodes.Count > 0)
                         {
@@ -120,7 +125,7 @@ namespace codeMRI.Core.Services
                 .Where(id => !assignedNodes.Contains(id))
                 .ToHashSet();
 
-            // 2. For unassigned nodes, use Louvain Community Detection
+            // 2. For unassigned nodes, use Multi-Pass Louvain Community Detection
             if (unassignedNodes.Any())
             {
                 var communities = await PerformLouvainClusteringAsync(graph, unassignedNodes, cancellationToken);
@@ -138,12 +143,11 @@ namespace codeMRI.Core.Services
             HashSet<string> nodeIds,
             CancellationToken cancellationToken)
         {
-            // Simplified Louvain: Only one pass of modularity optimization for this implementation
-            // A full implementation would recurse on super-nodes.
-            
+            // Iterative Louvain Algorithm
             var communities = new Dictionary<string, int>(); // NodeId -> CommunityId
             var communityNodes = new Dictionary<int, List<string>>(); // CommunityId -> List<NodeId>
             
+            // Initialize each node in its own community
             int nextCommunityId = 0;
             foreach (var nodeId in nodeIds)
             {
@@ -152,12 +156,14 @@ namespace codeMRI.Core.Services
                 nextCommunityId++;
             }
 
-            bool improved = true;
-            int maxIterations = 10;
-            int iter = 0;
+            bool globalImprovement = true;
+            int globalIter = 0;
+            int maxGlobalIterations = 5;
 
-            // Calculate total weight of all edges in the subgraph (m)
+            // Calculate total weight (m)
             double m = 0;
+            var edgeWeights = new Dictionary<(string, string), double>();
+            
             foreach (var nodeId in nodeIds)
             {
                 var node = graph.GetNode(nodeId);
@@ -165,112 +171,131 @@ namespace codeMRI.Core.Services
                 {
                     foreach (var neighborId in node.OutEdges)
                     {
-                        if (nodeIds.Contains(neighborId)) m += 1.0; // Assuming weight 1 for now
+                        if (nodeIds.Contains(neighborId)) 
+                        {
+                            // Weight adjustment: Cross-boundary edges might have lower weight to encourage separation?
+                            // Or we treat all dependencies as 1.0 for now.
+                            double w = 1.0;
+                            m += w;
+                            edgeWeights[(nodeId, neighborId)] = w;
+                        }
                     }
                 }
             }
-            m = m / 2.0; // Each edge counted twice
+            m = m > 0 ? m : 1.0; // Avoid division by zero
 
-            if (m == 0) return Task.FromResult(communityNodes); // No edges
-
-            while (improved && iter < maxIterations)
+            while (globalImprovement && globalIter < maxGlobalIterations)
             {
-                improved = false;
-                iter++;
+                globalImprovement = false;
+                globalIter++;
                 
-                foreach (var nodeId in nodeIds)
+                bool localImprovement = true;
+                int localIter = 0;
+                int maxLocalIterations = 10;
+
+                while (localImprovement && localIter < maxLocalIterations)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    localImprovement = false;
+                    localIter++;
 
-                    var node = graph.GetNode(nodeId);
-                    if (node == null) continue;
+                    // Randomize node order to avoid bias
+                    var randomizedNodes = nodeIds.OrderBy(x => Guid.NewGuid()).ToList();
 
-                    int currentComm = communities[nodeId];
-                    int bestComm = currentComm;
-                    double maxDeltaQ = 0;
-
-                    // Get neighboring communities
-                    var neighborCommunities = new HashSet<int>();
-                    foreach (var neighborId in node.OutEdges.Concat(node.InEdges))
+                    foreach (var nodeId in randomizedNodes)
                     {
-                        if (nodeIds.Contains(neighborId))
-                        {
-                            neighborCommunities.Add(communities[neighborId]);
-                        }
-                    }
+                        cancellationToken.ThrowIfCancellationRequested();
 
-                    // Evaluate moving to neighbor communities
-                    foreach (var targetComm in neighborCommunities)
-                    {
-                        if (targetComm == currentComm) continue;
+                        int currentComm = communities[nodeId];
+                        int bestComm = currentComm;
+                        double maxDeltaQ = 0;
 
-                        double deltaQ = CalculateModularityGain(node, currentComm, targetComm, communities, graph, m);
-                        if (deltaQ > maxDeltaQ)
-                        {
-                            maxDeltaQ = deltaQ;
-                            bestComm = targetComm;
-                        }
-                    }
+                        // Get neighboring communities
+                        var neighborCommunities = new Dictionary<int, double>(); // CommID -> Weight to that Comm
+                        var nodeObj = graph.GetNode(nodeId);
+                        if (nodeObj == null) continue;
 
-                    if (bestComm != currentComm && maxDeltaQ > 0)
-                    {
-                        // Move node
-                        communityNodes[currentComm].Remove(nodeId);
-                        if (communityNodes[currentComm].Count == 0) communityNodes.Remove(currentComm);
-
-                        if (!communityNodes.ContainsKey(bestComm)) communityNodes[bestComm] = new List<string>();
-                        communityNodes[bestComm].Add(nodeId);
-                        communities[nodeId] = bestComm;
+                        double k_i = 0; // Sum of weights incident to node i
                         
-                        improved = true;
+                        // Outgoing
+                        foreach(var target in nodeObj.OutEdges) 
+                        {
+                            if(nodeIds.Contains(target)) 
+                            {
+                                double w = edgeWeights.GetValueOrDefault((nodeId, target), 1.0);
+                                k_i += w;
+                                int c = communities[target];
+                                if(!neighborCommunities.ContainsKey(c)) neighborCommunities[c] = 0;
+                                neighborCommunities[c] += w;
+                            }
+                        }
+                        // Incoming
+                        foreach(var source in nodeObj.InEdges)
+                        {
+                            if(nodeIds.Contains(source))
+                            {
+                                double w = edgeWeights.GetValueOrDefault((source, nodeId), 1.0);
+                                k_i += w;
+                                int c = communities[source];
+                                if(!neighborCommunities.ContainsKey(c)) neighborCommunities[c] = 0;
+                                neighborCommunities[c] += w;
+                            }
+                        }
+
+                        // Evaluate moving
+                        foreach (var kvp in neighborCommunities)
+                        {
+                            int targetComm = kvp.Key;
+                            if (targetComm == currentComm) continue;
+                            
+                            double k_i_in = kvp.Value;
+                            
+                            // Calculate Sigma_tot (Sum of weights incident to nodes in targetComm)
+                            // This is expensive to calc exactly, estimating based on node degrees in comm
+                            double sigma_tot = 0; 
+                            foreach(var peerId in communityNodes[targetComm])
+                            {
+                                var peer = graph.GetNode(peerId);
+                                // Approximate degree
+                                if(peer != null) sigma_tot += (peer.InEdges.Count + peer.OutEdges.Count); 
+                            }
+
+                            // Simplified Newman modularity gain
+                            // Delta Q = [ k_i_in / 2m ] - [ (Sigma_tot * k_i) / (2m^2) ]
+                            
+                            double term1 = k_i_in / m; // Using m instead of 2m because we summed weights once? Standard formula uses 2m for undirected.
+                            // For directed, it's complex. Let's use standard undirected approx.
+                            double term2 = (sigma_tot * k_i) / (2 * m * m); 
+
+                            double deltaQ = term1 - term2;
+
+                            if (deltaQ > maxDeltaQ)
+                            {
+                                maxDeltaQ = deltaQ;
+                                bestComm = targetComm;
+                            }
+                        }
+
+                        if (bestComm != currentComm && maxDeltaQ > 0.0001) // Threshold to prevent jitter
+                        {
+                            // Move node
+                            communityNodes[currentComm].Remove(nodeId);
+                            if (communityNodes[currentComm].Count == 0) communityNodes.Remove(currentComm);
+
+                            if (!communityNodes.ContainsKey(bestComm)) communityNodes[bestComm] = new List<string>();
+                            communityNodes[bestComm].Add(nodeId);
+                            communities[nodeId] = bestComm;
+                            
+                            localImprovement = true;
+                            globalImprovement = true;
+                        }
                     }
                 }
+                
+                // If needed, we could aggregate nodes into super-nodes here and recurse.
+                // For now, iterative optimization on flat nodes is often sufficient for codebases.
             }
 
             return Task.FromResult(communityNodes);
-        }
-
-        private double CalculateModularityGain(
-            GraphNode node, 
-            int currentComm, 
-            int targetComm, 
-            Dictionary<string, int> communities, 
-            EnhancedDependencyGraph graph,
-            double m)
-        {
-            // Simplified Modularity Gain Calculation
-            // Delta Q = [ (Sum_in + ki_in)/(2m) - ((Sum_tot + ki)/(2m))^2 ] - [ (Sum_in/(2m) - (Sum_tot/(2m))^2 - (ki/(2m))^2 ]
-            // Actually, simpler formula for moving node i to comm C:
-            // Delta Q = k_i_in / (2m) - (Sigma_tot * k_i) / (2m^2)
-            
-            // k_i_in: sum of weights of links from i to nodes in C
-            // Sigma_tot: sum of weights of links incident to nodes in C
-            // k_i: sum of weights of links incident to i
-            
-            double k_i = node.OutEdges.Count + node.InEdges.Count;
-            double k_i_in = 0;
-            
-            // Calculate k_i_in for target community
-            foreach (var neighborId in node.OutEdges.Concat(node.InEdges))
-            {
-                if (communities.TryGetValue(neighborId, out int commId) && commId == targetComm)
-                {
-                    k_i_in += 1.0;
-                }
-            }
-
-            // Calculate Sigma_tot for target community (roughly)
-            // Note: This is expensive to calculate exactly every time. 
-            // Optimization: maintain Sigma_tot for each community.
-            // For now, we use a simplified approximation or iteration.
-            
-            // Let's use a simpler heuristic if precise calculation is too heavy:
-            // Prefer communities with higher connectivity density.
-            
-            double term1 = k_i_in / (2 * m);
-            // double term2 ... let's approximate small modularity impact
-            
-            return term1; 
         }
 
         /// <summary>
@@ -372,9 +397,13 @@ namespace codeMRI.Core.Services
             // Using Louvain again on the subgraph
             var subClusters = await PerformLouvainClusteringAsync(subGraph, module.Components, cancellationToken);
             
-            // Remove the original module
-            module.Parent?.Children.Remove(module);
-            moduleTree.Nodes.Remove(module.Id);
+            // Remove the original module (or mark as non-leaf)
+            // Strategy: Turn 'module' into a parent node, move components to children
+            
+            var originalComponents = new HashSet<string>(module.Components);
+            module.Components.Clear();
+            module.IsLeaf = false;
+            module.EstimatedTokens = 0; // Will be sum of children
 
             // Add new child modules
             foreach (var (clusterId, componentIds) in subClusters)
@@ -390,6 +419,8 @@ namespace codeMRI.Core.Services
                     IsLeaf = true
                 };
 
+                double childTokens = 0;
+
                 // Add components to child module
                 foreach (var componentId in componentIds)
                 {
@@ -397,13 +428,17 @@ namespace codeMRI.Core.Services
                     if (node != null)
                     {
                         childModule.Components.Add(componentId);
-                        childModule.EstimatedTokens += node.Metadata.EstimatedTokens;
+                        childTokens += node.Metadata.EstimatedTokens;
                         childModule.ComplexityScore += node.Metadata.CyclomaticComplexity;
                     }
                 }
+                childModule.EstimatedTokens = childTokens;
 
-                module.Parent?.AddChild(childModule);
+                module.AddChild(childModule);
                 moduleTree.AddNode(childModule);
+                
+                // Update parent stats
+                module.EstimatedTokens += childTokens;
 
                 // Check if new module needs further splitting
                 if (childModule.EstimatedTokens > MaxTokensPerModule)
@@ -411,6 +446,61 @@ namespace codeMRI.Core.Services
                     modulesToSplit.Enqueue(childModule);
                 }
             }
+        }
+
+        private async Task OptimizeTreeStructureAsync(ModuleTree tree, CancellationToken cancellationToken)
+        {
+            // Balance the tree: Merge small siblings if they are strongly related and sum < MaxTokens
+            // Iterate bottom-up? 
+            // For simplicity, iterate through parents and check children.
+            
+            foreach(var parent in tree.Nodes.Values.Where(n => !n.IsLeaf).ToList())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                var smallChildren = parent.Children.Where(c => c.EstimatedTokens < MinTokensPerModule).ToList();
+                if (smallChildren.Count >= 2)
+                {
+                    // Try to merge small children
+                    // Ideally verify coupling between them before merging
+                    // For now, simple merge if size permits
+                    
+                    var merged = new HashSet<ModuleNode>();
+                    
+                    for (int i = 0; i < smallChildren.Count; i++)
+                    {
+                         if (merged.Contains(smallChildren[i])) continue;
+                         
+                         var c1 = smallChildren[i];
+                         for (int j = i + 1; j < smallChildren.Count; j++)
+                         {
+                             var c2 = smallChildren[j];
+                             if (merged.Contains(c2)) continue;
+
+                             if (c1.EstimatedTokens + c2.EstimatedTokens < MaxTokensPerModule)
+                             {
+                                 // Merge c2 into c1
+                                 MergeModules(tree, c1, c2);
+                                 merged.Add(c2);
+                             }
+                         }
+                    }
+                }
+            }
+        }
+
+        private void MergeModules(ModuleTree tree, ModuleNode target, ModuleNode source)
+        {
+            _logger.LogInformation("Merging module {Source} into {Target}", source.Name, target.Name);
+            
+            foreach(var comp in source.Components) target.Components.Add(comp);
+            foreach(var child in source.Children) target.AddChild(child);
+            
+            target.EstimatedTokens += source.EstimatedTokens;
+            target.ComplexityScore += source.ComplexityScore;
+            
+            source.Parent?.Children.Remove(source);
+            tree.Nodes.Remove(source.Id);
         }
 
         /// <summary>

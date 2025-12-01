@@ -166,9 +166,18 @@ namespace codeMRI.Core.Tests.Services
             var domainModule = result.Nodes.Values.FirstOrDefault(n => n.Name == "Domain");
             Assert.That(domainModule, Is.Not.Null);
 
-            Assert.That(domainModule.QualityMetrics.Instability, Is.EqualTo(0.0).Within(2));
-            Assert.That(domainModule.QualityMetrics.Abstractness, Is.EqualTo(0.5).Within(2));
-            Assert.That(domainModule.QualityMetrics.DistanceFromMainSequence, Is.EqualTo(0.5).Within(2));
+            // Instability = Ce / (Ce + Ca)
+            // Interface1: In from ExternalClient (Ca=1), In from Impl1 (Internal)
+            // Impl1: Out to Interface1 (Internal)
+            // Module Domain: Ca=1 (from ExternalClient to Interface1), Ce=0
+            // Instability = 0 / (0 + 1) = 0.0
+            Assert.That(domainModule.QualityMetrics.Instability, Is.EqualTo(0.0).Within(0.1));
+
+            // Abstractness = Na / Nc = 1 / 2 = 0.5
+            Assert.That(domainModule.QualityMetrics.Abstractness, Is.EqualTo(0.5).Within(0.1));
+
+            // D = |A + I - 1| = |0.5 + 0 - 1| = 0.5
+            Assert.That(domainModule.QualityMetrics.DistanceFromMainSequence, Is.EqualTo(0.5).Within(0.1));
         }
 
         [Test]
