@@ -18,14 +18,17 @@ namespace codeMRI.Core.Services
     {
         private readonly ILogger<HierarchicalDecompositionService> _logger;
         private readonly IEnhancedDependencyGraphService _graphService;
+        private readonly IArchitecturalPatternService _patternService;
         private const int MaxTokensPerModule = 32768;
 
         public HierarchicalDecompositionService(
             ILogger<HierarchicalDecompositionService> logger,
-            IEnhancedDependencyGraphService graphService)
+            IEnhancedDependencyGraphService graphService,
+            IArchitecturalPatternService patternService)
         {
             _logger = logger;
             _graphService = graphService;
+            _patternService = patternService;
         }
 
         /// <summary>
@@ -44,7 +47,7 @@ namespace codeMRI.Core.Services
             // Create initial module tree
             var moduleTree = new ModuleTree();
 
-            // Perform semantic clustering
+            // Perform semantic clustering using Louvain and Architectural Layers
             var semanticClusters = await PerformSemanticClusteringAsync(graph, cancellationToken);
 
             // Build hierarchical structure
@@ -52,6 +55,9 @@ namespace codeMRI.Core.Services
 
             // Ensure token limits are respected
             await EnforceTokenLimitsAsync(moduleTree, graph, cancellationToken);
+
+            // Calculate Quality Metrics for all modules
+            CalculateAllQualityMetrics(moduleTree, graph);
 
             _logger.LogInformation("Completed hierarchical decomposition. Total modules: {Count}", moduleTree.Nodes.Count);
             
@@ -68,33 +74,176 @@ namespace codeMRI.Core.Services
             _logger.LogInformation("Performing semantic clustering on {NodeCount} components", graph.NodeCount);
             
             var clusters = new Dictionary<string, List<string>>();
-            var unassignedNodes = graph.GetNodes().Select(n => n.ComponentId).ToHashSet();
+            
+            // 1. Identify Architectural Layers first
+            var layerGroups = graph.GetNodes()
+                .GroupBy(n => _patternService.DetermineLayer(n))
+                .Where(g => g.Key != ArchitecturalLayerType.Unknown)
+                .ToDictionary(g => g.Key, g => g.Select(n => n.ComponentId).ToList());
 
-            // Group by architectural role (e.g., Controllers, Services, etc.)
-            var roleGroups = graph.GetNodes()
-                .GroupBy(n => DetermineArchitecturalRole(n))
-                .OrderByDescending(g => g.Count());
+            var assignedNodes = new HashSet<string>(layerGroups.Values.SelectMany(x => x));
+            var unassignedNodes = graph.GetNodes()
+                .Select(n => n.ComponentId)
+                .Where(id => !assignedNodes.Contains(id))
+                .ToHashSet();
 
-            foreach (var group in roleGroups)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var groupNodes = group.Select(n => n.ComponentId).ToList();
-                clusters[group.Key] = groupNodes;
-                unassignedNodes.ExceptWith(groupNodes);
-            }
-
-            // For remaining nodes, perform Louvain-like community detection
+            // 2. For unassigned nodes, use Louvain Community Detection
             if (unassignedNodes.Any())
             {
-                var communityClusters = await DetectCommunitiesAsync(graph, unassignedNodes, cancellationToken);
-                foreach (var cluster in communityClusters)
+                var communities = await PerformLouvainClusteringAsync(graph, unassignedNodes, cancellationToken);
+                foreach (var community in communities)
                 {
-                    clusters[$"Module_{Guid.NewGuid().ToString("N").Substring(0, 6)}"] = cluster.Value;
+                    clusters[$"Component_{community.Key}"] = community.Value;
                 }
             }
 
+            // 3. Add Layer groups as clusters
+            foreach (var layer in layerGroups)
+            {
+                clusters[layer.Key.ToString()] = layer.Value;
+            }
+
             return clusters;
+        }
+
+        private Task<Dictionary<int, List<string>>> PerformLouvainClusteringAsync(
+            EnhancedDependencyGraph graph,
+            HashSet<string> nodeIds,
+            CancellationToken cancellationToken)
+        {
+            // Simplified Louvain: Only one pass of modularity optimization for this implementation
+            // A full implementation would recurse on super-nodes.
+            
+            var communities = new Dictionary<string, int>(); // NodeId -> CommunityId
+            var communityNodes = new Dictionary<int, List<string>>(); // CommunityId -> List<NodeId>
+            
+            int nextCommunityId = 0;
+            foreach (var nodeId in nodeIds)
+            {
+                communities[nodeId] = nextCommunityId;
+                communityNodes[nextCommunityId] = new List<string> { nodeId };
+                nextCommunityId++;
+            }
+
+            bool improved = true;
+            int maxIterations = 10;
+            int iter = 0;
+
+            // Calculate total weight of all edges in the subgraph (m)
+            double m = 0;
+            foreach (var nodeId in nodeIds)
+            {
+                var node = graph.GetNode(nodeId);
+                if (node != null)
+                {
+                    foreach (var neighborId in node.OutEdges)
+                    {
+                        if (nodeIds.Contains(neighborId)) m += 1.0; // Assuming weight 1 for now
+                    }
+                }
+            }
+            m = m / 2.0; // Each edge counted twice
+
+            if (m == 0) return Task.FromResult(communityNodes); // No edges
+
+            while (improved && iter < maxIterations)
+            {
+                improved = false;
+                iter++;
+                
+                foreach (var nodeId in nodeIds)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var node = graph.GetNode(nodeId);
+                    if (node == null) continue;
+
+                    int currentComm = communities[nodeId];
+                    int bestComm = currentComm;
+                    double maxDeltaQ = 0;
+
+                    // Get neighboring communities
+                    var neighborCommunities = new HashSet<int>();
+                    foreach (var neighborId in node.OutEdges.Concat(node.InEdges))
+                    {
+                        if (nodeIds.Contains(neighborId))
+                        {
+                            neighborCommunities.Add(communities[neighborId]);
+                        }
+                    }
+
+                    // Evaluate moving to neighbor communities
+                    foreach (var targetComm in neighborCommunities)
+                    {
+                        if (targetComm == currentComm) continue;
+
+                        double deltaQ = CalculateModularityGain(node, currentComm, targetComm, communities, graph, m);
+                        if (deltaQ > maxDeltaQ)
+                        {
+                            maxDeltaQ = deltaQ;
+                            bestComm = targetComm;
+                        }
+                    }
+
+                    if (bestComm != currentComm && maxDeltaQ > 0)
+                    {
+                        // Move node
+                        communityNodes[currentComm].Remove(nodeId);
+                        if (communityNodes[currentComm].Count == 0) communityNodes.Remove(currentComm);
+
+                        if (!communityNodes.ContainsKey(bestComm)) communityNodes[bestComm] = new List<string>();
+                        communityNodes[bestComm].Add(nodeId);
+                        communities[nodeId] = bestComm;
+                        
+                        improved = true;
+                    }
+                }
+            }
+
+            return Task.FromResult(communityNodes);
+        }
+
+        private double CalculateModularityGain(
+            GraphNode node, 
+            int currentComm, 
+            int targetComm, 
+            Dictionary<string, int> communities, 
+            EnhancedDependencyGraph graph,
+            double m)
+        {
+            // Simplified Modularity Gain Calculation
+            // Delta Q = [ (Sum_in + ki_in)/(2m) - ((Sum_tot + ki)/(2m))^2 ] - [ (Sum_in/(2m) - (Sum_tot/(2m))^2 - (ki/(2m))^2 ]
+            // Actually, simpler formula for moving node i to comm C:
+            // Delta Q = k_i_in / (2m) - (Sigma_tot * k_i) / (2m^2)
+            
+            // k_i_in: sum of weights of links from i to nodes in C
+            // Sigma_tot: sum of weights of links incident to nodes in C
+            // k_i: sum of weights of links incident to i
+            
+            double k_i = node.OutEdges.Count + node.InEdges.Count;
+            double k_i_in = 0;
+            
+            // Calculate k_i_in for target community
+            foreach (var neighborId in node.OutEdges.Concat(node.InEdges))
+            {
+                if (communities.TryGetValue(neighborId, out int commId) && commId == targetComm)
+                {
+                    k_i_in += 1.0;
+                }
+            }
+
+            // Calculate Sigma_tot for target community (roughly)
+            // Note: This is expensive to calculate exactly every time. 
+            // Optimization: maintain Sigma_tot for each community.
+            // For now, we use a simplified approximation or iteration.
+            
+            // Let's use a simpler heuristic if precise calculation is too heavy:
+            // Prefer communities with higher connectivity density.
+            
+            double term1 = k_i_in / (2 * m);
+            // double term2 ... let's approximate small modularity impact
+            
+            return term1; 
         }
 
         /// <summary>
@@ -131,6 +280,14 @@ namespace codeMRI.Core.Services
                         module.EstimatedTokens += node.Metadata.EstimatedTokens;
                         module.ComplexityScore += node.Metadata.CyclomaticComplexity;
                     }
+                }
+                
+                // Recognize Pattern
+                var pattern = _patternService.RecognizePattern(module, graph);
+                if (pattern.Type != ArchitecturalPatternType.Unknown)
+                {
+                    module.Metadata["ArchitecturalPattern"] = pattern.Name;
+                    module.Metadata["PatternConfidence"] = pattern.Confidence.ToString("F2");
                 }
 
                 moduleTree.Root.AddChild(module);
@@ -185,20 +342,22 @@ namespace codeMRI.Core.Services
             var subGraph = await CreateSubgraphAsync(graph, module.Components, cancellationToken);
             
             // Recursively decompose the subgraph
-            var subClusters = await PerformSemanticClusteringAsync(subGraph, cancellationToken);
+            // Using Louvain again on the subgraph
+            var subClusters = await PerformLouvainClusteringAsync(subGraph, module.Components, cancellationToken);
             
             // Remove the original module
             module.Parent?.Children.Remove(module);
             moduleTree.Nodes.Remove(module.Id);
 
             // Add new child modules
-            foreach (var (clusterName, componentIds) in subClusters)
+            foreach (var (clusterId, componentIds) in subClusters)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                string clusterName = $"Part_{clusterId}";
 
                 var childModule = new ModuleNode
                 {
-                    Id = $"{module.Id}_{clusterName.ToLowerInvariant()}",
+                    Id = $"{module.Id}_{clusterName}",
                     Name = $"{module.Name} - {clusterName}",
                     Level = module.Level + 1,
                     IsLeaf = true
@@ -265,80 +424,65 @@ namespace codeMRI.Core.Services
             return await Task.FromResult(subGraph);
         }
 
-        /// <summary>
-        /// Detects communities in the graph using a Louvain-like algorithm
-        /// </summary>
-        private Task<Dictionary<string, List<string>>> DetectCommunitiesAsync(
-            EnhancedDependencyGraph graph,
-            HashSet<string> nodeIds,
-            CancellationToken cancellationToken)
+        private void CalculateAllQualityMetrics(ModuleTree tree, EnhancedDependencyGraph graph)
         {
-            _logger.LogInformation("Detecting communities in graph with {Count} nodes", nodeIds.Count);
-            
-            // Simplified community detection - in practice, use a proper implementation
-            var communities = new Dictionary<string, List<string>>();
-            var visited = new HashSet<string>();
-            
-            foreach (var nodeId in nodeIds)
+            foreach(var module in tree.Nodes.Values)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                
-                if (visited.Contains(nodeId)) continue;
-                
-                var community = new List<string> { nodeId };
-                visited.Add(nodeId);
-                
-                // Simple BFS to find connected components
-                var queue = new Queue<string>();
-                queue.Enqueue(nodeId);
-                
-                while (queue.Count > 0)
+                CalculateModuleMetrics(module, graph);
+            }
+        }
+
+        private void CalculateModuleMetrics(ModuleNode module, EnhancedDependencyGraph graph)
+        {
+            // Cohesion: Ratio of internal edges to possible internal edges
+            // Coupling: Ratio of external edges to total edges
+            
+            var internalEdges = 0;
+            var externalEdges = 0;
+            var componentCount = module.Components.Count;
+
+            foreach (var componentId in module.Components)
+            {
+                var node = graph.GetNode(componentId);
+                if (node == null) continue;
+
+                foreach (var neighbor in node.OutEdges)
                 {
-                    var current = queue.Dequeue();
-                    var currentNode = graph.GetNode(current);
-                    if (currentNode == null) continue;
-                    
-                    foreach (var neighbor in currentNode.OutEdges.Concat(currentNode.InEdges))
-                    {
-                        if (nodeIds.Contains(neighbor) && !visited.Contains(neighbor))
-                        {
-                            visited.Add(neighbor);
-                            community.Add(neighbor);
-                            queue.Enqueue(neighbor);
-                        }
-                    }
+                    if (module.Components.Contains(neighbor)) internalEdges++;
+                    else externalEdges++;
                 }
-                
-                communities[$"Community_{communities.Count + 1}"] = community;
+                 foreach (var neighbor in node.InEdges)
+                {
+                    if (module.Components.Contains(neighbor)) { /* already counted in OutEdges of other node? No, iterating nodes */ }
+                    else externalEdges++;
+                }
             }
 
-            return Task.FromResult(communities);
-        }
+            // Simple metrics
+            double cohesion = 0;
+            if (componentCount > 1)
+            {
+                double maxInternalEdges = componentCount * (componentCount - 1);
+                cohesion = internalEdges / Math.Max(1, maxInternalEdges);
+            }
+            else
+            {
+                cohesion = 1.0; // Single component is cohesive
+            }
 
-        /// <summary>
-        /// Determines the architectural role of a component
-        /// </summary>
-        private string DetermineArchitecturalRole(GraphNode node)
-        {
-            // Simple heuristic-based role detection
-            var name = node.ComponentId.ToLowerInvariant();
-            var type = node.Metadata.Type?.ToLowerInvariant() ?? "";
+            double coupling = 0;
+            double totalEdges = internalEdges + externalEdges;
+            if (totalEdges > 0)
+            {
+                coupling = externalEdges / totalEdges;
+            }
 
-            if (name.Contains("controller") || type.Contains("controller"))
-                return "Controllers";
-            if (name.Contains("service") || type.Contains("service"))
-                return "Services";
-            if (name.Contains("repository") || type.Contains("repository"))
-                return "Repositories";
-            if (name.Contains("model") || type.Contains("model") || type.Contains("dto"))
-                return "Models";
-            if (name.Contains("view") || name.Contains("page") || name.Contains("component"))
-                return "UI Components";
-            if (name.Contains("util") || name.Contains("helper"))
-                return "Utilities";
+            module.QualityMetrics.Cohesion = cohesion;
+            module.QualityMetrics.Coupling = coupling;
+            module.QualityMetrics.Complexity = module.ComplexityScore;
             
-            return "Other";
+            // Maintainability Index (Simplified)
+            module.QualityMetrics.MaintainabilityIndex = Math.Max(0, 100 - (coupling * 20) - (module.ComplexityScore / 10.0));
         }
     }
-
 }

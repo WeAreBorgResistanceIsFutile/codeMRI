@@ -102,7 +102,8 @@ public enum EdgeType
     Composition,
     MethodCall,
     PropertyAccess,
-    TypeReference
+    TypeReference,
+    CrossBoundary
 }
 
 public class NodeMetadata

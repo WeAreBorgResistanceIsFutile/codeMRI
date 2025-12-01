@@ -77,6 +77,7 @@ namespace codeMRI.Core.Models
         public ModuleNode? Parent { get; set; }
         public List<ModuleNode> Children { get; set; } = new List<ModuleNode>();
         public Dictionary<string, string> Metadata { get; set; } = new Dictionary<string, string>();
+        public ModuleQualityMetrics QualityMetrics { get; set; } = new ModuleQualityMetrics();
 
         /// <summary>
         /// Gets the full path of the module in the hierarchy

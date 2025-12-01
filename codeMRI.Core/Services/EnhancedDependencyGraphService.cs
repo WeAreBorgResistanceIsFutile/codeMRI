@@ -55,7 +55,13 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
                 var targetComponent = components.FirstOrDefault(c => c.Name == dependencyName);
                 if (targetComponent != null)
                 {
-                    graph.AddEdge(component.Id, targetComponent.Id, EdgeType.Dependency, 1.0);
+                    var edgeType = EdgeType.Dependency;
+                    if (!string.Equals(component.Language, targetComponent.Language, StringComparison.OrdinalIgnoreCase))
+                    {
+                        edgeType = EdgeType.CrossBoundary;
+                    }
+                    
+                    graph.AddEdge(component.Id, targetComponent.Id, edgeType, 1.0);
                 }
             }
         }
