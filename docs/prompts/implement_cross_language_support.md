@@ -1,55 +1,27 @@
-# LLM Prompt: Implement Cross-Language Support
+You are an expert in Polyglot Systems. Your task is to implement the **Cross-Language Integration** between the C# backend and the Node.js AST Service.
 
 ## Context
-You are enhancing CodeWiki to support 7 programming languages with consistent analysis and documentation.
+We have a Node.js service (`codeMRI.ASTService`) using Tree-sitter to parse code. We need a C# client to consume this and normalize the data into a unified Dependency Graph, as per the CodeWiki paper.
 
-## Implementation Plan
-Based on `docs/implementation_plans/04_cross_language_support.md`, implement:
+## Objectives
+1.  **Implement `codeMRI.Infrastructure/Services/ASTServiceClient.cs`**:
+    - Use `HttpClient` to POST source code (or file paths) to the Node.js service.
+    - Deserialize the JSON response into a `RawDependencyData` model.
 
-1. Language parsers with Tree-sitter
-2. Cross-language type system
-3. Language services
-4. Comprehensive testing
-
-## Task
-Generate code for:
-
-### Step 1: Language Parsers
-- Implement Tree-sitter parsers for 7 languages
-- Create unified AST model
-- Add parser caching
-
-### Step 2: Type System
-- Implement cross-language type resolution
-- Add language bridge patterns
-- Create type mapping
-
-### Step 3: Language Services
-- Add language-specific services
-- Implement code navigation
-- Add refactoring support
-
-### Step 4: Testing
-- Add language test suites
-- Implement parser validation
-- Create benchmarks
+2.  **Update `codeMRI.Core/Services/EnhancedDependencyGraphService.cs`**:
+    - Implement `BuildGraphAsync`.
+    - Call the `ASTServiceClient`.
+    - **Normalization Logic:** Convert language-specific relationships (e.g., "extends", "imports", "calls") into a unified `Dependency` model with `Type = DependencyType.DependsOn`.
+    - **Node Identification:** Ensure nodes are uniquely identified (e.g., `File:Class` or `Namespace.Class`).
 
 ## Constraints
-- C# 10+ backend
-- Follow existing patterns
-- Add documentation and tests
+- The C# code must be robust to network failures (Node service down).
+- Handle the 7 supported languages: Python, Java, JS, TS, C, C++, C#.
+- The output must be a `DependencyGraph` usable by the `HierarchicalDecompositionService`.
 
-## Expected Output
-- LanguageServices project
-- Parser implementations
-- Type system
-- Test coverage
+## Input Files
+- `codeMRI.Core/Interfaces/IASTServiceClient.cs`
+- `codeMRI.Core/Services/EnhancedDependencyGraphService.cs`
+- `codeMRI.Core/Models/EnhancedDependencyGraph.cs`
 
-## Example
-```csharp
-public interface ILanguageService
-{
-    LanguageInfo GetLanguageInfo(string filePath);
-    AstNode Parse(string code);
-    TypeInfo ResolveType(string typeName);
-}
+Generate the C# code for the Client and the Service update.

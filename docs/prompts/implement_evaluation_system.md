@@ -1,56 +1,31 @@
-# LLM Prompt: Implement Evaluation System (CodeWikiBench)
+You are an expert in AI evaluation frameworks. Your task is to implement the **CodeWikiBench Judge Agent** system.
 
 ## Context
-Implement CodeWikiBench evaluation framework for documentation quality assessment.
+The current evaluation system is heuristic-based. We need to implement the "Judge Agent" workflow described in the CodeWiki paper: using an LLM to evaluate specific rubric requirements for generated documentation.
 
-## Implementation Plan
-Based on `docs/implementation_plans/06_evaluation_system.md`:
+## Objectives
+1.  **Create `codeMRI.Core/Services/JudgeAgentService.cs`**:
+    - Implement `IJudgeAgent`.
+    - **Method: `EvaluateRequirementAsync(WikiPage page, RubricRequirement requirement)`**:
+        - Construct a prompt: "Read this documentation: [Content]. Does it satisfy this requirement: [Requirement]? Answer Yes/No and explain."
+        - Call `ILLMClient` with this prompt.
+        - Parse the response to get a score (0.0 to 1.0) and reasoning.
 
-1. Rubric system
-2. Evaluation agents
-3. Reporting dashboard
-4. Integration hooks
-
-## Task
-Generate code for:
-
-### Step 1: Rubric System
-- Hierarchical rubric model
-- Rubric generation
-- Validation
-
-### Step 2: Evaluation Agents
-- Judge agents
-- Scoring system
-- Reliability metrics
-
-### Step 3: Reporting
-- Dashboard
-- Metric visualization
-- Export
-
-### Step 4: Integration
-- Evaluation hooks
-- Continuous evaluation
-- Quality gates
+2.  **Update `codeMRI.Core/Services/EvaluationMetricsSystem.cs`**:
+    - Add a method `EvaluateWithJudgesAsync(WikiPage page, EvaluationRubric rubric)`.
+    - Recursively traverse the rubric.
+    - For leaf nodes, call `JudgeAgentService`.
+    - For parent nodes, calculate the **Weighted Average** of children.
+    - Return a `QualityScore` object with the final score and breakdown.
 
 ## Constraints
-- C# 10+ backend
-- Follow existing patterns
-- Add documentation and tests
+- Use `ILLMClient` for the Judge Agent.
+- Strictly follow the weighted aggregation logic: `Score = Sum(w_i * s_i) / Sum(w_i)`.
+- Keep the existing heuristic methods as "static checks" but prioritize the Judge score.
 
-## Expected Output
-- CodeWikiBench project
-- Evaluation system
-- Reporting features
-- Test coverage
+## Input Files
+- `codeMRI.Core/Services/EvaluationMetricsSystem.cs`
+- `codeMRI.Core/Services/JudgeAgentService.cs` (New)
+- `codeMRI.Core/Services/RubricGenerationService.cs` (For Rubric models)
 
-## Example
-```csharp
-public class EvaluationOrchestrator
-{
-    public async Task<EvaluationResult> Evaluate(DocumentationSet docs, Rubric rubric)
-    {
-        // Implementation
-    }
-}
+Generate the C# code for the new service and the updated evaluation system.

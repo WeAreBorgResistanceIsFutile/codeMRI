@@ -1,60 +1,30 @@
-# LLM Prompt: Implement Documentation Synthesis
+You are an expert in documentation engines and algorithms. Your task is to implement the **Hierarchical Bottom-Up Synthesis** pipeline.
 
 ## Context
-Enhance documentation synthesis in CodeWiki for higher quality output.
+Currently, documentation is generated in an unstructured way. We need to implement the "Phase 3: Hierarchical Assembly" from the CodeWiki paper, ensuring child modules are documented first, and their summaries are used to generate parent module documentation.
 
-## Implementation Plan
-Based on `docs/implementation_plans/07_documentation_synthesis.md`:
+## Objectives
+1.  **Update `codeMRI.Agents/Services/DocumentationGenerationPipeline.cs`**:
+    - Implement a **Post-Order Traversal** method for the `ModuleTree`.
+    - Logic:
+        1. Visit children first.
+        2. Generate docs for children.
+        3. Collect summaries/descriptions of children.
+        4. Visit current node (Parent).
+        5. Generate Parent docs using Child Summaries + Dependency Graph.
 
-1. Content synthesis
-2. Structure optimization
-3. Quality assurance
-4. Personalization
-
-## Task
-Generate code for:
-
-### Step 1: Content Synthesis
-- Multi-stage LLM synthesis
-- Architectural pattern docs
-- Usage examples
-- Best practices
-
-### Step 2: Structure Optimization
-- Hierarchical organization
-- Navigation generation
-- Responsive layouts
-- Table of contents
-
-### Step 3: Quality Assurance
-- Documentation validation
-- Style checking
-- Quality metrics
-- Linting rules
-
-### Step 4: Personalization
-- User preferences
-- Customization
-- Template system
-- Themes
+2.  **Update `WikiGenerationService`**:
+    - Add a parameter or method `GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages)`.
+    - The prompt for this method should explicitly ask the LLM to "Synthesize an architectural overview based on these sub-modules...".
 
 ## Constraints
-- C# 10+ backend
-- Follow existing patterns
-- Add documentation and tests
+- Ensure the `ModuleTree` structure is respected.
+- The pipeline must handle async operations (generating docs takes time).
+- Use the existing `AgentCoordinator` to dispatch tasks if possible, but enforce the order.
 
-## Expected Output
-- Enhanced DocumentationGenerationPipeline
-- DocumentationSynthesizer service
-- Quality control
-- Test coverage
+## Input Files
+- `codeMRI.Agents/Services/DocumentationGenerationPipeline.cs`
+- `codeMRI.Core/Services/WikiGenerationService.cs`
+- `codeMRI.Core/Models/ModuleTree.cs`
 
-## Example
-```csharp
-public class DocumentationSynthesizer
-{
-    public async Task<DocumentationSet> Synthesize(ModuleTree moduleTree, SynthesisOptions options)
-    {
-        // Implementation
-    }
-}
+Generate the C# code to implement this recursive pipeline and the synthesis logic.

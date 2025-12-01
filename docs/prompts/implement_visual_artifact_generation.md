@@ -1,70 +1,31 @@
-# LLM Prompt: Implement Visual Artifact Generation
+You are an expert software engineer specializing in data visualization and documentation. Your task is to implement the **Visual Artifact Generation** service for CodeWiki.
 
 ## Context
-You are an AI assistant tasked with implementing visual artifact generation for the CodeWiki documentation system. The system currently produces text-only documentation and needs to include diagrams and visual representations.
+The system currently generates text-only markdown. We need to embed **Mermaid.js** diagrams to visualize the architecture, specifically **Class Diagrams** and **Sequence Diagrams**.
 
-## Implementation Plan
-Based on the implementation plan in `docs/implementation_plans/03_visual_artifact_generation.md`, you need to:
+## Objectives
+1.  **Create `codeMRI.Visualization/Services/DiagramGeneratorService.cs`**:
+    - Implement `IDiagramGenerator`.
+    - **Method 1: `GenerateClassDiagram(ModuleNode module, List<Dependency> dependencies)`**:
+        - Iterate through the module's components.
+        - Generate Mermaid `classDiagram` syntax showing inheritance (`<|--`), composition (`*--`), and associations (`-->`).
+    - **Method 2: `GenerateSequenceDiagram(CodeComponent entryPoint, CallGraph graph)`**:
+        - Trace the call graph from the entry point (up to a depth of 3-5).
+        - Generate Mermaid `sequenceDiagram` syntax (`A->>B: Call()`).
 
-1. Implement diagram generation
-2. Create visual synthesis system
-3. Integrate visual artifacts into documentation
-
-## Task
-Generate the necessary code to implement visual artifact generation. Follow these steps:
-
-### Step 1: Create Visualization Project
-- Create new project: `codeMRI.Visualization`
-- Add Mermaid.js integration
-- Add dependency on `codeMRI.Core`
-
-### Step 2: Implement Diagram Generation
-- Create architecture diagram generator
-- Implement data flow visualization
-- Add sequence diagram generation
-- Create component diagram support
-
-### Step 3: Implement Visual Synthesis
-- Create diagram composition service
-- Implement layout optimization
-- Add responsive design system
-- Implement theme support
-
-### Step 4: Integration
-- Update documentation templates to include diagrams
-- Implement diagram caching
-- Add versioning support
-- Add accessibility features
+2.  **Integrate into `WikiGenerationService`**:
+    - Update `codeMRI.Core/Services/WikiGenerationService.cs` to inject `IDiagramGenerator`.
+    - In `GeneratePageAsync`, call the generator for the current module.
+    - Append the generated Mermaid markdown block to the page content.
 
 ## Constraints
-- Use C# 10+ for backend
-- Use TypeScript for frontend components
-- Follow existing code style
-- Add comprehensive documentation
-- Include unit and integration tests
+- Use **Mermaid.js** syntax.
+- Ensure the output is valid Markdown (wrapped in ````mermaid` blocks).
+- Handle cases where dependency data is missing (fail gracefully or return empty string).
 
-## Expected Output
-- New visualization project
-- Diagram generation services
-- Visual synthesis system
-- Integration with documentation pipeline
-- Test coverage
+## Input Files
+- `codeMRI.Visualization/Services/DiagramGeneratorService.cs` (New)
+- `codeMRI.Core/Services/WikiGenerationService.cs`
+- `codeMRI.Core/Models/ModuleTree.cs`
 
-## Example Structure
-```csharp
-// DiagramGeneratorService.cs
-public class DiagramGeneratorService
-{
-    public async Task<string> GenerateArchitectureDiagram(ModuleTree moduleTree)
-    {
-        // Generate Mermaid.js code for architecture diagram
-    }
-    
-    public async Task<string> GenerateDataFlow(CodeComponent component)
-    {
-        // Generate data flow diagram
-    }
-}
-```
-
-Now, please generate the complete implementation following these guidelines.
+Generate the C# code for the new service and the update to the existing service.

@@ -1,78 +1,31 @@
-# LLM Prompt: Implement Multi-Agent Architecture
+You are an expert software architect and developer. Your task is to implement the **Complexity-Based Dynamic Delegation** logic for the Multi-Agent System in `codeMRI`.
 
 ## Context
-You are an AI assistant tasked with implementing a multi-agent architecture for the CodeWiki documentation generation system. The system currently has a monolithic pipeline that needs to be refactored into a dynamic, scalable multi-agent system.
+The current `BaseAgent` and `AgentCoordinator` support basic delegation, but lack the specific logic described in the CodeWiki paper. We need agents to **analyze code complexity** and **automatically delegate** tasks when a module is too complex or large.
 
-## Implementation Plan
-Based on the implementation plan in `docs/implementation_plans/01_multi_agent_architecture.md`, you need to:
+## Objectives
+1.  **Modify `codeMRI.Agents/Agents/BaseAgent.cs`**:
+    - Implement `ShouldDelegate(AgentTask task)` to return a `DelegationRequest` if metrics exceed thresholds.
+    - Add a method `CalculateComplexity(string code)` (or call a service) to get:
+        - Token Count
+        - Cyclomatic Complexity (approximate or via AST service)
+        - Nesting Depth
 
-1. Create the agent roles and interfaces
-2. Implement agent communication
-3. Add dynamic delegation
-4. Set up agent lifecycle management
+2.  **Modify `codeMRI.Agents/Services/AgentCoordinator.cs`**:
+    - Ensure it handles the recursive creation of sub-agents when a `DelegationRequest` is received.
+    - Update the `ModuleTree` (conceptually) if delegation results in splitting a module (though for now, just delegating to a "Sub-Agent" for the same module or sub-parts is sufficient).
 
-## Task
-Generate the necessary code and configuration files to implement the multi-agent architecture. Follow these steps:
-
-### Step 1: Create Project Structure
-- Create new project: `codeMRI.Agents`
-- Add references to `codeMRI.Core` and `codeMRI.Infrastructure`
-
-### Step 2: Define Core Interfaces
-Create the following interfaces in `codeMRI.Agents/Interfaces/`:
-- `IAgent.cs`
-- `IAgentCoordinator.cs`
-- `IAgentFactory.cs`
-
-### Step 3: Implement Agent Roles
-Create the following agent implementations in `codeMRI.Agents/Agents/`:
-- `AnalyzerAgent.cs`
-- `DocumenterAgent.cs`
-- `SynthesizerAgent.cs`
-- `ValidatorAgent.cs`
-
-### Step 4: Implement Communication
-- Create `AgentMessageBus.cs` for inter-agent communication
-- Implement message types in `codeMRI.Agents/Models/`
-- Add serialization support
-
-### Step 5: Implement Dynamic Delegation
-- Create `DelegationService.cs`
-- Implement complexity assessment
-- Add delegation tracking
-
-### Step 6: Update Documentation Pipeline
-Modify `DocumentationGenerationPipeline.cs` to use the new agent system.
-
-### Step 7: Add Configuration
-Create configuration files for agent settings.
+3.  **Configuration**:
+    - Add constants or settings for `MaxTokens = 2000`, `MaxComplexity = 10`.
 
 ## Constraints
-- Use C# 10+
-- Follow existing code style
-- Add XML documentation
-- Include unit tests
-- Ensure thread safety
+- Use the existing `IAgent`, `AgentTask`, and `DelegationRequest` classes.
+- Keep the implementation generic enough to apply to `DocumenterAgent`.
+- Mock the AST/Complexity calculation if the external service is not fully ready, but structure the code to call it.
 
-## Expected Output
-The complete implementation of the multi-agent system, including:
-- Agent interfaces and implementations
-- Message bus system
-- Delegation logic
-- Updated documentation pipeline
-- Unit tests
-- Configuration files
+## Input Files
+- `codeMRI.Agents/Agents/BaseAgent.cs`
+- `codeMRI.Agents/Services/AgentCoordinator.cs`
+- `codeMRI.Agents/Models/AgentModels.cs`
 
-## Example Structure
-```csharp
-// IAgent.cs
-public interface IAgent
-{
-    string Id { get; }
-    Task<AgentResult> ExecuteAsync(AgentTask task, CancellationToken cancellationToken);
-    bool CanHandle(AgentTask task);
-    Task<DelegationRequest> ShouldDelegate(AgentTask task, CancellationToken cancellationToken);
-}
-```
-
-Now, please generate the complete implementation following these guidelines.
+Generate the C# code to update these files.
