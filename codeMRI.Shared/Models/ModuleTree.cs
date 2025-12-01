@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace codeMRI.Core.Models
+namespace codeMRI.Shared.Models
 {
     /// <summary>
     /// Represents a hierarchical tree of modules in a codebase
@@ -148,5 +148,16 @@ namespace codeMRI.Core.Models
         public ComponentRelationshipType Type { get; set; }
         public double Strength { get; set; } = 1.0;
         public string? Description { get; set; }
+    }
+
+    public class ModuleQualityMetrics
+    {
+        public double Cohesion { get; set; }
+        public double Coupling { get; set; }
+        public double Complexity { get; set; }
+        public double Instability { get; set; }
+        public double Abstractness { get; set; }
+        public double DistanceFromMainSequence { get; set; }
+        public double MaintainabilityIndex { get; set; }
     }
 }

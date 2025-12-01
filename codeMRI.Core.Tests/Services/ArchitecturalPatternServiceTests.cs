@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Shared.Models;
 using codeMRI.Core.Services;
 using Moq;
 using NUnit.Framework;

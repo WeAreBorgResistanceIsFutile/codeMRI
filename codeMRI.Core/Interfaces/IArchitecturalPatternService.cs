@@ -1,4 +1,5 @@
 using codeMRI.Core.Models;
+using codeMRI.Shared.Models;
 
 namespace codeMRI.Core.Interfaces
 {

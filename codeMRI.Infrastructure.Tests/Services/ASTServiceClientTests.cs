@@ -82,7 +82,7 @@ public class ASTServiceClientTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result.Language, Is.EqualTo("csharp"));
+        Assert.That(result!.Language, Is.EqualTo("csharp"));
         Assert.That(result.FilePath, Is.EqualTo("test.cs"));
         
         // Verify dependencies were mapped correctly

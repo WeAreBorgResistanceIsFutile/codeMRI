@@ -1,7 +1,9 @@
-using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
+using codeMRI.Shared.Models;
+using codeMRI.Visualization.Interfaces;
 using codeMRI.Visualization.Services;
 using NUnit.Framework;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace codeMRI.Visualization.Tests.Generators
 {

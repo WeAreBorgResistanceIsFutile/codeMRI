@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Shared.Models; // Added
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;

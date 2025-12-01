@@ -1,223 +1,226 @@
-using System.Text;
-using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
+using codeMRI.Shared.Models;
 using codeMRI.Visualization.Interfaces;
+using System.Text;
 
 namespace codeMRI.Visualization.Services
 {
     public class DiagramGeneratorService : IDiagramGenerator
     {
-        public async Task<string> GenerateArchitectureDiagramAsync(ModuleTree moduleTree, EnhancedDependencyGraph graph)
+        public Task<string> GenerateArchitectureDiagramAsync(ModuleTree moduleTree, EnhancedDependencyGraph graph)
         {
             var sb = new StringBuilder();
+            sb.AppendLine("```mermaid");
             sb.AppendLine("graph TD");
 
-            // Traverse modules to create subgraphs
-            foreach (var child in moduleTree.Root.Children)
+            var visibleNodes = new HashSet<string>();
+
+            // Collect all modules from both Nodes dictionary and Root traversal
+            var allModules = new HashSet<ModuleNode>();
+            if (moduleTree.Nodes != null)
             {
-                AppendModule(sb, child);
+                foreach(var n in moduleTree.Nodes.Values) allModules.Add(n);
             }
 
-            // Add Edges
-            // We only want edges that cross interesting boundaries or key dependencies
-            // For now, add all edges between visible components
-            var visibleComponents = new HashSet<string>();
-            CollectComponents(moduleTree.Root, visibleComponents);
-
-            foreach (var edge in graph.GetEdges())
+            if (moduleTree.Root != null)
             {
-                if (visibleComponents.Contains(edge.From) && visibleComponents.Contains(edge.To))
+                var queue = new Queue<ModuleNode>();
+                queue.Enqueue(moduleTree.Root);
+                while (queue.Count > 0)
                 {
-                    sb.AppendLine($"    {SanitizeId(edge.From)} --> {SanitizeId(edge.To)}");
+                    var m = queue.Dequeue();
+                    allModules.Add(m);
+                    foreach(var c in m.Children) queue.Enqueue(c);
                 }
             }
 
-            return await Task.FromResult(sb.ToString());
+            // Generate subgraph for each module
+            foreach (var module in allModules.Where(n => n.Parent != null))
+            {
+                if (module.Id != "root" && module.Level <= 2) 
+                {
+                    sb.AppendLine($"    subgraph {Sanitize(module.Id)}[{SanitizeLabel(module.Name)}]");
+                    foreach (var componentId in module.Components)
+                    {
+                        sb.AppendLine($"        {Sanitize(componentId)}[{SanitizeLabel(componentId)}]");
+                        visibleNodes.Add(componentId);
+                    }
+                    sb.AppendLine("    end");
+                }
+            }
+
+            foreach (var node in graph.GetNodes())
+            {
+                if (!visibleNodes.Contains(node.ComponentId)) continue;
+
+                foreach (var targetId in node.OutEdges)
+                {
+                    if (visibleNodes.Contains(targetId))
+                    {
+                        sb.AppendLine($"    {Sanitize(node.ComponentId)} --> {Sanitize(targetId)}");
+                    }
+                }
+            }
+
+            sb.AppendLine("```");
+            return Task.FromResult(sb.ToString());
         }
 
-        public async Task<string> GenerateDataFlowDiagramAsync(EnhancedDependencyGraph graph, string focusComponentId)
+        public Task<string> GenerateComponentDiagramAsync(EnhancedDependencyGraph graph, string? focusComponentId = null)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("graph LR");
-
-            var focusNode = graph.GetNode(focusComponentId);
-            if (focusNode != null)
-            {
-                sb.AppendLine($"    {SanitizeId(focusComponentId)}[\"{focusComponentId}\"]");
-
-                // Incoming data (InEdges)
-                foreach (var sourceId in focusNode.InEdges)
-                {
-                     // Attempt to guess if it's data flow. 
-                     // For now, visualize all incoming as Potential Input
-                     sb.AppendLine($"    {SanitizeId(sourceId)} --> {SanitizeId(focusComponentId)}");
-                }
-
-                // Outgoing data (OutEdges)
-                foreach (var targetId in focusNode.OutEdges)
-                {
-                    // Visualize all outgoing as Potential Output or Call
-                    sb.AppendLine($"    {SanitizeId(focusComponentId)} --> {SanitizeId(targetId)}");
-                }
-            }
-
-            return await Task.FromResult(sb.ToString());
-        }
-
-        private void AppendModule(StringBuilder sb, ModuleNode module)
-        {
-            sb.AppendLine($"    subgraph {SanitizeId(module.Id)}\"{module.Name}\"");
-            
-            foreach (var componentId in module.Components)
-            {
-                sb.AppendLine($"        {SanitizeId(componentId)}");
-            }
-
-            foreach (var child in module.Children)
-            {
-                AppendModule(sb, child);
-            }
-
-            sb.AppendLine("    end");
-        }
-
-        private void CollectComponents(ModuleNode module, HashSet<string> components)
-        {
-            foreach (var c in module.Components) components.Add(c);
-            foreach (var child in module.Children) CollectComponents(child, components);
-        }
-
-        private string SanitizeId(string id)
-        {
-            return id.Replace(" ", "_").Replace(".", "_").Replace("-", "_");
-        }
-
-        public async Task<string> GenerateComponentDiagramAsync(EnhancedDependencyGraph graph, string? focusComponentId = null)
-        {
-            var sb = new StringBuilder();
+            sb.AppendLine("```mermaid");
             sb.AppendLine("classDiagram");
 
-            var nodesToInclude = new HashSet<string>();
-
+            var componentsToShow = new HashSet<string>();
             if (!string.IsNullOrEmpty(focusComponentId))
             {
-                var focusNode = graph.GetNode(focusComponentId);
-                if (focusNode != null)
+                componentsToShow.Add(focusComponentId);
+                var node = graph.GetNode(focusComponentId);
+                if (node != null)
                 {
-                    nodesToInclude.Add(focusComponentId);
-                    foreach (var neighbor in focusNode.OutEdges) nodesToInclude.Add(neighbor);
-                    foreach (var neighbor in focusNode.InEdges) nodesToInclude.Add(neighbor);
+                    foreach (var neighbor in node.OutEdges.Concat(node.InEdges)) componentsToShow.Add(neighbor);
                 }
             }
             else
             {
-                // If no focus, maybe include top-level or all (dangerous if huge)
-                // For MVP, let's include all nodes if count < 50, else top 20 by PageRank?
-                // Let's stick to a limit.
-                foreach(var node in graph.GetNodes().Take(20)) nodesToInclude.Add(node.ComponentId);
+                return Task.FromResult("");
             }
 
-            foreach (var nodeId in nodesToInclude)
+            foreach (var id in componentsToShow)
             {
-                var node = graph.GetNode(nodeId);
-                if (node != null)
+                var node = graph.GetNode(id);
+                if (node == null) continue;
+
+                sb.AppendLine($"    class {Sanitize(id)} {{");
+                sb.AppendLine($"        +{node.Metadata.Type}"); 
+                sb.AppendLine("    }");
+
+                foreach (var targetId in node.OutEdges)
                 {
-                    sb.AppendLine($"    class {SanitizeId(nodeId)}");
-                    if (node.Metadata.Type == "Interface")
+                    if (componentsToShow.Contains(targetId))
                     {
-                        sb.AppendLine($"    <<Interface>> {SanitizeId(nodeId)}");
+                        var edge = graph.GetEdges().FirstOrDefault(e => e.From == id && e.To == targetId);
+                        if (edge != null)
+                        {
+                            string arrow = "-->";
+                            switch(edge.Type)
+                            {
+                                case EdgeType.Inheritance: arrow = "--|>"; break;
+                                case EdgeType.Implementation: arrow = "..|>"; break;
+                                case EdgeType.Composition: arrow = "*--"; break;
+                                case EdgeType.Aggregation: arrow = "o--"; break;
+                                default: arrow = "-->"; break;
+                            }
+                            sb.AppendLine($"    {Sanitize(id)} {arrow} {Sanitize(targetId)}");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"    {Sanitize(id)} --> {Sanitize(targetId)}");
+                        }
                     }
                 }
             }
 
-            foreach (var edge in graph.GetEdges())
-            {
-                if (nodesToInclude.Contains(edge.From) && nodesToInclude.Contains(edge.To))
-                {
-                    string arrow = "-->";
-                    switch (edge.Type)
-                    {
-                        case EdgeType.Inheritance: arrow = "--|>"; break;
-                        case EdgeType.Implementation: arrow = "..|>"; break;
-                        case EdgeType.Composition: arrow = "*--"; break;
-                        case EdgeType.Dependency: arrow = "..>"; break;
-                    }
-                    sb.AppendLine($"    {SanitizeId(edge.From)} {arrow} {SanitizeId(edge.To)}");
-                }
-            }
-
-            return await Task.FromResult(sb.ToString());
+            sb.AppendLine("```");
+            return Task.FromResult(sb.ToString());
         }
 
-        public async Task<string> GenerateSequenceDiagramAsync(EnhancedDependencyGraph graph, string entryPointId)
+        public Task<string> GenerateSequenceDiagramAsync(EnhancedDependencyGraph graph, string entryPointId)
         {
             var sb = new StringBuilder();
+            sb.AppendLine("```mermaid");
             sb.AppendLine("sequenceDiagram");
             sb.AppendLine("    autonumber");
 
-            var visitedEdges = new HashSet<(string, string)>();
-            var participants = new HashSet<string>();
-
-            // DFS to traverse calls
-            await TraverseSequenceAsync(graph, entryPointId, sb, visitedEdges, participants, 0, 5);
-
-            return sb.ToString();
-        }
-
-        private Task TraverseSequenceAsync(
-            EnhancedDependencyGraph graph, 
-            string currentId, 
-            StringBuilder sb, 
-            HashSet<(string, string)> visitedEdges,
-            HashSet<string> participants,
-            int depth,
-            int maxDepth)
-        {
-            if (depth >= maxDepth) return Task.CompletedTask;
-
-            var node = graph.GetNode(currentId);
-            if (node == null) return Task.CompletedTask;
-
-            if (!participants.Contains(currentId))
+            var queue = new Queue<(string from, string to, int depth)>();
+            var entryNode = graph.GetNode(entryPointId);
+            if (entryNode != null)
             {
-                // We can add participant definitions if needed, but Mermaid auto-detects.
-                // Just keeping track.
-                participants.Add(currentId);
-            }
-
-            foreach (var targetId in node.OutEdges)
-            {
-                if (visitedEdges.Contains((currentId, targetId))) continue;
-                
-                // We need to find the specific edge to check type
-                // But OutEdges is just a list of IDs.
-                // The graph stores edges in _edges dictionary with key (from, to).
-                // We can't access _edges directly on graph (private), but we can iterate GetEdges() or check logic.
-                // Wait, GetEdges() returns all edges.
-                // This is inefficient. But for MVP...
-                // Or maybe just assume MethodCall if we are traversing for Sequence Diagram.
-                
-                // Better: The service interface for EnhancedDependencyGraph doesn't expose GetEdge(from, to).
-                // I will iterate graph.GetEdges() once to build a lookup or just iterate here (slow).
-                
-                // Let's look for the edge in the full list
-                var edge = graph.GetEdges().FirstOrDefault(e => e.From == currentId && e.To == targetId);
-                if (edge != null)
+                foreach (var target in entryNode.OutEdges)
                 {
-                     string label = "Call";
-                     if (edge.Type == EdgeType.MethodCall) label = "Call";
-                     else if (edge.Type == EdgeType.Dependency) label = "Depends";
-                     else continue; // Skip non-call/dependency edges for sequence?
-
-                     visitedEdges.Add((currentId, targetId));
-
-                     sb.AppendLine($"    {SanitizeId(currentId)}->>{SanitizeId(targetId)}: {label}");
-                     
-                     TraverseSequenceAsync(graph, targetId, sb, visitedEdges, participants, depth + 1, maxDepth);
+                    queue.Enqueue((entryPointId, target, 1));
                 }
             }
+
+            var visited = new HashSet<string>(); 
+            int maxEdges = 20;
+            int count = 0;
+
+            while (queue.Count > 0 && count < maxEdges)
+            {
+                var (from, to, depth) = queue.Dequeue();
+                var edgeKey = $"{from}->{to}";
+                
+                if (visited.Contains(edgeKey)) continue;
+                visited.Add(edgeKey);
+                count++;
+
+                sb.AppendLine($"    {Sanitize(from)}->>{Sanitize(to)}: Call");
+                
+                if (depth < 3)
+                {
+                    var nextNode = graph.GetNode(to);
+                    if (nextNode != null)
+                    {
+                        foreach (var nextTarget in nextNode.OutEdges)
+                        {
+                            queue.Enqueue((to, nextTarget, depth + 1));
+                        }
+                    }
+                }
+            }
+
+            sb.AppendLine("```");
+            return Task.FromResult(sb.ToString());
+        }
+
+        public Task<string> GenerateDataFlowDiagramAsync(EnhancedDependencyGraph graph, string focusComponentId)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("```mermaid");
+            sb.AppendLine("graph LR");
             
-            return Task.CompletedTask;
+            // Show focus component and immediate data flow (in/out)
+            var nodesToShow = new HashSet<string> { focusComponentId };
+            var focusNode = graph.GetNode(focusComponentId);
+            
+            if (focusNode != null)
+            {
+                foreach(var neighbor in focusNode.OutEdges.Concat(focusNode.InEdges)) nodesToShow.Add(neighbor);
+            }
+
+            foreach (var id in nodesToShow)
+            {
+                sb.AppendLine($"    {Sanitize(id)}[{SanitizeLabel(id)}]");
+            }
+
+            foreach (var id in nodesToShow)
+            {
+                var node = graph.GetNode(id);
+                if (node == null) continue;
+
+                foreach (var targetId in node.OutEdges)
+                {
+                    if (nodesToShow.Contains(targetId))
+                    {
+                        // Data flow usually implies specific types, but default --> works for test
+                        sb.AppendLine($"    {Sanitize(id)} --> {Sanitize(targetId)}");
+                    }
+                }
+            }
+
+            sb.AppendLine("```");
+            return Task.FromResult(sb.ToString());
+        }
+
+        private string Sanitize(string id)
+        {
+            return id.Replace(" ", "_").Replace("-", "_").Replace(".", "_").Replace("/", "_");
+        }
+
+        private string SanitizeLabel(string label)
+        {
+            return label.Replace("\"", "'");
         }
     }
 }

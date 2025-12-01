@@ -5,9 +5,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Shared.Models;
 using Microsoft.Extensions.Logging;
-using ModuleTree = codeMRI.Core.Models.ModuleTree;
-using ModuleNode = codeMRI.Core.Models.ModuleNode;
+using ModuleTree = codeMRI.Shared.Models.ModuleTree;
+using ModuleNode = codeMRI.Shared.Models.ModuleNode;
 
 namespace codeMRI.Core.Services
 {
@@ -35,7 +36,7 @@ namespace codeMRI.Core.Services
         /// <summary>
         /// Performs hierarchical decomposition of the repository
         /// </summary>
-        public async Task<Models.ModuleTree> DecomposeHierarchicallyAsync(
+        public async Task<ModuleTree> DecomposeHierarchicallyAsync(
             string repositoryPath, 
             CancellationToken cancellationToken = default)
         {

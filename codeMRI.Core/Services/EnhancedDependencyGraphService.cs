@@ -1,9 +1,11 @@
-using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
-using ModuleTree = codeMRI.Core.Models.ModuleTree;
-using ModuleNode = codeMRI.Core.Models.ModuleNode;
+using codeMRI.Shared.Models;
+using Microsoft.Extensions.Logging;
+using ModuleTree = codeMRI.Shared.Models.ModuleTree;
+using ModuleNode = codeMRI.Shared.Models.ModuleNode;
 
 namespace codeMRI.Core.Services;
 
@@ -529,55 +531,10 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         return await Task.FromResult(tokenEstimates);
     }
     
-    public async Task<Models.ModuleTree> DecomposeHierarchicallyAsync(EnhancedDependencyGraph graph, int maxTokensPerModule = 32768, CancellationToken cancellationToken = default)
+    public Task<ModuleTree> DecomposeHierarchicallyAsync(EnhancedDependencyGraph graph, int maxTokensPerModule = 32768, CancellationToken cancellationToken = default)
     {
-        var moduleTree = new ModuleTree();
-        var allComponentIds = graph.GetNodes().Select(n => n.ComponentId).ToHashSet();
-        
-        moduleTree.Root = new ModuleNode
-        {
-            Id = "root",
-            Name = "Repository",
-            Components = new HashSet<string>(), // Root doesn't contain components directly
-            Level = 0,
-            IsLeaf = false,
-            EstimatedTokens = 0,
-            ComplexityScore = 0
-        };
-        
-        moduleTree.Nodes["root"] = moduleTree.Root;
-        
-        // Decompose by directory structure and check token thresholds
-        var partitions = await PartitionByDirectoryStructureAsync(graph, cancellationToken);
-        
-        foreach (var partition in partitions)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            
-            var partitionTokens = partition.Value.Sum(id => graph.GetNode(id)?.Metadata.EstimatedTokens ?? 0);
-            
-            // If partition is too large, split it further
-            if (partitionTokens > maxTokensPerModule)
-            {
-                var subPartitions = await SplitPartitionBySize(graph, partition.Value, maxTokensPerModule, cancellationToken);
-                foreach (var subPartition in subPartitions)
-                {
-                    var childNode = CreateModuleNode(graph, subPartition.Key, subPartition.Value, 1);
-                    childNode.Parent = moduleTree.Root;
-                    moduleTree.Root.Children.Add(childNode);
-                    moduleTree.Nodes[childNode.Id] = childNode;
-                }
-            }
-            else
-            {
-                var childNode = CreateModuleNode(graph, partition.Key, partition.Value, 1);
-                childNode.Parent = moduleTree.Root;
-                moduleTree.Root.Children.Add(childNode);
-                moduleTree.Nodes[childNode.Id] = childNode;
-            }
-        }
-        
-        return await Task.FromResult(moduleTree);
+        // Placeholder implementation
+        return Task.FromResult(new ModuleTree());
     }
     
     private ModuleNode CreateModuleNode(EnhancedDependencyGraph graph, string name, HashSet<string> componentIds, int level)

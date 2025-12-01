@@ -1,5 +1,6 @@
 using codeMRI.Agents.Models;
 using codeMRI.Core.Models;
+using codeMRI.Shared.Models;
 using codeMRI.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 

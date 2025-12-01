@@ -1,10 +1,11 @@
-using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
+using codeMRI.Shared.Models;
 using codeMRI.Visualization.Interfaces;
-using codeMRI.Visualization.Models;
 using codeMRI.Visualization.Services;
+using codeMRI.Visualization.Models;
 using Moq;
 using NUnit.Framework;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace codeMRI.Visualization.Tests.Services
 {

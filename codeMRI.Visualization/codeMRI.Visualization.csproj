@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj" />
     <ProjectReference Include="..\codeMRI.Shared\codeMRI.Shared.csproj" />
   </ItemGroup>
 

@@ -1,10 +1,12 @@
+using codeMRI.Shared.Models;
+
 namespace codeMRI.Visualization.Interfaces
 {
     public interface IDiagramGenerator
     {
-        Task<string> GenerateArchitectureDiagramAsync(Core.Models.ModuleTree moduleTree, Core.Interfaces.EnhancedDependencyGraph graph);
-        Task<string> GenerateComponentDiagramAsync(Core.Interfaces.EnhancedDependencyGraph graph, string? focusComponentId = null);
-        Task<string> GenerateSequenceDiagramAsync(Core.Interfaces.EnhancedDependencyGraph graph, string entryPointId);
-        Task<string> GenerateDataFlowDiagramAsync(Core.Interfaces.EnhancedDependencyGraph graph, string focusComponentId);
+        Task<string> GenerateArchitectureDiagramAsync(ModuleTree moduleTree, EnhancedDependencyGraph graph);
+        Task<string> GenerateComponentDiagramAsync(EnhancedDependencyGraph graph, string? focusComponentId = null);
+        Task<string> GenerateSequenceDiagramAsync(EnhancedDependencyGraph graph, string entryPointId);
+        Task<string> GenerateDataFlowDiagramAsync(EnhancedDependencyGraph graph, string focusComponentId);
     }
 }

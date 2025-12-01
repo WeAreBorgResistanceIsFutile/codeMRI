@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\codeMRI.Shared\codeMRI.Shared.csproj" />
+    <ProjectReference Include="..\codeMRI.Visualization\codeMRI.Visualization.csproj" />
   </ItemGroup>
 
   <ItemGroup>

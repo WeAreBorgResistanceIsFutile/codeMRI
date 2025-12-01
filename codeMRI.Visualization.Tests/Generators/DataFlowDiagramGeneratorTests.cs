@@ -1,5 +1,5 @@
 using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
+using codeMRI.Shared.Models;
 using codeMRI.Visualization.Services;
 using NUnit.Framework;
 
