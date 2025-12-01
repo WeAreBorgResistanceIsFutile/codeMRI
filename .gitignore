@@ -22,5 +22,9 @@
 /codeMRI.Agents/obj/
 /codeMRI.Agents.Tests/bin/
 /codeMRI.Agents.Tests/obj/
+/codeMRI.Visualization/bin/
+/codeMRI.Visualization/obj/
+/codeMRI.Visualization.Tests/bin/
+/codeMRI.Visualization.Tests/obj/
 /data/
 

@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj" />
     <ProjectReference Include="..\codeMRI.Infrastructure\codeMRI.Infrastructure.csproj" />
+    <ProjectReference Include="..\codeMRI.Visualization\codeMRI.Visualization.csproj" />
   </ItemGroup>
 
   <ItemGroup>

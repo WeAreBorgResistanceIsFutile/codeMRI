@@ -3,6 +3,7 @@ using codeMRI.Agents.Models;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Shared.Models;
+using codeMRI.Visualization.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Agents.Services;
@@ -10,13 +11,22 @@ namespace codeMRI.Agents.Services;
 public class DocumentationGenerationPipeline : IDocumentationGenerationPipeline
 {
     private readonly IAgentCoordinator _coordinator;
+    private readonly IVisualSynthesisService _visualSynthesisService;
+    private readonly IEnhancedDependencyGraphService _graphService;
+    private readonly IHierarchicalDecompositionService _decompositionService;
     private readonly ILogger<DocumentationGenerationPipeline> _logger;
 
     public DocumentationGenerationPipeline(
         IAgentCoordinator coordinator,
+        IVisualSynthesisService visualSynthesisService,
+        IEnhancedDependencyGraphService graphService,
+        IHierarchicalDecompositionService decompositionService,
         ILogger<DocumentationGenerationPipeline> logger)
     {
         _coordinator = coordinator;
+        _visualSynthesisService = visualSynthesisService;
+        _graphService = graphService;
+        _decompositionService = decompositionService;
         _logger = logger;
     }
 
@@ -37,20 +47,24 @@ public class DocumentationGenerationPipeline : IDocumentationGenerationPipeline
             throw new Exception($"Analysis failed: {string.Join(", ", analysisResult.Errors)}");
         }
 
-        // Extract components from result (assuming specific structure from AnalyzerAgent)
-        // The AnalyzerAgent returns { Structure, Components } via anonymous type, checking JSON/dynamic serialization might be needed if across process,
-        // but here it's in-memory. However, anonymous types are tricky.
-        // Let's assume AnalyzerAgent returns a typed object or we cast carefully.
-        // AnalyzerAgent used `new { Structure = structure, Components = components }`
-        
-        // Improvement: Update AnalyzerAgent to return a strongly typed Result object or Dictionary.
-        // For now, using reflection to extract or assuming we can refactor AnalyzerAgent later.
-        // To be safe, let's refactor AnalyzerAgent to return a dictionary or specific DTO?
-        // Or just use dynamic.
-        
         var data = (AnalysisResult)analysisResult.Output!;
         var components = data.Components;
         var structure = data.Structure;
+
+        // 1.5 Build Graph and Tree for Visualization
+        // Note: Ideally AnalyzerAgent should return the graph, but for now we rebuild it or assume AnalyzerAgent logic matches.
+        // To ensure consistency, we use the services.
+        var graph = await _graphService.BuildGraphAsync(components, CancellationToken.None);
+        // Run analysis to populate metrics needed for visualization (PageRank etc)
+        await _graphService.AnalyzeGraphAsync(graph, CancellationToken.None); 
+        
+        var moduleTree = await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, CancellationToken.None);
+        // Note: DecomposeHierarchicallyAsync currently re-scans components internally. 
+        // We should optimize this later to reuse components/graph.
+        // But for now, we have the visual models.
+
+        // Generate Visual Artifacts
+        var artifacts = await _visualSynthesisService.GenerateArtifactsAsync(moduleTree, graph);
 
         // 2. Document Components
         var wikiPages = new List<WikiPage>();
@@ -64,6 +78,17 @@ public class DocumentationGenerationPipeline : IDocumentationGenerationPipeline
             var docResult = await _coordinator.CoordinateTaskAsync(docTask, CancellationToken.None);
             if (docResult.Success && docResult.Output is WikiPage page)
             {
+                // Embed Component Diagram if available
+                if (artifacts.ComponentDiagrams.TryGetValue(component.Id, out var compDiagram))
+                {
+                    page.Content += "\n\n## Component Structure\n\n```mermaid\n" + compDiagram + "\n```";
+                }
+                // Embed Sequence Diagram if available (Entry Point)
+                if (artifacts.SequenceDiagrams.TryGetValue(component.Id, out var seqDiagram))
+                {
+                    page.Content += "\n\n## Interaction Sequence\n\n```mermaid\n" + seqDiagram + "\n```";
+                }
+
                 wikiPages.Add(page);
             }
         }
@@ -78,6 +103,15 @@ public class DocumentationGenerationPipeline : IDocumentationGenerationPipeline
 
         if (synthResult.Success && synthResult.Output is WikiStructure wikiStructure)
         {
+            // Embed Architecture Diagram in Root/Home Page
+            // Assuming Synthesizer creates a Home/Index page or we add it to description/intro
+            // For now, lets append it to the Description of the structure or a main page if found
+            
+            // Let's assume the first page or a page named "Home" or "Index"
+            // Or better, we can add it to the wikiStructure metadata or description if format allows.
+            // Markdown:
+            wikiStructure.Description += "\n\n## System Architecture\n\n```mermaid\n" + artifacts.ArchitectureDiagram + "\n```";
+
             return wikiStructure;
         }
 
