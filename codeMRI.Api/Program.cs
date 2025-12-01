@@ -5,6 +5,8 @@ using codeMRI.Infrastructure.Services;
 using codeMRI.Agents.Services;
 using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Agents;
+using codeMRI.Visualization.Interfaces;
+using codeMRI.Visualization.Services;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
 
@@ -59,6 +61,10 @@ builder.Services.AddScoped<RAGService>();
 builder.Services.AddScoped<WikiGenerationService>();
 builder.Services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
 builder.Services.AddScoped<IDocumentationGenerationPipeline, DocumentationGenerationPipeline>();
+
+// Visualization Services
+builder.Services.AddScoped<IDiagramGenerator, DiagramGeneratorService>();
+builder.Services.AddScoped<IVisualSynthesisService, VisualSynthesisService>();
 
 // CORS
 builder.Services.AddCors(options =>
