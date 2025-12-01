@@ -1,12 +1,13 @@
 const Parser = require('tree-sitter');
-const Python = require('tree-sitter-python');
-const JavaScript = require('tree-sitter-javascript');
+// Temporarily disabled parsers due to ARM64 compatibility issues
+// const Python = require('tree-sitter-python').language;
+// const JavaScript = require('tree-sitter-javascript').language;
 const TypeScript = require('tree-sitter-typescript');
-const SQL = require('tree-sitter-sql');
-const Java = require('tree-sitter-java');
-const C = require('tree-sitter-c');
-const Cpp = require('tree-sitter-cpp');
-const CSharp = require('tree-sitter-c-sharp');
+// const SQL = require('tree-sitter-sql').language;
+// const Java = require('tree-sitter-java').language;
+// const C = require('tree-sitter-c').language;
+// const Cpp = require('tree-sitter-cpp').language;
+// const CSharp = require('tree-sitter-c-sharp').language;
 const _ = require('lodash');
 const { v4: uuidv4 } = require('uuid');
 
@@ -17,61 +18,49 @@ class ParserService {
     }
 
     initializeParsers() {
-        // Initialize Python parser
-        const pythonParser = new Parser();
-        pythonParser.setLanguage(Python);
-        this.parsers.set('python', pythonParser);
-        this.parsers.set('py', pythonParser);
+        console.log('Initializing parsers...');
+        
+        // Temporarily disabled due to ARM64 compatibility issues
+        console.log('Python parser disabled (ARM64 compatibility issues)');
+        console.log('JavaScript parser disabled (ARM64 compatibility issues)');
 
-        // Initialize JavaScript parser
-        const javascriptParser = new Parser();
-        javascriptParser.setLanguage(JavaScript);
-        this.parsers.set('javascript', javascriptParser);
-        this.parsers.set('js', javascriptParser);
+        try {
+            // Initialize TypeScript parser
+            console.log('Initializing TypeScript parser...');
+            const typescriptParser = new Parser();
+            typescriptParser.setLanguage(TypeScript.typescript);
+            this.parsers.set('typescript', typescriptParser);
+            this.parsers.set('ts', typescriptParser);
+            console.log('TypeScript parser initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize TypeScript parser:', error.message);
+        }
 
-        // Initialize TypeScript parser
-        const typescriptParser = new Parser();
-        typescriptParser.setLanguage(TypeScript.typescript);
-        this.parsers.set('typescript', typescriptParser);
-        this.parsers.set('ts', typescriptParser);
+        try {
+            // Initialize TSX parser
+            console.log('Initializing TSX parser...');
+            const tsxParser = new Parser();
+            tsxParser.setLanguage(TypeScript.tsx);
+            this.parsers.set('tsx', tsxParser);
+            console.log('TSX parser initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize TSX parser:', error.message);
+        }
 
-        // Initialize TSX parser
-        const tsxParser = new Parser();
-        tsxParser.setLanguage(TypeScript.tsx);
-        this.parsers.set('tsx', tsxParser);
+        // SQL parser disabled
+        console.log('SQL parser skipped (ARM64 compatibility issues)');
+        console.log('Java parser disabled (ARM64 compatibility issues)');
 
-        // Initialize SQL parser
-        const sqlParser = new Parser();
-        sqlParser.setLanguage(SQL);
-        this.parsers.set('sql', sqlParser);
+        // Temporarily disabled due to ARM64 compatibility issues
+        console.log('C parser disabled (ARM64 compatibility issues)');
+        console.log('C++ parser disabled (ARM64 compatibility issues)');
+        console.log('C# parser disabled (ARM64 compatibility issues)');
 
-        // Initialize Java parser
-        const javaParser = new Parser();
-        javaParser.setLanguage(Java);
-        this.parsers.set('java', javaParser);
-
-        // Initialize C parser
-        const cParser = new Parser();
-        cParser.setLanguage(C);
-        this.parsers.set('c', cParser);
-
-        // Initialize C++ parser
-        const cppParser = new Parser();
-        cppParser.setLanguage(Cpp);
-        this.parsers.set('cpp', cppParser);
-        this.parsers.set('cxx', cppParser);
-        this.parsers.set('c++', cppParser);
-
-        // Initialize C# parser
-        const csharpParser = new Parser();
-        csharpParser.setLanguage(CSharp);
-        this.parsers.set('csharp', csharpParser);
-        this.parsers.set('cs', csharpParser);
-        this.parsers.set('c#', csharpParser);
+        console.log('Parser initialization complete. Total parsers:', this.parsers.size);
     }
 
     getSupportedLanguages() {
-        return ['python', 'javascript', 'typescript', 'tsx', 'sql', 'java', 'c', 'cpp', 'cxx', 'c++', 'csharp', 'cs', 'c#'];
+        return ['typescript', 'tsx']; // All other parsers temporarily disabled due to ARM64 compatibility issues
     }
 
     async parseCode(code, language, filePath = '') {

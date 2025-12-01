@@ -1,10 +1,14 @@
 services:
   ast-service:
+    build:
+      context: ./codeMRI.ASTService
+      dockerfile: Dockerfile
     image: codemri-ast-service:latest
     container_name: code-mri-ast-service
     ports:
-      - "3000:3000"  # AST service API
+      - "3000:3002"  # AST service API
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
