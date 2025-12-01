@@ -1,13 +1,4 @@
 const Parser = require('tree-sitter');
-// Temporarily disabled parsers due to ARM64 compatibility issues
-// const Python = require('tree-sitter-python').language;
-// const JavaScript = require('tree-sitter-javascript').language;
-const TypeScript = require('tree-sitter-typescript');
-// const SQL = require('tree-sitter-sql').language;
-// const Java = require('tree-sitter-java').language;
-// const C = require('tree-sitter-c').language;
-// const Cpp = require('tree-sitter-cpp').language;
-// const CSharp = require('tree-sitter-c-sharp').language;
 const _ = require('lodash');
 const { v4: uuidv4 } = require('uuid');
 
@@ -17,50 +8,151 @@ class ParserService {
         this.initializeParsers();
     }
 
+    loadLanguage(moduleName, propertyName = 'language') {
+        try {
+            const module = require(moduleName);
+            
+            // Priority 1: Specific property (typescript/tsx) or 'language'
+            if (propertyName && module[propertyName]) {
+                return module[propertyName];
+            }
+            if (module.language) {
+                return module.language;
+            }
+
+            // Priority 2: Default export
+            if (module.default) {
+                return module.default;
+            }
+            
+            // Priority 3: The module itself (if it's a native object/function)
+            if (typeof module === 'object') {
+                return module;
+            }
+
+            return module;
+        } catch (error) {
+            console.error(`Failed to load language module ${moduleName}:`, error.message);
+            return null;
+        }
+    }
+
     initializeParsers() {
         console.log('Initializing parsers...');
         
-        // Temporarily disabled due to ARM64 compatibility issues
-        console.log('Python parser disabled (ARM64 compatibility issues)');
-        console.log('JavaScript parser disabled (ARM64 compatibility issues)');
+        try {
+            console.log('Initializing Python parser...');
+            const pythonLang = this.loadLanguage('tree-sitter-python');
+            if (pythonLang) {
+                const pythonParser = new Parser();
+                pythonParser.setLanguage(pythonLang);
+                this.parsers.set('python', pythonParser);
+                console.log('Python parser initialized successfully');
+            }
+        } catch (error) {
+            console.error('Failed to initialize Python parser:', error.message);
+        }
 
         try {
-            // Initialize TypeScript parser
+            console.log('Initializing JavaScript parser...');
+            const jsLang = this.loadLanguage('tree-sitter-javascript');
+            if (jsLang) {
+                const javascriptParser = new Parser();
+                javascriptParser.setLanguage(jsLang);
+                this.parsers.set('javascript', javascriptParser);
+                this.parsers.set('js', javascriptParser);
+                console.log('JavaScript parser initialized successfully');
+            }
+        } catch (error) {
+            console.error('Failed to initialize JavaScript parser:', error.message);
+        }
+
+        try {
             console.log('Initializing TypeScript parser...');
-            const typescriptParser = new Parser();
-            typescriptParser.setLanguage(TypeScript.typescript);
-            this.parsers.set('typescript', typescriptParser);
-            this.parsers.set('ts', typescriptParser);
-            console.log('TypeScript parser initialized successfully');
+            const tsLang = this.loadLanguage('tree-sitter-typescript', 'typescript');
+            if (tsLang) {
+                const typescriptParser = new Parser();
+                typescriptParser.setLanguage(tsLang);
+                this.parsers.set('typescript', typescriptParser);
+                this.parsers.set('ts', typescriptParser);
+                console.log('TypeScript parser initialized successfully');
+            }
         } catch (error) {
             console.error('Failed to initialize TypeScript parser:', error.message);
         }
 
         try {
-            // Initialize TSX parser
             console.log('Initializing TSX parser...');
-            const tsxParser = new Parser();
-            tsxParser.setLanguage(TypeScript.tsx);
-            this.parsers.set('tsx', tsxParser);
-            console.log('TSX parser initialized successfully');
+            const tsxLang = this.loadLanguage('tree-sitter-typescript', 'tsx');
+            if (tsxLang) {
+                const tsxParser = new Parser();
+                tsxParser.setLanguage(tsxLang);
+                this.parsers.set('tsx', tsxParser);
+                console.log('TSX parser initialized successfully');
+            }
         } catch (error) {
             console.error('Failed to initialize TSX parser:', error.message);
         }
 
-        // SQL parser disabled
-        console.log('SQL parser skipped (ARM64 compatibility issues)');
-        console.log('Java parser disabled (ARM64 compatibility issues)');
+        try {
+            console.log('Initializing Java parser...');
+            const javaLang = this.loadLanguage('tree-sitter-java');
+            if (javaLang) {
+                const javaParser = new Parser();
+                javaParser.setLanguage(javaLang);
+                this.parsers.set('java', javaParser);
+                console.log('Java parser initialized successfully');
+            }
+        } catch (error) {
+            console.error('Failed to initialize Java parser:', error.message);
+        }
 
-        // Temporarily disabled due to ARM64 compatibility issues
-        console.log('C parser disabled (ARM64 compatibility issues)');
-        console.log('C++ parser disabled (ARM64 compatibility issues)');
-        console.log('C# parser disabled (ARM64 compatibility issues)');
+        try {
+            console.log('Initializing C parser...');
+            const cLang = this.loadLanguage('tree-sitter-c');
+            if (cLang) {
+                const cParser = new Parser();
+                cParser.setLanguage(cLang);
+                this.parsers.set('c', cParser);
+                console.log('C parser initialized successfully');
+            }
+        } catch (error) {
+            console.error('Failed to initialize C parser:', error.message);
+        }
+
+        try {
+            console.log('Initializing C++ parser...');
+            const cppLang = this.loadLanguage('tree-sitter-cpp');
+            if (cppLang) {
+                const cppParser = new Parser();
+                cppParser.setLanguage(cppLang);
+                this.parsers.set('cpp', cppParser);
+                this.parsers.set('c++', cppParser);
+                console.log('C++ parser initialized successfully');
+            }
+        } catch (error) {
+            console.error('Failed to initialize C++ parser:', error.message);
+        }
+
+        try {
+            console.log('Initializing C# parser...');
+            const csharpLang = this.loadLanguage('tree-sitter-c-sharp');
+            if (csharpLang) {
+                const csharpParser = new Parser();
+                csharpParser.setLanguage(csharpLang);
+                this.parsers.set('csharp', csharpParser);
+                this.parsers.set('cs', csharpParser);
+                console.log('C# parser initialized successfully');
+            }
+        } catch (error) {
+            console.error('Failed to initialize C# parser:', error.message);
+        }
 
         console.log('Parser initialization complete. Total parsers:', this.parsers.size);
     }
 
     getSupportedLanguages() {
-        return ['typescript', 'tsx']; // All other parsers temporarily disabled due to ARM64 compatibility issues
+        return ['python', 'javascript', 'typescript', 'tsx', 'java', 'c', 'cpp', 'csharp'];
     }
 
     async parseCode(code, language, filePath = '') {
@@ -153,9 +245,9 @@ class ParserService {
     countClasses(node) {
         return this.countNodesByType(node, [
             'class_definition',    // Python
-            'class_declaration',   // JavaScript/TypeScript
+            'class_declaration',   // JavaScript/TypeScript/Java
             'class_expression',    // JavaScript/TypeScript
-            'class_declaration'    // Java
+            'class_specifier'      // C++
         ]);
     }
 
@@ -202,7 +294,7 @@ class ParserService {
         // Count logical operators in binary expressions
         if (node.type === 'binary_expression') {
             const text = node.text;
-            complexity += (text.match(/&&|&|\|\||\|/g) || []).length;
+            complexity += (text.match(/&&|&|\|\|/g) || []).length;
         }
         
         for (const child of node.children) {
@@ -468,13 +560,26 @@ class ParserService {
         return null;
     }
 
+    getChildByFieldName(node, fieldName) {
+        if (!node) return null;
+        if (typeof node.childForFieldName === 'function') {
+            return node.childForFieldName(fieldName);
+        }
+        // Fallback for tree-sitter 0.20.x: check for generated getters (e.g., nameNode, bodyNode)
+        const propName = fieldName + 'Node';
+        if (node[propName]) {
+            return node[propName];
+        }
+        return null;
+    }
+
     extractExportName(node, language) {
         // Extract exported function/class names
         if (node.type === 'function_definition' || node.type === 'function_declaration') {
-            const nameNode = node.childForFieldName('name');
+            const nameNode = this.getChildByFieldName(node, 'name');
             return nameNode ? nameNode.text : null;
         } else if (node.type === 'class_definition' || node.type === 'class_declaration') {
-            const nameNode = node.childForFieldName('name');
+            const nameNode = this.getChildByFieldName(node, 'name');
             return nameNode ? nameNode.text : null;
         }
         
@@ -552,7 +657,7 @@ class ParserService {
 
     matchesEntryPointPattern(node, pattern, language) {
         if (pattern.name) {
-            const nameNode = node.childForFieldName('name');
+            const nameNode = this.getChildByFieldName(node, 'name');
             return nameNode && nameNode.text === pattern.name;
         }
         
@@ -564,7 +669,7 @@ class ParserService {
     }
 
     extractEntryPointName(node, language) {
-        const nameNode = node.childForFieldName('name');
+        const nameNode = this.getChildByFieldName(node, 'name');
         return nameNode ? nameNode.text : 'unnamed';
     }
 
@@ -630,7 +735,7 @@ class ParserService {
     }
 
     extractElementName(node, language) {
-        const nameNode = node.childForFieldName('name');
+        const nameNode = this.getChildByFieldName(node, 'name');
         return nameNode ? nameNode.text : 'unnamed';
     }
 
