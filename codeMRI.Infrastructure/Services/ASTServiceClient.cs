@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Shared.Models;
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Models;
 
 namespace codeMRI.Infrastructure.Services;
 
@@ -158,23 +159,23 @@ public class ASTServiceClient : IASTServiceClient
                 response.EnsureSuccessStatusCode();
                 
                 var responseContent = await response.Content.ReadAsStringAsync();
-                var internalResult = JsonSerializer.Deserialize<InternalASTParseResult>(responseContent, _jsonOptions);
+                var rawResult = JsonSerializer.Deserialize<RawDependencyData>(responseContent, _jsonOptions);
                 
                 // Convert to Core ASTParseResult
-                if (internalResult == null)
+                if (rawResult == null)
                     return null;
                 
                 var result = new ASTParseResult
                 {
-                    Language = internalResult.Language,
-                    FilePath = internalResult.FilePath,
-                    Tree = internalResult.Tree,
-                    Timestamp = internalResult.Timestamp,
-                    Metrics = internalResult.Metrics,
-                    DependencyGraph = internalResult.DependencyGraph,
-                    EntryPoints = internalResult.EntryPoints.Cast<object>().ToList(),
-                    HierarchicalStructure = internalResult.HierarchicalStructure,
-                    CrossModuleReferences = internalResult.CrossModuleReferences.Cast<object>().ToList()
+                    Language = rawResult.Language,
+                    FilePath = rawResult.FilePath,
+                    Tree = rawResult.Tree,
+                    Timestamp = rawResult.Timestamp,
+                    Metrics = rawResult.Metrics,
+                    DependencyGraph = rawResult.DependencyGraph,
+                    EntryPoints = rawResult.EntryPoints,
+                    HierarchicalStructure = rawResult.HierarchicalStructure,
+                    CrossModuleReferences = rawResult.CrossModuleReferences
                 };
                 
                 RecordSuccess();
@@ -323,7 +324,13 @@ public class ASTServiceClient : IASTServiceClient
         {
             if (astResult?.DependencyGraph != null)
             {
-                // Try to access Dependencies property dynamically
+                // Check if it's the typed DependencyGraphData
+                if (astResult.DependencyGraph is DependencyGraphData graphData)
+                {
+                    return graphData.Dependencies ?? new List<string>();
+                }
+
+                // Fallback: Try to access Dependencies property dynamically
                 var dependencyGraph = astResult.DependencyGraph as dynamic;
                 if (dependencyGraph?.Dependencies != null)
                 {
@@ -437,18 +444,4 @@ public class ParseRequest
 public class SupportedLanguagesResponse
 {
     public List<string> Languages { get; set; } = new();
-}
-
-// Internal DTO for deserialization from AST Service
-public class InternalASTParseResult
-{
-    public string Language { get; set; } = string.Empty;
-    public string FilePath { get; set; } = string.Empty;
-    public object? Tree { get; set; }
-    public string Timestamp { get; set; } = string.Empty;
-    public object Metrics { get; set; } = new();
-    public object DependencyGraph { get; set; } = new();
-    public List<object> EntryPoints { get; set; } = new();
-    public object HierarchicalStructure { get; set; } = new();
-    public List<object> CrossModuleReferences { get; set; } = new();
 }

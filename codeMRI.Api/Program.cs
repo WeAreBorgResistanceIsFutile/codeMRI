@@ -58,7 +58,7 @@ builder.Services.AddScoped<IArchitecturalPatternService, ArchitecturalPatternSer
 builder.Services.AddScoped<IComponentIdentificationService, ComponentIdentificationService>();
 builder.Services.AddScoped<IEnhancedDependencyGraphService, EnhancedDependencyGraphService>();
 builder.Services.AddScoped<RAGService>();
-builder.Services.AddScoped<WikiGenerationService>();
+builder.Services.AddScoped<IWikiGenerationService, WikiGenerationService>();
 builder.Services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
 builder.Services.AddScoped<IDocumentationGenerationPipeline, DocumentationGenerationPipeline>();
 

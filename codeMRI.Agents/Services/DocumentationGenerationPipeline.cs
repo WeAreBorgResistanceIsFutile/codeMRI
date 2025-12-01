@@ -14,6 +14,7 @@ public class DocumentationGenerationPipeline : IDocumentationGenerationPipeline
     private readonly IVisualSynthesisService _visualSynthesisService;
     private readonly IEnhancedDependencyGraphService _graphService;
     private readonly IHierarchicalDecompositionService _decompositionService;
+    private readonly IWikiGenerationService _wikiGenService;
     private readonly ILogger<DocumentationGenerationPipeline> _logger;
 
     public DocumentationGenerationPipeline(
@@ -21,12 +22,14 @@ public class DocumentationGenerationPipeline : IDocumentationGenerationPipeline
         IVisualSynthesisService visualSynthesisService,
         IEnhancedDependencyGraphService graphService,
         IHierarchicalDecompositionService decompositionService,
+        IWikiGenerationService wikiGenService,
         ILogger<DocumentationGenerationPipeline> logger)
     {
         _coordinator = coordinator;
         _visualSynthesisService = visualSynthesisService;
         _graphService = graphService;
         _decompositionService = decompositionService;
+        _wikiGenService = wikiGenService;
         _logger = logger;
     }
 
@@ -49,87 +52,116 @@ public class DocumentationGenerationPipeline : IDocumentationGenerationPipeline
 
         var data = (AnalysisResult)analysisResult.Output!;
         var components = data.Components;
-        var structure = data.Structure;
+        // var structure = data.Structure; // Unused for now
 
         // 1.5 Build Graph and Tree for Visualization
-        // Note: Ideally AnalyzerAgent should return the graph, but for now we rebuild it or assume AnalyzerAgent logic matches.
-        // To ensure consistency, we use the services.
         var graph = await _graphService.BuildGraphAsync(components, CancellationToken.None);
-        // Run analysis to populate metrics needed for visualization (PageRank etc)
         await _graphService.AnalyzeGraphAsync(graph, CancellationToken.None); 
         
         var moduleTree = await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, CancellationToken.None);
-        // Note: DecomposeHierarchicallyAsync currently re-scans components internally. 
-        // We should optimize this later to reuse components/graph.
-        // But for now, we have the visual models.
 
         // Generate Visual Artifacts
         var artifacts = await _visualSynthesisService.GenerateArtifactsAsync(moduleTree, graph);
 
-        // 2. Document Components
-        var wikiPages = new List<WikiPage>();
-        foreach (var component in components)
-        {
-            var docTask = new AgentTask
-            {
-                Type = "Documenter",
-                Payload = component
-            };
-            var docResult = await _coordinator.CoordinateTaskAsync(docTask, CancellationToken.None);
-            if (docResult.Success && docResult.Output is WikiPage page)
-            {
-                // Embed Component Diagram if available
-                if (artifacts.ComponentDiagrams.TryGetValue(component.Id, out var compDiagram))
-                {
-                    page.Content += "\n\n## Component Structure\n\n```mermaid\n" + compDiagram + "\n```";
-                }
-                // Embed Sequence Diagram if available (Entry Point)
-                if (artifacts.SequenceDiagrams.TryGetValue(component.Id, out var seqDiagram))
-                {
-                    page.Content += "\n\n## Interaction Sequence\n\n```mermaid\n" + seqDiagram + "\n```";
-                }
+        // 2. Hierarchical Documentation Generation (Post-Order Traversal)
+        var allWikiPages = new List<WikiPage>();
+        
+        // Create a map of component ID to CodeComponent for easy access
+        var componentMap = components.ToDictionary(c => c.Id, c => c);
+        
+        // Process the tree recursively
+        await ProcessModuleNodeAsync(moduleTree.Root, componentMap, allWikiPages, artifacts);
 
-                wikiPages.Add(page);
+        // 3. Synthesize (Optional final wrap-up or structure generation)
+        // For now, we rely on the structure we built.
+        // We can return a WikiStructure object reflecting the tree.
+        
+        var wikiStructure = new WikiStructure
+        {
+            Title = "Codebase Documentation",
+            Description = "Automatically generated documentation.",
+            Sections = new List<WikiSection>()
+        };
+        
+        // Add architecture diagram to root page if exists
+        var rootPage = allWikiPages.FirstOrDefault(p => p.Title == moduleTree.Root.Name);
+        if (rootPage != null && artifacts.ArchitectureDiagram != null)
+        {
+             rootPage.Content += "\n\n## System Architecture\n\n```mermaid\n" + artifacts.ArchitectureDiagram + "\n```";
+        }
+
+        // Convert pages to structure (simplified flat list of sections for now, or we could build hierarchy)
+        // Ideally we map the ModuleTree structure to WikiStructure.
+        
+        return wikiStructure;
+    }
+
+    private async Task<WikiPage?> ProcessModuleNodeAsync(
+        ModuleNode node, 
+        Dictionary<string, CodeComponent> componentMap,
+        List<WikiPage> allPages,
+        Visualization.Models.VisualArtifacts artifacts)
+    {
+        var childPages = new List<WikiPage>();
+
+        // 1. Visit Children First (Post-Order)
+        foreach (var child in node.Children)
+        {
+            var page = await ProcessModuleNodeAsync(child, componentMap, allPages, artifacts);
+            if (page != null)
+            {
+                childPages.Add(page);
             }
         }
 
-        // 3. Synthesize
-        var synthTask = new AgentTask
-        {
-            Type = "Synthesizer",
-            Payload = wikiPages
-        };
-        var synthResult = await _coordinator.CoordinateTaskAsync(synthTask, CancellationToken.None);
+        WikiPage? currentNodePage = null;
 
-        if (synthResult.Success && synthResult.Output is WikiStructure wikiStructure)
+        // 2. Generate Docs for Leaf Components in this Module
+        // The ModuleNode contains 'Components' which are IDs of CodeComponents.
+        // Note: ModuleNode might represent a folder or a logical grouping.
+        // If it has direct components (that are not sub-modules), we document them.
+        // BUT, checking ModuleNode definition: it has Children (ModuleNodes) and Components (HashSet<string>).
+        // So a Module can have both sub-modules and direct components.
+        
+        // In "Post-Order", we should also process the direct components of this module before generating the module summary.
+        foreach (var compId in node.Components)
         {
-            // Embed Architecture Diagram in Root/Home Page
-            // Assuming Synthesizer creates a Home/Index page or we add it to description/intro
-            // For now, lets append it to the Description of the structure or a main page if found
-            
-            // Let's assume the first page or a page named "Home" or "Index"
-            // Or better, we can add it to the wikiStructure metadata or description if format allows.
-            // Markdown:
-            wikiStructure.Description += "\n\n## System Architecture\n\n```mermaid\n" + artifacts.ArchitectureDiagram + "\n```";
-
-            return wikiStructure;
+            if (componentMap.TryGetValue(compId, out var component))
+            {
+                var compPage = await GenerateComponentDocumentationAsyncInternal(component);
+                
+                // Embed diagrams
+                if (artifacts.ComponentDiagrams.TryGetValue(component.Id, out var compDiagram))
+                {
+                    compPage.Content += "\n\n## Component Structure\n\n```mermaid\n" + compDiagram + "\n```";
+                }
+                if (artifacts.SequenceDiagrams.TryGetValue(component.Id, out var seqDiagram))
+                {
+                    compPage.Content += "\n\n## Interaction Sequence\n\n```mermaid\n" + seqDiagram + "\n```";
+                }
+                
+                allPages.Add(compPage);
+                childPages.Add(compPage); // Treat components as "children" for the module summary
+            }
         }
 
-        throw new Exception("Failed to synthesize documentation");
+        // 3. Generate Module Documentation (Parent) using Child Summaries
+        // Only generate if it's not a purely leaf node with no children, 
+        // OR if it's a leaf node (Module) that groups components.
+        // Actually, every ModuleNode needs a page if it represents a directory/module.
+        
+        if (childPages.Count > 0 || node.Children.Count > 0)
+        {
+            currentNodePage = await _wikiGenService.GenerateParentPageAsync(node, childPages);
+            allPages.Add(currentNodePage);
+        }
+        
+        return currentNodePage;
     }
 
     public Task<WikiPage> GenerateComponentDocumentationAsync(CodeComponent component, RepositoryStructure context)
     {
-        // Direct delegation to Documenter
-        var task = new AgentTask { Type = "Documenter", Payload = component };
-        // This method is sync-over-async wrapper or we change interface? Interface returns Task.
-        // We need to wait for coordinator.
-        var result = _coordinator.CoordinateTaskAsync(task, CancellationToken.None).GetAwaiter().GetResult(); // Blocking!
-        // Better: make this async if interface allows. Interface IS async Task<WikiPage>.
-        
-        // But I can't await in this sync block if I don't make method async... 
-        // Wait, the method signature IS `Task<WikiPage>`.
-        return GenerateComponentDocumentationAsyncInternal(component);
+         return GenerateComponentDocumentationAsyncInternal(component);
     }
 
     private async Task<WikiPage> GenerateComponentDocumentationAsyncInternal(CodeComponent component)
@@ -140,12 +172,17 @@ public class DocumentationGenerationPipeline : IDocumentationGenerationPipeline
         {
             return page;
         }
-        throw new Exception("Documentation generation failed");
+        
+        _logger.LogError("Failed to generate documentation for component {ComponentName}", component.Name);
+        return new WikiPage 
+        { 
+            Title = component.Name, 
+            Content = "Documentation generation failed." 
+        };
     }
 
     public async Task<List<WikiPage>> GenerateOverviewPagesAsync(RepositoryStructure structure, List<CodeComponent> components)
     {
-         // Simplified implementation for now - could use another agent
          return new List<WikiPage>();
     }
 }

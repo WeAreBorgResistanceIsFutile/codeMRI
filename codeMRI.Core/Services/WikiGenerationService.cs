@@ -1,10 +1,12 @@
 using codeMRI.Shared.Models;
 using System.Xml.Linq;
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Models;
+using System.Text;
 
 namespace codeMRI.Core.Services;
 
-public class WikiGenerationService
+public class WikiGenerationService : IWikiGenerationService
 {
     private readonly ILLMClient _llmClient;
     private readonly IEmbedder _embedder; // Needed if we want to retrieve content for generation
@@ -119,5 +121,49 @@ public class WikiGenerationService
             Content = content,
             RelevantFiles = filePaths
         };
+    }
+
+    public async Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages, string language = "English")
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"Synthesize an architectural overview for the module: {module.Name}");
+        sb.AppendLine($"This module is at level {module.Level} in the hierarchy.");
+        
+        if (!string.IsNullOrEmpty(module.Description))
+        {
+            sb.AppendLine($"Module Description: {module.Description}");
+        }
+        
+        sb.AppendLine("\nSub-modules/Components:");
+        foreach (var page in childPages)
+        {
+            sb.AppendLine($"- **{page.Title}**: {ExtractSummary(page.Content)}");
+        }
+        
+        sb.AppendLine("\nInstructions:");
+        sb.AppendLine("1. Create a high-level overview of this module's responsibilities.");
+        sb.AppendLine("2. Explain how the sub-modules interact and contribute to the overall goal.");
+        sb.AppendLine("3. Identify key architectural patterns used in this module.");
+        sb.AppendLine($"4. Write the response in {language}.");
+        
+        var prompt = sb.ToString();
+        var content = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>());
+        
+        return new WikiPage
+        {
+            Id = Guid.NewGuid().ToString(),
+            Title = module.Name,
+            Content = content,
+            RelevantFiles = new List<string>() // Parent pages aggregate structure, not necessarily specific files unless explicitly mapped
+        };
+    }
+    
+    private string ExtractSummary(string content)
+    {
+        // Simple heuristic: first paragraph or up to 200 chars
+        if (string.IsNullOrEmpty(content)) return "";
+        var idx = content.IndexOf("\n\n");
+        if (idx > 0) return content.Substring(0, idx);
+        return content.Length > 200 ? content.Substring(0, 200) + "..." : content;
     }
 }

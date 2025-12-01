@@ -10,10 +10,14 @@ namespace codeMRI.Core.Services;
 public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
 {
     private readonly ILogger<EnhancedDependencyGraphService> _logger;
+    private readonly IASTServiceClient _astServiceClient;
     
-    public EnhancedDependencyGraphService(ILogger<EnhancedDependencyGraphService> logger)
+    public EnhancedDependencyGraphService(
+        ILogger<EnhancedDependencyGraphService> logger,
+        IASTServiceClient astServiceClient)
     {
         _logger = logger;
+        _astServiceClient = astServiceClient;
     }
     
     public async Task<EnhancedDependencyGraph> BuildGraphAsync(List<CodeComponent> components, CancellationToken cancellationToken = default)
@@ -26,6 +30,31 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         foreach (var component in components)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // Enrich with AST Service if possible
+            if (!string.IsNullOrEmpty(component.FilePath) && File.Exists(component.FilePath))
+            {
+                try
+                {
+                    var code = await File.ReadAllTextAsync(component.FilePath, cancellationToken);
+                    var astResult = await _astServiceClient.ParseCodeAsync(code, component.Language, component.FilePath, cancellationToken);
+                    
+                    if (astResult?.DependencyGraph is codeMRI.Core.Models.DependencyGraphData graphData)
+                    {
+                        foreach (var dep in graphData.Dependencies)
+                        {
+                            if (!component.Dependencies.Contains(dep))
+                            {
+                                component.Dependencies.Add(dep);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to process file {FilePath} with AST Service", component.FilePath);
+                }
+            }
             
             var metadata = new NodeMetadata
             {
@@ -52,10 +81,16 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
             
             foreach (var dependencyName in component.Dependencies)
             {
-                var targetComponent = components.FirstOrDefault(c => c.Name == dependencyName);
+                // Node Identification: resolving dependency name to component
+                // Normalization: Treat all as DependsOn
+                var targetComponent = components.FirstOrDefault(c => 
+                    c.Name.Equals(dependencyName, StringComparison.OrdinalIgnoreCase) || 
+                    Path.GetFileNameWithoutExtension(c.FilePath).Equals(dependencyName, StringComparison.OrdinalIgnoreCase)
+                );
+
                 if (targetComponent != null)
                 {
-                    var edgeType = EdgeType.Dependency;
+                    var edgeType = EdgeType.Dependency; // Unified Dependency Model (DependsOn)
                     if (!string.Equals(component.Language, targetComponent.Language, StringComparison.OrdinalIgnoreCase))
                     {
                         edgeType = EdgeType.CrossBoundary;

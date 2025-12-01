@@ -9,10 +9,10 @@ namespace codeMRI.Api.Controllers;
 [Route("api/[controller]")]
 public class WikiController : ControllerBase
 {
-    private readonly WikiGenerationService _wikiService;
+    private readonly IWikiGenerationService _wikiService;
     private readonly IWikiRepository _wikiRepo;
 
-    public WikiController(WikiGenerationService wikiService, IWikiRepository wikiRepo)
+    public WikiController(IWikiGenerationService wikiService, IWikiRepository wikiRepo)
     {
         _wikiService = wikiService;
         _wikiRepo = wikiRepo;
