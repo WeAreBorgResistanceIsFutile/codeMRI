@@ -3,21 +3,24 @@ using Moq;
 using codeMRI.Core.Services;
 using codeMRI.Core.Interfaces;
 using codeMRI.Shared.Models;
+using NUnit.Framework;
 
 namespace codeMRI.Core.Tests;
 
+[TestFixture]
 public class EvaluationMetricsSystemTests
 {
-    private readonly Mock<ILogger<EvaluationMetricsSystem>> _mockLogger;
-    private readonly EvaluationMetricsSystem _service;
+    private Mock<ILogger<EvaluationMetricsSystem>> _mockLogger;
+    private EvaluationMetricsSystem _service;
 
-    public EvaluationMetricsSystemTests()
+    [SetUp]
+    public void Setup()
     {
         _mockLogger = new Mock<ILogger<EvaluationMetricsSystem>>();
         _service = new EvaluationMetricsSystem(_mockLogger.Object);
     }
 
-    [Fact]
+    [Test]
     public async Task EvaluateDocumentationQualityAsync_ShouldReturnMetrics_WhenValidDataProvided()
     {
         // Arrange
@@ -67,16 +70,16 @@ test.TestMethod();
         var result = await _service.EvaluateDocumentationQualityAsync(structure, pages, components);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.True(result.OverallScore >= 0);
-        Assert.NotNull(result.Coverage);
-        Assert.NotNull(result.Readability);
-        Assert.NotNull(result.Completeness);
-        Assert.NotNull(result.Accuracy);
-        Assert.NotNull(result.Recommendations);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.OverallScore, Is.GreaterThanOrEqualTo(0));
+        Assert.That(result.Coverage, Is.Not.Null);
+        Assert.That(result.Readability, Is.Not.Null);
+        Assert.That(result.Completeness, Is.Not.Null);
+        Assert.That(result.Accuracy, Is.Not.Null);
+        Assert.That(result.Recommendations, Is.Not.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task CalculateCoverageMetricsAsync_ShouldReturnFullCoverage_WhenAllComponentsDocumented()
     {
         // Arrange
@@ -96,13 +99,13 @@ test.TestMethod();
         var result = await _service.CalculateCoverageMetricsAsync(pages, components);
 
         // Assert
-        Assert.Equal(100.0, result.ComponentCoverage);
-        Assert.Equal(2, result.TotalComponents);
-        Assert.Equal(2, result.DocumentedComponents);
-        Assert.Empty(result.UndocumentedComponents);
+        Assert.That(result.ComponentCoverage, Is.EqualTo(100.0));
+        Assert.That(result.TotalComponents, Is.EqualTo(2));
+        Assert.That(result.DocumentedComponents, Is.EqualTo(2));
+        Assert.That(result.UndocumentedComponents, Is.Empty);
     }
 
-    [Fact]
+    [Test]
     public async Task CalculateCoverageMetricsAsync_ShouldReturnPartialCoverage_WhenSomeComponentsMissing()
     {
         // Arrange
@@ -122,14 +125,14 @@ test.TestMethod();
         var result = await _service.CalculateCoverageMetricsAsync(pages, components);
 
         // Assert
-        Assert.Equal(33.33, Math.Round(result.ComponentCoverage, 2));
-        Assert.Equal(3, result.TotalComponents);
-        Assert.Equal(1, result.DocumentedComponents);
-        Assert.Contains("Component2", result.UndocumentedComponents);
-        Assert.Contains("ApiController", result.UndocumentedComponents);
+        Assert.That(Math.Round(result.ComponentCoverage, 2), Is.EqualTo(33.33));
+        Assert.That(result.TotalComponents, Is.EqualTo(3));
+        Assert.That(result.DocumentedComponents, Is.EqualTo(1));
+        Assert.That(result.UndocumentedComponents, Does.Contain("Component2"));
+        Assert.That(result.UndocumentedComponents, Does.Contain("ApiController"));
     }
 
-    [Fact]
+    [Test]
     public async Task AnalyzeReadabilityAsync_ShouldReturnHighScore_ForWellStructuredContent()
     {
         // Arrange
@@ -176,19 +179,19 @@ instance.Method1();
         var result = await _service.AnalyzeReadabilityAsync(pages);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.True(result.AverageReadabilityScore >= 80);
-        Assert.True(result.AverageWordCount > 50);
-        Assert.True(result.AverageSectionCount >= 3);
-        Assert.Single(result.PageScores);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.AverageReadabilityScore, Is.GreaterThanOrEqualTo(80));
+        Assert.That(result.AverageWordCount, Is.GreaterThan(50));
+        Assert.That(result.AverageSectionCount, Is.GreaterThanOrEqualTo(3));
+        Assert.That(result.PageScores.Count, Is.EqualTo(1));
         
         var pageScore = result.PageScores.First();
-        Assert.Equal("WellStructuredPage", pageScore.PageId);
-        Assert.True(pageScore.Score >= 80);
-        Assert.Empty(pageScore.Issues);
+        Assert.That(pageScore.PageId, Is.EqualTo("WellStructuredPage"));
+        Assert.That(pageScore.Score, Is.GreaterThanOrEqualTo(80));
+        Assert.That(pageScore.Issues, Is.Empty);
     }
 
-    [Fact]
+    [Test]
     public async Task AnalyzeReadabilityAsync_ShouldReturnLowScore_ForPoorlyStructuredContent()
     {
         // Arrange
@@ -207,20 +210,20 @@ instance.Method1();
         var result = await _service.AnalyzeReadabilityAsync(pages);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.True(result.AverageReadabilityScore < 70);
-        Assert.True(result.AverageWordCount < 50);
-        Assert.Equal(0, result.AverageSectionCount);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.AverageReadabilityScore, Is.LessThan(70));
+        Assert.That(result.AverageWordCount, Is.LessThan(50));
+        Assert.That(result.AverageSectionCount, Is.EqualTo(0));
         
         var pageScore = result.PageScores.First();
-        Assert.Equal("PoorPage", pageScore.PageId);
-        Assert.True(pageScore.Score < 70);
-        Assert.NotEmpty(pageScore.Issues);
-        Assert.Contains(pageScore.Issues, issue => issue.Contains("too brief"));
-        Assert.Contains(pageScore.Issues, issue => issue.Contains("lacks proper sections"));
+        Assert.That(pageScore.PageId, Is.EqualTo("PoorPage"));
+        Assert.That(pageScore.Score, Is.LessThan(70));
+        Assert.That(pageScore.Issues, Is.Not.Empty);
+        Assert.That(pageScore.Issues, Has.Some.Matches<string>(issue => issue.Contains("too brief")));
+        Assert.That(pageScore.Issues, Has.Some.Matches<string>(issue => issue.Contains("lacks proper sections")));
     }
 
-    [Fact]
+    [Test]
     public async Task GenerateBenchmarkReportAsync_ShouldReturnComprehensiveReport()
     {
         // Arrange
@@ -260,26 +263,25 @@ instance.Method1();
         var result = await _service.GenerateBenchmarkReportAsync(repositoryPath, metrics);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.Equal(repositoryPath, result.RepositoryPath);
-        Assert.Equal(metrics, result.Metrics);
-        Assert.NotNull(result.Comparisons);
-        Assert.True(result.Comparisons.Count >= 4);
-        Assert.NotEmpty(result.Summary);
-        Assert.NotEmpty(result.ActionItems);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.RepositoryPath, Is.EqualTo(repositoryPath));
+        Assert.That(result.Metrics, Is.EqualTo(metrics));
+        Assert.That(result.Comparisons, Is.Not.Null);
+        Assert.That(result.Comparisons.Count, Is.GreaterThanOrEqualTo(4));
+        Assert.That(result.Summary, Is.Not.Empty);
+        Assert.That(result.ActionItems, Is.Not.Empty);
 
         // Check that comparisons include expected metrics
         var coverageComparison = result.Comparisons.FirstOrDefault(c => c.Metric == "Component Coverage");
-        Assert.NotNull(coverageComparison);
-        Assert.Equal(85.0, coverageComparison.CurrentValue); // Average of 90 and 80
-        Assert.NotEmpty(coverageComparison.Status);
+        Assert.That(coverageComparison, Is.Not.Null);
+        Assert.That(coverageComparison.CurrentValue, Is.EqualTo(85.0)); // Average of 90 and 80
+        Assert.That(coverageComparison.Status, Is.Not.Empty);
     }
 
-    [Theory]
-    [InlineData(95.0, "Average")] // 95 vs 85 benchmark = Average (61.76 percentile)
-    [InlineData(85.0, "Average")] // 85 vs 85 benchmark = Average (50 percentile)  
-    [InlineData(70.0, "Poor")] // 70 vs 85 benchmark = Poor (32.35 percentile)
-    [InlineData(45.0, "Poor")] // 45 vs 85 benchmark = Poor (2.94 percentile)
+    [TestCase(95.0, "Average")] // 95 vs 85 benchmark = Average (61.76 percentile)
+    [TestCase(85.0, "Average")] // 85 vs 85 benchmark = Average (50 percentile)  
+    [TestCase(70.0, "Poor")] // 70 vs 85 benchmark = Poor (32.35 percentile)
+    [TestCase(45.0, "Poor")] // 45 vs 85 benchmark = Poor (2.94 percentile)
     public async Task GenerateBenchmarkReportAsync_ShouldClassifyStatusCorrectly(double score, string expectedStatus)
     {
         // Arrange
@@ -297,12 +299,12 @@ instance.Method1();
 
         // Assert
         var coverageComparison = result.Comparisons.FirstOrDefault(c => c.Metric == "Component Coverage");
-        Assert.NotNull(coverageComparison);
-        Assert.Equal(score, coverageComparison.CurrentValue);
-        Assert.Equal(expectedStatus, coverageComparison.Status);
+        Assert.That(coverageComparison, Is.Not.Null);
+        Assert.That(coverageComparison.CurrentValue, Is.EqualTo(score));
+        Assert.That(coverageComparison.Status, Is.EqualTo(expectedStatus));
     }
 
-    [Fact]
+    [Test]
     public async Task EvaluateDocumentationQualityAsync_ShouldGenerateRecommendations_WhenQualityIsLow()
     {
         // Arrange
@@ -317,9 +319,9 @@ instance.Method1();
         var result = await _service.EvaluateDocumentationQualityAsync(structure, pages, components);
 
         // Assert
-        Assert.NotNull(result.Recommendations);
-        Assert.True(result.Recommendations.Count >= 2);
-        Assert.Contains(result.Recommendations, r => r.Contains("Document"));
-        Assert.True(result.OverallScore < 70); // Should be low due to missing documentation
+        Assert.That(result.Recommendations, Is.Not.Null);
+        Assert.That(result.Recommendations.Count, Is.GreaterThanOrEqualTo(2));
+        Assert.That(result.Recommendations, Has.Some.Matches<string>(r => r.Contains("Document")));
+        Assert.That(result.OverallScore, Is.LessThan(70)); // Should be low due to missing documentation
     }
 }

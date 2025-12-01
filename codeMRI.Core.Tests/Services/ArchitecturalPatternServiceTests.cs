@@ -3,22 +3,24 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Moq;
-using Xunit;
+using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services
 {
+    [TestFixture]
     public class ArchitecturalPatternServiceTests
     {
-        private readonly ArchitecturalPatternService _service;
-        private readonly EnhancedDependencyGraph _graph;
+        private ArchitecturalPatternService _service;
+        private EnhancedDependencyGraph _graph;
 
-        public ArchitecturalPatternServiceTests()
+        [SetUp]
+        public void Setup()
         {
             _service = new ArchitecturalPatternService();
             _graph = new EnhancedDependencyGraph();
         }
 
-        [Fact]
+        [Test]
         public void DetermineLayer_ShouldReturnPresentation_ForController()
         {
             var node = new GraphNode
@@ -29,10 +31,10 @@ namespace codeMRI.Core.Tests.Services
 
             var result = _service.DetermineLayer(node);
 
-            Assert.Equal(ArchitecturalLayerType.Presentation, result);
+            Assert.That(result, Is.EqualTo(ArchitecturalLayerType.Presentation));
         }
 
-        [Fact]
+        [Test]
         public void DetermineLayer_ShouldReturnData_ForRepository()
         {
             var node = new GraphNode
@@ -43,10 +45,10 @@ namespace codeMRI.Core.Tests.Services
 
             var result = _service.DetermineLayer(node);
 
-            Assert.Equal(ArchitecturalLayerType.Data, result);
+            Assert.That(result, Is.EqualTo(ArchitecturalLayerType.Data));
         }
 
-        [Fact]
+        [Test]
         public void RecognizePattern_ShouldDetectLayeredArchitecture()
         {
             // Setup a simple layered structure: Controller -> Service -> Repository
@@ -65,32 +67,50 @@ namespace codeMRI.Core.Tests.Services
 
             var pattern = _service.RecognizePattern(module, _graph);
 
-            Assert.Equal(ArchitecturalPatternType.Layered, pattern.Type);
-            Assert.True(pattern.Confidence > 0.5);
+            Assert.That(pattern.Type, Is.EqualTo(ArchitecturalPatternType.Layered));
+            Assert.That(pattern.Confidence, Is.GreaterThan(0.5));
         }
 
-        [Fact]
+        [Test]
         public void RecognizePattern_ShouldDetectMicroservices_WhenIndependentModulesExist()
         {
              // Setup independent modules with APIs
-            _graph.AddNode("OrderService", new NodeMetadata { Type = "API" });
-            _graph.AddNode("PaymentService", new NodeMetadata { Type = "API" });
+            _graph.AddNode("OrderApi", new NodeMetadata { Type = "API" });
+            _graph.AddNode("PaymentApi", new NodeMetadata { Type = "API" });
+            // No direct dependencies, or CrossBoundary dependencies
 
             var module = new ModuleNode
             {
                 Id = "System",
-                Components = new HashSet<string> { "OrderService", "PaymentService" }
+                Components = new HashSet<string> { "OrderApi", "PaymentApi" }
             };
-
-            // Only loose coupling or no coupling
+            
+            // Start with unknown to ensure logic runs
             
             var pattern = _service.RecognizePattern(module, _graph);
+            
+            Assert.That(pattern.Type, Is.EqualTo(ArchitecturalPatternType.Microservices));
+        }
 
-            // Note: Logic for Microservices might depend on more complex heuristics, 
-            // but let's assume presence of multiple "API" or independent clusters suggests it.
-            // For now, we might expect Layered if not specifically identified as Microservices.
-            // But let's adjust the test to what we expect to implement.
-            // If we implement Microservices detection, it might look for bounded contexts or HTTP calls between services.
+        [Test]
+        public void RecognizePattern_ShouldDetectEventDriven_WhenEventComponentsExist()
+        {
+            _graph.AddNode("OrderPublisher", new NodeMetadata { Type = "Publisher" });
+            _graph.AddNode("OrderCreatedEvent", new NodeMetadata { Type = "Event" });
+            _graph.AddNode("InventorySubscriber", new NodeMetadata { Type = "Subscriber" });
+
+            _graph.AddEdge("OrderPublisher", "OrderCreatedEvent", EdgeType.Dependency, 1.0);
+            _graph.AddEdge("InventorySubscriber", "OrderCreatedEvent", EdgeType.Dependency, 1.0);
+
+            var module = new ModuleNode
+            {
+                Id = "EventSystem",
+                Components = new HashSet<string> { "OrderPublisher", "OrderCreatedEvent", "InventorySubscriber" }
+            };
+
+            var pattern = _service.RecognizePattern(module, _graph);
+
+            Assert.That(pattern.Type, Is.EqualTo(ArchitecturalPatternType.EventDriven));
         }
     }
 }

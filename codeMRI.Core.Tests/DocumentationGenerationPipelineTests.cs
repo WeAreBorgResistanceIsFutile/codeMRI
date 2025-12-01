@@ -6,24 +6,26 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Shared.Models;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Xunit;
+using NUnit.Framework;
 
 namespace codeMRI.Core.Tests;
 
+[TestFixture]
 public class DocumentationGenerationPipelineTests
 {
-    private readonly Mock<IAgentCoordinator> _mockCoordinator;
-    private readonly Mock<ILogger<DocumentationGenerationPipeline>> _mockLogger;
-    private readonly DocumentationGenerationPipeline _pipeline;
+    private Mock<IAgentCoordinator> _mockCoordinator;
+    private Mock<ILogger<DocumentationGenerationPipeline>> _mockLogger;
+    private DocumentationGenerationPipeline _pipeline;
 
-    public DocumentationGenerationPipelineTests()
+    [SetUp]
+    public void Setup()
     {
         _mockCoordinator = new Mock<IAgentCoordinator>();
         _mockLogger = new Mock<ILogger<DocumentationGenerationPipeline>>();
         _pipeline = new DocumentationGenerationPipeline(_mockCoordinator.Object, _mockLogger.Object);
     }
 
-    [Fact]
+    [Test]
     public async Task GenerateDocumentationAsync_ShouldOrchestrateAgents()
     {
         // Arrange
@@ -52,7 +54,7 @@ public class DocumentationGenerationPipelineTests
         var result = await _pipeline.GenerateDocumentationAsync(repoPath, options);
 
         // Assert
-        Assert.Equal(expectedStructure, result);
+        Assert.That(result, Is.EqualTo(expectedStructure));
         _mockCoordinator.Verify(c => c.CoordinateTaskAsync(It.Is<AgentTask>(t => t.Type == "Analyzer"), It.IsAny<CancellationToken>()), Times.Once);
         _mockCoordinator.Verify(c => c.CoordinateTaskAsync(It.Is<AgentTask>(t => t.Type == "Documenter"), It.IsAny<CancellationToken>()), Times.Once);
         _mockCoordinator.Verify(c => c.CoordinateTaskAsync(It.Is<AgentTask>(t => t.Type == "Synthesizer"), It.IsAny<CancellationToken>()), Times.Once);

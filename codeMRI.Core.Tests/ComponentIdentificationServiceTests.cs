@@ -2,23 +2,35 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using codeMRI.Core.Services;
 using codeMRI.Core.Interfaces;
+using NUnit.Framework;
 
 namespace codeMRI.Core.Tests;
 
+[TestFixture]
 public class ComponentIdentificationServiceTests
 {
-    private readonly Mock<ILogger<ComponentIdentificationService>> _mockLogger;
-    private readonly ComponentIdentificationService _service;
-    private readonly string _testRepoPath;
+    private Mock<ILogger<ComponentIdentificationService>> _mockLogger;
+    private ComponentIdentificationService _service;
+    private string _testRepoPath;
 
-    public ComponentIdentificationServiceTests()
+    [SetUp]
+    public void Setup()
     {
         _mockLogger = new Mock<ILogger<ComponentIdentificationService>>();
         _service = new ComponentIdentificationService(_mockLogger.Object);
         _testRepoPath = Path.Combine(Path.GetTempPath(), "test_repo_components");
     }
 
-    [Fact]
+    [TearDown]
+    public void TearDown()
+    {
+        if (Directory.Exists(_testRepoPath))
+        {
+            Directory.Delete(_testRepoPath, true);
+        }
+    }
+
+    [Test]
     public async Task AnalyzeRepositoryAsync_ShouldReturnRepositoryStructure_WhenValidPathProvided()
     {
         // Arrange
@@ -37,22 +49,16 @@ public class ComponentIdentificationServiceTests
         var result = await _service.AnalyzeRepositoryAsync(_testRepoPath);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.Equal("test_repo_components", result.Name);
-        Assert.Equal("C#", result.Language);
-        Assert.True(result.Files.Count >= 3);
-        Assert.Contains("Program.cs", result.Files);
-        Assert.Contains("Services/UserService.cs", result.Files);
-        Assert.True(result.FileExtensions.ContainsKey(".cs"));
-
-        // Cleanup
-        if (Directory.Exists(_testRepoPath))
-        {
-            Directory.Delete(_testRepoPath, true);
-        }
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Name, Is.EqualTo("test_repo_components"));
+        Assert.That(result.Language, Is.EqualTo("C#"));
+        Assert.That(result.Files.Count, Is.GreaterThanOrEqualTo(3));
+        Assert.That(result.Files, Does.Contain("Program.cs"));
+        Assert.That(result.Files, Does.Contain("Services/UserService.cs"));
+        Assert.That(result.FileExtensions.ContainsKey(".cs"), Is.True);
     }
 
-    [Fact]
+    [Test]
     public async Task AnalyzeRepositoryAsync_ShouldReturnEmptyStructure_WhenInvalidPathProvided()
     {
         // Arrange
@@ -62,13 +68,13 @@ public class ComponentIdentificationServiceTests
         var result = await _service.AnalyzeRepositoryAsync(invalidPath);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.Equal("nonexistent_repo", result.Name);
-        Assert.Empty(result.Files);
-        Assert.Empty(result.Directories);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Name, Is.EqualTo("nonexistent_repo"));
+        Assert.That(result.Files, Is.Empty);
+        Assert.That(result.Directories, Is.Empty);
     }
 
-    [Fact]
+    [Test]
     public async Task IdentifyComponentsAsync_ShouldReturnComponents_WhenCSharpFilesExist()
     {
         // Arrange
@@ -96,27 +102,21 @@ namespace TestNamespace
         var result = await _service.IdentifyComponentsAsync(_testRepoPath);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.True(result.Count >= 2);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Count, Is.GreaterThanOrEqualTo(2));
         
         var testClass = result.FirstOrDefault(c => c.Name == "TestClass");
-        Assert.NotNull(testClass);
-        Assert.Equal("Class", testClass.Type);
-        Assert.Equal("C#", testClass.Language);
-        Assert.Equal(testFile, testClass.FilePath);
+        Assert.That(testClass, Is.Not.Null);
+        Assert.That(testClass.Type, Is.EqualTo("Class"));
+        Assert.That(testClass.Language, Is.EqualTo("C#"));
+        Assert.That(testClass.FilePath, Is.EqualTo(testFile));
 
         var testInterface = result.FirstOrDefault(c => c.Name == "ITestInterface");
-        Assert.NotNull(testInterface);
-        Assert.Equal("Interface", testInterface.Type);
-
-        // Cleanup
-        if (Directory.Exists(_testRepoPath))
-        {
-            Directory.Delete(_testRepoPath, true);
-        }
+        Assert.That(testInterface, Is.Not.Null);
+        Assert.That(testInterface.Type, Is.EqualTo("Interface"));
     }
 
-    [Fact]
+    [Test]
     public async Task AnalyzeRelationshipsAsync_ShouldReturnDependencies_WhenComponentsExist()
     {
         // Arrange
@@ -147,26 +147,19 @@ public interface IRepository
         var result = await _service.AnalyzeRelationshipsAsync(_testRepoPath, components);
 
         // Assert
-        Assert.NotNull(result);
-        Assert.True(result.Dependencies.Count >= 1);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Dependencies.Count, Is.GreaterThanOrEqualTo(1));
         
         var dependency = result.Dependencies.FirstOrDefault(d => 
             d.FromComponent.Contains("UserService") && d.ToComponent.Contains("IRepository"));
-        Assert.NotNull(dependency);
-        Assert.Equal("TypeReference", dependency.Type);
-
-        // Cleanup
-        if (Directory.Exists(_testRepoPath))
-        {
-            Directory.Delete(_testRepoPath, true);
-        }
+        Assert.That(dependency, Is.Not.Null);
+        Assert.That(dependency.Type, Is.EqualTo("TypeReference"));
     }
 
-    [Theory]
-    [InlineData("test.java", "Java")]
-    [InlineData("test.py", "Python")]
-    [InlineData("test.js", "JavaScript")]
-    [InlineData("test.ts", "TypeScript")]
+    [TestCase("test.java", "Java")]
+    [TestCase("test.py", "Python")]
+    [TestCase("test.js", "JavaScript")]
+    [TestCase("test.ts", "TypeScript")]
     public async Task IdentifyComponentsAsync_ShouldHandleMultipleLanguages(string fileName, string expectedLanguage)
     {
         // Arrange
@@ -188,17 +181,11 @@ public interface IRepository
         var result = await _service.IdentifyComponentsAsync(_testRepoPath);
 
         // Assert
-        Assert.NotNull(result);
+        Assert.That(result, Is.Not.Null);
         if (expectedLanguage != "JavaScript" && expectedLanguage != "TypeScript")
         {
             // Our simple parser mainly handles C#, Java, and Python well
-            Assert.True(result.Any());
-        }
-
-        // Cleanup
-        if (Directory.Exists(_testRepoPath))
-        {
-            Directory.Delete(_testRepoPath, true);
+            Assert.That(result.Any(), Is.True);
         }
     }
 }

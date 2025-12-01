@@ -74,14 +74,47 @@ namespace codeMRI.Core.Services
             _logger.LogInformation("Performing semantic clustering on {NodeCount} components", graph.NodeCount);
             
             var clusters = new Dictionary<string, List<string>>();
+            var assignedNodes = new HashSet<string>();
+
+            // 0. Analyze Graph for SCCs (Cyclic Dependencies)
+            try 
+            {
+                var analysis = await _graphService.AnalyzeGraphAsync(graph, cancellationToken);
+                var sccs = analysis.StronglyConnectedComponents;
+                
+                int sccIndex = 0;
+                foreach(var scc in sccs)
+                {
+                    if (scc.Count > 1)
+                    {
+                        var newNodes = scc.Where(n => !assignedNodes.Contains(n)).ToList();
+                        if (newNodes.Count > 0)
+                        {
+                            clusters[$"Cycle_{sccIndex}"] = newNodes;
+                            foreach(var n in newNodes) assignedNodes.Add(n);
+                            sccIndex++;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Graph analysis failed, proceeding without cycle detection.");
+            }
             
-            // 1. Identify Architectural Layers first
+            // 1. Identify Architectural Layers first for remaining nodes
             var layerGroups = graph.GetNodes()
+                .Where(n => !assignedNodes.Contains(n.ComponentId))
                 .GroupBy(n => _patternService.DetermineLayer(n))
                 .Where(g => g.Key != ArchitecturalLayerType.Unknown)
                 .ToDictionary(g => g.Key, g => g.Select(n => n.ComponentId).ToList());
 
-            var assignedNodes = new HashSet<string>(layerGroups.Values.SelectMany(x => x));
+            foreach (var layer in layerGroups)
+            {
+                clusters[layer.Key.ToString()] = layer.Value;
+                foreach(var n in layer.Value) assignedNodes.Add(n);
+            }
+
             var unassignedNodes = graph.GetNodes()
                 .Select(n => n.ComponentId)
                 .Where(id => !assignedNodes.Contains(id))
@@ -95,12 +128,6 @@ namespace codeMRI.Core.Services
                 {
                     clusters[$"Component_{community.Key}"] = community.Value;
                 }
-            }
-
-            // 3. Add Layer groups as clusters
-            foreach (var layer in layerGroups)
-            {
-                clusters[layer.Key.ToString()] = layer.Value;
             }
 
             return clusters;
@@ -434,31 +461,48 @@ namespace codeMRI.Core.Services
 
         private void CalculateModuleMetrics(ModuleNode module, EnhancedDependencyGraph graph)
         {
-            // Cohesion: Ratio of internal edges to possible internal edges
-            // Coupling: Ratio of external edges to total edges
-            
             var internalEdges = 0;
-            var externalEdges = 0;
+            var efferentCoupling = 0; // Ce: Outgoing to other modules
+            var afferentCoupling = 0; // Ca: Incoming from other modules
+            
             var componentCount = module.Components.Count;
+            var abstractComponents = 0;
 
             foreach (var componentId in module.Components)
             {
                 var node = graph.GetNode(componentId);
                 if (node == null) continue;
 
+                // Abstractness Check
+                if (IsAbstract(node))
+                {
+                    abstractComponents++;
+                }
+
+                // Outgoing edges (Internal vs Efferent)
                 foreach (var neighbor in node.OutEdges)
                 {
-                    if (module.Components.Contains(neighbor)) internalEdges++;
-                    else externalEdges++;
+                    if (module.Components.Contains(neighbor))
+                    {
+                        internalEdges++;
+                    }
+                    else
+                    {
+                        efferentCoupling++;
+                    }
                 }
-                 foreach (var neighbor in node.InEdges)
+                
+                // Incoming edges (Afferent)
+                foreach (var neighbor in node.InEdges)
                 {
-                    if (module.Components.Contains(neighbor)) { /* already counted in OutEdges of other node? No, iterating nodes */ }
-                    else externalEdges++;
+                    if (!module.Components.Contains(neighbor))
+                    {
+                        afferentCoupling++;
+                    }
                 }
             }
 
-            // Simple metrics
+            // Cohesion (Relational Cohesion)
             double cohesion = 0;
             if (componentCount > 1)
             {
@@ -470,19 +514,46 @@ namespace codeMRI.Core.Services
                 cohesion = 1.0; // Single component is cohesive
             }
 
+            // Coupling (Total external connections relative to total)
+            double totalEdges = internalEdges + efferentCoupling + afferentCoupling;
             double coupling = 0;
-            double totalEdges = internalEdges + externalEdges;
             if (totalEdges > 0)
             {
-                coupling = externalEdges / totalEdges;
+                coupling = (efferentCoupling + afferentCoupling) / totalEdges;
             }
+
+            // Instability (I = Ce / (Ca + Ce))
+            double instability = 0;
+            if (efferentCoupling + afferentCoupling > 0)
+            {
+                instability = (double)efferentCoupling / (efferentCoupling + afferentCoupling);
+            }
+
+            // Abstractness (A = Na / Nc)
+            double abstractness = 0;
+            if (componentCount > 0)
+            {
+                abstractness = (double)abstractComponents / componentCount;
+            }
+
+            // Distance from Main Sequence (D = |A + I - 1|)
+            double distance = Math.Abs(abstractness + instability - 1);
 
             module.QualityMetrics.Cohesion = cohesion;
             module.QualityMetrics.Coupling = coupling;
             module.QualityMetrics.Complexity = module.ComplexityScore;
+            module.QualityMetrics.Instability = instability;
+            module.QualityMetrics.Abstractness = abstractness;
+            module.QualityMetrics.DistanceFromMainSequence = distance;
             
             // Maintainability Index (Simplified)
             module.QualityMetrics.MaintainabilityIndex = Math.Max(0, 100 - (coupling * 20) - (module.ComplexityScore / 10.0));
+        }
+
+        private bool IsAbstract(GraphNode node)
+        {
+            return node.Metadata.Type.Contains("Interface", StringComparison.OrdinalIgnoreCase) ||
+                   node.Metadata.Type.Contains("Abstract", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

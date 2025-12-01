@@ -42,6 +42,30 @@ namespace codeMRI.Core.Services
                 };
             }
 
+            // Check for Microservices
+            var microservicesScore = CalculateMicroservicesScore(nodes, graph);
+            if (microservicesScore > 0.7)
+            {
+                return new ArchitecturalPattern
+                {
+                    Type = ArchitecturalPatternType.Microservices,
+                    Name = "Microservices",
+                    Confidence = microservicesScore
+                };
+            }
+
+            // Check for EventDriven
+            var eventDrivenScore = CalculateEventDrivenScore(nodes, graph);
+            if (eventDrivenScore > 0.6)
+            {
+                return new ArchitecturalPattern
+                {
+                    Type = ArchitecturalPatternType.EventDriven,
+                    Name = "Event-Driven",
+                    Confidence = eventDrivenScore
+                };
+            }
+
             // Check for MVC
             var mvcScore = CalculateMVCScore(nodes);
             if (mvcScore > 0.6 && mvcScore > layeredScore)
@@ -92,6 +116,68 @@ namespace codeMRI.Core.Services
                     return true;
             }
             return false;
+        }
+
+        private double CalculateMicroservicesScore(List<GraphNode> nodes, EnhancedDependencyGraph graph)
+        {
+            // Heuristic: Look for multiple independent "Service" or "API" components
+            // that are likely entry points or main services
+            var serviceNodes = nodes.Where(n => 
+                ContainsAny(n.ComponentId, n.Metadata.Type, "Service", "API", "Microservice") &&
+                !ContainsAny(n.ComponentId, n.Metadata.Type, "ApplicationService", "DomainService") // Exclude internal services if possible
+            ).ToList();
+
+            if (serviceNodes.Count < 2) return 0.0;
+
+            // Check connectivity between these services
+            int linksBetweenServices = 0;
+            foreach(var s1 in serviceNodes)
+            {
+                foreach(var s2 in serviceNodes)
+                {
+                    if (s1 == s2) continue;
+                    // Check direct dependency
+                    if (s1.OutEdges.Contains(s2.ComponentId)) linksBetweenServices++;
+                }
+            }
+            
+            // If they are mostly independent (low links), it supports Microservices (at this level of abstraction)
+            double connectivity = (double)linksBetweenServices / (serviceNodes.Count * (serviceNodes.Count - 1));
+            
+            if (connectivity < 0.3) return 0.8; // Low coupling between services
+            
+            return 0.4;
+        }
+
+        private double CalculateEventDrivenScore(List<GraphNode> nodes, EnhancedDependencyGraph graph)
+        {
+            int eventComponents = 0;
+            int eventLinks = 0;
+            
+            foreach(var node in nodes)
+            {
+                if (ContainsAny(node.ComponentId, node.Metadata.Type, "Event", "Message", "Bus", "Queue", "Topic", "Publisher", "Subscriber", "Handler"))
+                {
+                    eventComponents++;
+                    
+                    // Check if edges involve events
+                    foreach(var neighborId in node.OutEdges)
+                    {
+                         var neighbor = graph.GetNode(neighborId);
+                         if (neighbor != null && ContainsAny(neighbor.ComponentId, neighbor.Metadata.Type, "Event", "Message", "Handler"))
+                         {
+                             eventLinks++;
+                         }
+                    }
+                }
+            }
+
+            if (nodes.Count == 0) return 0.0;
+            
+            double ratio = (double)eventComponents / nodes.Count;
+            if (ratio > 0.3 || (eventComponents >= 3 && eventLinks >= 1)) return 0.9;
+            
+            return 0.0;
         }
 
         private double CalculateLayeredScore(List<GraphNode> nodes, EnhancedDependencyGraph graph)

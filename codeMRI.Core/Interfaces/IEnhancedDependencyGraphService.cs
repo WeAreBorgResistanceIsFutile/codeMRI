@@ -99,6 +99,7 @@ public enum EdgeType
 {
     Dependency,
     Inheritance,
+    Implementation,
     Composition,
     MethodCall,
     PropertyAccess,

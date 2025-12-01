@@ -1,22 +1,25 @@
 using Microsoft.Extensions.Logging;
 using Moq;
-using codeMRI.Core.Interfaces;
 using codeMRI.Core.Services;
+using codeMRI.Core.Interfaces;
+using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services
 {
+    [TestFixture]
     public class EnhancedDependencyGraphServiceTests
     {
-        private readonly Mock<ILogger<EnhancedDependencyGraphService>> _mockLogger;
-        private readonly EnhancedDependencyGraphService _service;
+        private Mock<ILogger<EnhancedDependencyGraphService>> _mockLogger;
+        private EnhancedDependencyGraphService _service;
         
-        public EnhancedDependencyGraphServiceTests()
+        [SetUp]
+        public void Setup()
         {
             _mockLogger = new Mock<ILogger<EnhancedDependencyGraphService>>();
             _service = new EnhancedDependencyGraphService(_mockLogger.Object);
         }
         
-        [Fact]
+        [Test]
         public async Task BuildGraphAsync_WithSimpleComponents_ShouldCreateValidGraph()
         {
             // Arrange
@@ -26,12 +29,12 @@ namespace codeMRI.Core.Tests.Services
             var graph = await _service.BuildGraphAsync(components);
             
             // Assert
-            Assert.NotNull(graph);
-            Assert.Equal(3, graph.NodeCount);
-            Assert.True(graph.EdgeCount >= 2);
+            Assert.That(graph, Is.Not.Null);
+            Assert.That(graph.NodeCount, Is.EqualTo(3));
+            Assert.That(graph.EdgeCount, Is.GreaterThanOrEqualTo(2));
         }
         
-        [Fact]
+        [Test]
         public async Task BuildGraphAsync_WithLargeDataset_ShouldCompleteEfficiently()
         {
             // Arrange
@@ -44,12 +47,12 @@ namespace codeMRI.Core.Tests.Services
             var duration = endTime - startTime;
             
             // Assert
-            Assert.NotNull(graph);
-            Assert.Equal(1000, graph.NodeCount);
-            Assert.True(duration.TotalSeconds < 5, $"Graph construction took {duration.TotalSeconds}s, should be under 5s");
+            Assert.That(graph, Is.Not.Null);
+            Assert.That(graph.NodeCount, Is.EqualTo(1000));
+            Assert.That(duration.TotalSeconds, Is.LessThan(5), $"Graph construction took {duration.TotalSeconds}s, should be under 5s");
         }
         
-        [Fact]
+        [Test]
         public async Task AnalyzeGraphAsync_WithSimpleGraph_ShouldCalculatePageRank()
         {
             // Arrange
@@ -60,12 +63,16 @@ namespace codeMRI.Core.Tests.Services
             var analysis = await _service.AnalyzeGraphAsync(graph);
             
             // Assert
-            Assert.NotNull(analysis.PageRankScores);
-            Assert.Equal(3, analysis.PageRankScores.Count);
-            Assert.All(analysis.PageRankScores.Values, score => Assert.True(score > 0 && score <= 1));
+            Assert.That(analysis.PageRankScores, Is.Not.Null);
+            Assert.That(analysis.PageRankScores.Count, Is.EqualTo(3));
+            foreach (var score in analysis.PageRankScores.Values)
+            {
+                Assert.That(score, Is.GreaterThan(0.0));
+                Assert.That(score, Is.LessThanOrEqualTo(1.0));
+            }
         }
         
-        [Fact]
+        [Test]
         public async Task IdentifyEntryPointsAsync_WithSimpleGraph_ShouldFindZeroInDegreeNodes()
         {
             // Arrange
@@ -80,11 +87,11 @@ namespace codeMRI.Core.Tests.Services
             var entryPoints = await _service.IdentifyEntryPointsAsync(graph);
             
             // Assert
-            Assert.NotNull(entryPoints);
-            Assert.Contains("MainController", entryPoints);
+            Assert.That(entryPoints, Is.Not.Null);
+            Assert.That(entryPoints, Does.Contain("MainController"));
         }
         
-        [Fact]
+        [Test]
         public async Task CalculateImportanceScoresAsync_ShouldReturnPositiveScores()
         {
             // Arrange
@@ -95,25 +102,25 @@ namespace codeMRI.Core.Tests.Services
             var importanceScores = await _service.CalculateImportanceScoresAsync(graph);
             
             // Assert
-            Assert.NotNull(importanceScores);
-            Assert.Equal(3, importanceScores.Count);
-            Assert.All(importanceScores.Values, score => Assert.True(score > 0));
+            Assert.That(importanceScores, Is.Not.Null);
+            Assert.That(importanceScores.Count, Is.EqualTo(3));
+            Assert.That(importanceScores.Values, Has.All.GreaterThan(0));
         }
         
-        [Fact]
-        public async Task BuildGraphAsync_WithCancellationToken_ShouldRespectCancellation()
+        [Test]
+        public void BuildGraphAsync_WithCancellationToken_ShouldRespectCancellation()
         {
             // Arrange
             var components = CreateLargeTestComponents(10000);
             using var cts = new CancellationTokenSource();
-            await cts.CancelAsync();
+            cts.Cancel();
             
             // Act & Assert
-            await Assert.ThrowsAsync<OperationCanceledException>(() =>
-                _service.BuildGraphAsync(components, cts.Token));
+            Assert.ThrowsAsync<OperationCanceledException>(async () =>
+                await _service.BuildGraphAsync(components, cts.Token));
         }
         
-        [Fact]
+        [Test]
         public async Task BuildGraphAsync_ShouldCalculateComplexityMetrics()
         {
             // Arrange
@@ -124,14 +131,14 @@ namespace codeMRI.Core.Tests.Services
             
             // Assert
             var node = graph.GetNode("ComplexComponent");
-            Assert.NotNull(node);
-            Assert.True(node.Metadata.CyclomaticComplexity > 0);
-            Assert.True(node.Metadata.NestingDepth >= 0);
-            Assert.True(node.Metadata.FanIn >= 0);
-            Assert.True(node.Metadata.FanOut >= 0);
+            Assert.That(node, Is.Not.Null);
+            Assert.That(node.Metadata.CyclomaticComplexity, Is.GreaterThan(0));
+            Assert.That(node.Metadata.NestingDepth, Is.GreaterThanOrEqualTo(0));
+            Assert.That(node.Metadata.FanIn, Is.GreaterThanOrEqualTo(0));
+            Assert.That(node.Metadata.FanOut, Is.GreaterThanOrEqualTo(0));
         }
         
-        [Fact]
+        [Test]
         public async Task EstimateTokensAsync_ShouldReturnReasonableEstimates()
         {
             // Arrange
@@ -142,12 +149,12 @@ namespace codeMRI.Core.Tests.Services
             var tokenEstimates = await _service.EstimateTokensAsync(graph);
             
             // Assert
-            Assert.NotNull(tokenEstimates);
-            Assert.Equal(3, tokenEstimates.Count);
-            Assert.All(tokenEstimates.Values, tokens => Assert.True(tokens > 0));
+            Assert.That(tokenEstimates, Is.Not.Null);
+            Assert.That(tokenEstimates.Count, Is.EqualTo(3));
+            Assert.That(tokenEstimates.Values, Has.All.GreaterThan(0));
         }
         
-        [Fact]
+        [Test]
         public async Task DecomposeHierarchicallyAsync_ShouldCreateModuleTree()
         {
             // Arrange
@@ -158,19 +165,19 @@ namespace codeMRI.Core.Tests.Services
             var moduleTree = await _service.DecomposeHierarchicallyAsync(graph, maxTokensPerModule: 1000);
             
             // Assert
-            Assert.NotNull(moduleTree);
-            Assert.NotNull(moduleTree.Root);
-            Assert.True(moduleTree.GetAllLeaves().Count > 0);
+            Assert.That(moduleTree, Is.Not.Null);
+            Assert.That(moduleTree.Root, Is.Not.Null);
+            Assert.That(moduleTree.GetAllLeaves().Count, Is.GreaterThan(0));
             
             // All leaves should be under token threshold
             foreach (var leaf in moduleTree.GetAllLeaves())
             {
-                Assert.True(leaf.EstimatedTokens <= 1000, 
+                Assert.That(leaf.EstimatedTokens, Is.LessThanOrEqualTo(1000), 
                     $"Leaf {leaf.Id} has {leaf.EstimatedTokens} tokens, exceeding threshold of 1000");
             }
         }
         
-        [Fact]
+        [Test]
         public async Task PartitionByDirectoryStructure_ShouldGroupByPath()
         {
             // Arrange
@@ -181,10 +188,10 @@ namespace codeMRI.Core.Tests.Services
             var partitions = await _service.PartitionByDirectoryStructureAsync(graph);
             
             // Assert
-            Assert.NotNull(partitions);
-            Assert.True(partitions.Count >= 2); // Should have at least "Controllers" and "Services"
-            Assert.True(partitions.ContainsKey("Controllers"));
-            Assert.True(partitions.ContainsKey("Services"));
+            Assert.That(partitions, Is.Not.Null);
+            Assert.That(partitions.Count, Is.GreaterThanOrEqualTo(2)); // Should have at least "Controllers" and "Services"
+            Assert.That(partitions.ContainsKey("Controllers"), Is.True);
+            Assert.That(partitions.ContainsKey("Services"), Is.True);
         }
         
         private List<CodeComponent> CreateSimpleTestComponents()
