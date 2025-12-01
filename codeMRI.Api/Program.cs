@@ -52,6 +52,7 @@ builder.Services.AddScoped<IAgent, ValidatorAgent>();
 builder.Services.AddScoped<IAgentCoordinator, AgentCoordinator>();
 
 // Core Services
+builder.Services.AddScoped<IArchitecturalPatternService, ArchitecturalPatternService>();
 builder.Services.AddScoped<IComponentIdentificationService, ComponentIdentificationService>();
 builder.Services.AddScoped<IEnhancedDependencyGraphService, EnhancedDependencyGraphService>();
 builder.Services.AddScoped<RAGService>();
