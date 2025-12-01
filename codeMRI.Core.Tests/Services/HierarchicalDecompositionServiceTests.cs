@@ -1,14 +1,9 @@
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
-using codeMRI.Shared.Models; // Added
+using codeMRI.Core.Models; // For ArchitecturalPattern and ArchitecturalLayerType
+using codeMRI.Shared.Models; // For ModuleTree, ModuleNode, EnhancedDependencyGraph, etc.
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
-using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services
 {
