@@ -1,6 +1,7 @@
 using codeMRI.Core.Interfaces;
 using codeMRI.Shared.Models;
 using codeMRI.Visualization.Services;
+using System.Net.Http;
 using NUnit.Framework;
 
 namespace codeMRI.Visualization.Tests.Generators
@@ -13,7 +14,7 @@ namespace codeMRI.Visualization.Tests.Generators
         [SetUp]
         public void Setup()
         {
-            _generator = new DiagramGeneratorService();
+            _generator = new DiagramGeneratorService(new HttpClient());
         }
 
         [Test]

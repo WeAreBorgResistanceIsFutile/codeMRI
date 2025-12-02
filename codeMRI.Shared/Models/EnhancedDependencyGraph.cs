@@ -111,6 +111,11 @@ namespace codeMRI.Shared.Models
         public bool HasDocumentation { get; set; }
         public string FilePath { get; set; } = string.Empty;
         public double EstimatedTokens { get; set; }
+        
+        // Enhanced properties for filtering and visualization
+        public string Layer { get; set; } = string.Empty;
+        public double Complexity { get; set; }
+        public string Visibility { get; set; } = "public";
     }
 
     public class GraphAnalysisResult

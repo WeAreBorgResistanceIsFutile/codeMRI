@@ -1,226 +1,324 @@
 using codeMRI.Shared.Models;
 using codeMRI.Visualization.Interfaces;
-using System.Text;
+using codeMRI.Visualization.Models;
 
 namespace codeMRI.Visualization.Services
 {
+    /// <summary>
+    /// Enhanced diagram generator with zoom, filtering, and export capabilities
+    /// </summary>
     public class DiagramGeneratorService : IDiagramGenerator
     {
+        private readonly BaseDiagramGeneratorService _baseGenerator;
+        private readonly HttpClient _httpClient;
+
+        public DiagramGeneratorService(HttpClient httpClient)
+        {
+            _baseGenerator = new BaseDiagramGeneratorService();
+            _httpClient = httpClient;
+        }
+
         public Task<string> GenerateArchitectureDiagramAsync(ModuleTree moduleTree, EnhancedDependencyGraph graph)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine("```mermaid");
-            sb.AppendLine("graph TD");
-
-            var visibleNodes = new HashSet<string>();
-
-            // Collect all modules from both Nodes dictionary and Root traversal
-            var allModules = new HashSet<ModuleNode>();
-            if (moduleTree.Nodes != null)
-            {
-                foreach(var n in moduleTree.Nodes.Values) allModules.Add(n);
-            }
-
-            if (moduleTree.Root != null)
-            {
-                var queue = new Queue<ModuleNode>();
-                queue.Enqueue(moduleTree.Root);
-                while (queue.Count > 0)
-                {
-                    var m = queue.Dequeue();
-                    allModules.Add(m);
-                    foreach(var c in m.Children) queue.Enqueue(c);
-                }
-            }
-
-            // Generate subgraph for each module
-            foreach (var module in allModules.Where(n => n.Parent != null))
-            {
-                if (module.Id != "root" && module.Level <= 2) 
-                {
-                    sb.AppendLine($"    subgraph {Sanitize(module.Id)}[{SanitizeLabel(module.Name)}]");
-                    foreach (var componentId in module.Components)
-                    {
-                        sb.AppendLine($"        {Sanitize(componentId)}[{SanitizeLabel(componentId)}]");
-                        visibleNodes.Add(componentId);
-                    }
-                    sb.AppendLine("    end");
-                }
-            }
-
-            foreach (var node in graph.GetNodes())
-            {
-                if (!visibleNodes.Contains(node.ComponentId)) continue;
-
-                foreach (var targetId in node.OutEdges)
-                {
-                    if (visibleNodes.Contains(targetId))
-                    {
-                        sb.AppendLine($"    {Sanitize(node.ComponentId)} --> {Sanitize(targetId)}");
-                    }
-                }
-            }
-
-            sb.AppendLine("```");
-            return Task.FromResult(sb.ToString());
+            return _baseGenerator.GenerateArchitectureDiagramAsync(moduleTree, graph);
         }
 
         public Task<string> GenerateComponentDiagramAsync(EnhancedDependencyGraph graph, string? focusComponentId = null)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine("```mermaid");
-            sb.AppendLine("classDiagram");
-
-            var componentsToShow = new HashSet<string>();
-            if (!string.IsNullOrEmpty(focusComponentId))
-            {
-                componentsToShow.Add(focusComponentId);
-                var node = graph.GetNode(focusComponentId);
-                if (node != null)
-                {
-                    foreach (var neighbor in node.OutEdges.Concat(node.InEdges)) componentsToShow.Add(neighbor);
-                }
-            }
-            else
-            {
-                return Task.FromResult("");
-            }
-
-            foreach (var id in componentsToShow)
-            {
-                var node = graph.GetNode(id);
-                if (node == null) continue;
-
-                sb.AppendLine($"    class {Sanitize(id)} {{");
-                sb.AppendLine($"        +{node.Metadata.Type}"); 
-                sb.AppendLine("    }");
-
-                foreach (var targetId in node.OutEdges)
-                {
-                    if (componentsToShow.Contains(targetId))
-                    {
-                        var edge = graph.GetEdges().FirstOrDefault(e => e.From == id && e.To == targetId);
-                        if (edge != null)
-                        {
-                            string arrow = "-->";
-                            switch(edge.Type)
-                            {
-                                case EdgeType.Inheritance: arrow = "--|>"; break;
-                                case EdgeType.Implementation: arrow = "..|>"; break;
-                                case EdgeType.Composition: arrow = "*--"; break;
-                                case EdgeType.Aggregation: arrow = "o--"; break;
-                                default: arrow = "-->"; break;
-                            }
-                            sb.AppendLine($"    {Sanitize(id)} {arrow} {Sanitize(targetId)}");
-                        }
-                        else
-                        {
-                            sb.AppendLine($"    {Sanitize(id)} --> {Sanitize(targetId)}");
-                        }
-                    }
-                }
-            }
-
-            sb.AppendLine("```");
-            return Task.FromResult(sb.ToString());
+            return _baseGenerator.GenerateComponentDiagramAsync(graph, focusComponentId);
         }
 
         public Task<string> GenerateSequenceDiagramAsync(EnhancedDependencyGraph graph, string entryPointId)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine("```mermaid");
-            sb.AppendLine("sequenceDiagram");
-            sb.AppendLine("    autonumber");
-
-            var queue = new Queue<(string from, string to, int depth)>();
-            var entryNode = graph.GetNode(entryPointId);
-            if (entryNode != null)
-            {
-                foreach (var target in entryNode.OutEdges)
-                {
-                    queue.Enqueue((entryPointId, target, 1));
-                }
-            }
-
-            var visited = new HashSet<string>(); 
-            int maxEdges = 20;
-            int count = 0;
-
-            while (queue.Count > 0 && count < maxEdges)
-            {
-                var (from, to, depth) = queue.Dequeue();
-                var edgeKey = $"{from}->{to}";
-                
-                if (visited.Contains(edgeKey)) continue;
-                visited.Add(edgeKey);
-                count++;
-
-                sb.AppendLine($"    {Sanitize(from)}->>{Sanitize(to)}: Call");
-                
-                if (depth < 3)
-                {
-                    var nextNode = graph.GetNode(to);
-                    if (nextNode != null)
-                    {
-                        foreach (var nextTarget in nextNode.OutEdges)
-                        {
-                            queue.Enqueue((to, nextTarget, depth + 1));
-                        }
-                    }
-                }
-            }
-
-            sb.AppendLine("```");
-            return Task.FromResult(sb.ToString());
+            return _baseGenerator.GenerateSequenceDiagramAsync(graph, entryPointId);
         }
 
         public Task<string> GenerateDataFlowDiagramAsync(EnhancedDependencyGraph graph, string focusComponentId)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine("```mermaid");
-            sb.AppendLine("graph LR");
+            return _baseGenerator.GenerateDataFlowDiagramAsync(graph, focusComponentId);
+        }
+
+        /// <summary>
+        /// Generate interactive diagram with zoom, filtering, and export capabilities
+        /// </summary>
+        public async Task<InteractiveDiagram> GenerateInteractiveArchitectureDiagramAsync(
+            ModuleTree moduleTree, 
+            EnhancedDependencyGraph graph, 
+            DiagramOptions? options = null)
+        {
+            options ??= GetDefaultOptions();
             
-            // Show focus component and immediate data flow (in/out)
-            var nodesToShow = new HashSet<string> { focusComponentId };
-            var focusNode = graph.GetNode(focusComponentId);
-            
-            if (focusNode != null)
+            var diagram = new InteractiveDiagram
             {
-                foreach(var neighbor in focusNode.OutEdges.Concat(focusNode.InEdges)) nodesToShow.Add(neighbor);
+                Title = "Architecture Diagram",
+                Type = DiagramType.Architecture,
+                Options = options,
+                MermaidContent = await GenerateArchitectureDiagramAsync(moduleTree, graph),
+                ExportOptions = GetDefaultExportOptions()
+            };
+
+            // Extract components and relationships for filtering
+            diagram.Components = ExtractComponentsFromGraph(graph, options.Filter);
+            diagram.Relationships = ExtractRelationshipsFromGraph(graph, options.Filter);
+
+            return diagram;
+        }
+
+        /// <summary>
+        /// Generate interactive component diagram with filtering capabilities
+        /// </summary>
+        public async Task<InteractiveDiagram> GenerateInteractiveComponentDiagramAsync(
+            EnhancedDependencyGraph graph, 
+            string? focusComponentId = null, 
+            DiagramOptions? options = null)
+        {
+            options ??= GetDefaultOptions();
+            
+            var diagram = new InteractiveDiagram
+            {
+                Title = "Component Diagram",
+                Type = DiagramType.Component,
+                Options = options,
+                MermaidContent = await GenerateComponentDiagramAsync(graph, focusComponentId)
+            };
+
+            diagram.Components = ExtractComponentsFromGraph(graph, options.Filter);
+            diagram.Relationships = ExtractRelationshipsFromGraph(graph, options.Filter);
+
+            return diagram;
+        }
+
+        /// <summary>
+        /// Generate interactive sequence diagram with filtering capabilities
+        /// </summary>
+        public async Task<InteractiveDiagram> GenerateInteractiveSequenceDiagramAsync(
+            EnhancedDependencyGraph graph, 
+            string entryPointId, 
+            DiagramOptions? options = null)
+        {
+            options ??= GetDefaultOptions();
+            
+            var diagram = new InteractiveDiagram
+            {
+                Title = "Sequence Diagram",
+                Type = DiagramType.Sequence,
+                Options = options,
+                MermaidContent = await GenerateSequenceDiagramAsync(graph, entryPointId)
+            };
+
+            diagram.Components = ExtractComponentsFromGraph(graph, options.Filter);
+            diagram.Relationships = ExtractRelationshipsFromGraph(graph, options.Filter);
+
+            return diagram;
+        }
+
+        /// <summary>
+        /// Apply filters to diagram components
+        /// </summary>
+        public List<DiagramComponent> FilterComponents(
+            List<DiagramComponent> components, 
+            FilterOptions filter)
+        {
+            var filtered = components.AsEnumerable();
+
+            // Include/exclude by component IDs
+            if (filter.IncludedComponents.Any())
+            {
+                filtered = filtered.Where(c => filter.IncludedComponents.Contains(c.Id));
+            }
+            else if (filter.ExcludedComponents.Any())
+            {
+                filtered = filtered.Where(c => !filter.ExcludedComponents.Contains(c.Id));
             }
 
-            foreach (var id in nodesToShow)
+            // Filter by complexity
+            filtered = filtered.Where(c => 
+                c.Complexity >= filter.MinComplexity && 
+                c.Complexity <= filter.MaxComplexity);
+
+            // Filter by visibility
+            if (filter.ShowOnlyPublic)
             {
-                sb.AppendLine($"    {Sanitize(id)}[{SanitizeLabel(id)}]");
+                filtered = filtered.Where(c => c.IsPublic);
             }
 
-            foreach (var id in nodesToShow)
+            if (filter.ShowOnlyDocumented)
             {
-                var node = graph.GetNode(id);
-                if (node == null) continue;
+                filtered = filtered.Where(c => c.HasDocumentation);
+            }
 
-                foreach (var targetId in node.OutEdges)
+            // Filter by layers
+            if (filter.IncludedLayers.Any())
+            {
+                filtered = filtered.Where(c => filter.IncludedLayers.Contains(c.Layer));
+            }
+            else if (filter.ExcludedLayers.Any())
+            {
+                filtered = filtered.Where(c => !filter.ExcludedLayers.Contains(c.Layer));
+            }
+
+            return filtered.ToList();
+        }
+
+        /// <summary>
+        /// Apply filters to diagram relationships
+        /// </summary>
+        public List<DiagramRelationship> FilterRelationships(
+            List<DiagramRelationship> relationships, 
+            FilterOptions filter)
+        {
+            var filtered = relationships.AsEnumerable();
+
+            // Filter by relationship types
+            if (filter.IncludedRelationshipTypes.Any())
+            {
+                filtered = filtered.Where(r => filter.IncludedRelationshipTypes.Contains(r.Type));
+            }
+            else if (filter.ExcludedRelationshipTypes.Any())
+            {
+                filtered = filtered.Where(r => !filter.ExcludedRelationshipTypes.Contains(r.Type));
+            }
+
+            // Filter by component visibility
+            var visibleComponentIds = FilterComponents(
+                relationships.SelectMany(r => new[] 
+                { 
+                    new DiagramComponent { Id = r.FromComponent },
+                    new DiagramComponent { Id = r.ToComponent }
+                }).ToList(), 
+                filter).Select(c => c.Id).ToHashSet();
+
+            filtered = filtered.Where(r => 
+                visibleComponentIds.Contains(r.FromComponent) && 
+                visibleComponentIds.Contains(r.ToComponent));
+
+            return filtered.ToList();
+        }
+
+        /// <summary>
+        /// Get default diagram options
+        /// </summary>
+        private DiagramOptions GetDefaultOptions()
+        {
+            return new DiagramOptions
+            {
+                EnableZoom = true,
+                EnableFiltering = true,
+                EnableExport = true,
+                Zoom = new ZoomOptions
                 {
-                    if (nodesToShow.Contains(targetId))
-                    {
-                        // Data flow usually implies specific types, but default --> works for test
-                        sb.AppendLine($"    {Sanitize(id)} --> {Sanitize(targetId)}");
-                    }
+                    MinZoom = 0.1,
+                    MaxZoom = 5.0,
+                    DefaultZoom = 1.0,
+                    EnableMouseWheel = true,
+                    EnablePan = true,
+                    FitToView = true
+                },
+                Filter = new FilterOptions(),
+                Theme = "default",
+                MaxDepth = 3,
+                ShowLabels = true,
+                ShowMetadata = false
+            };
+        }
+
+        /// <summary>
+        /// Get default export options
+        /// </summary>
+        private ExportOptions GetDefaultExportOptions()
+        {
+            return new ExportOptions
+            {
+                EnablePng = true,
+                EnableSvg = true,
+                EnablePdf = false,
+                Png = new PngExportOptions
+                {
+                    Width = 1920,
+                    Height = 1080,
+                    Quality = 90,
+                    BackgroundColor = "#ffffff",
+                    Transparent = false
+                },
+                Svg = new SvgExportOptions
+                {
+                    IncludeStyles = true,
+                    IncludeMetadata = true,
+                    Compressed = false,
+                    BackgroundColor = "transparent"
                 }
-            }
-
-            sb.AppendLine("```");
-            return Task.FromResult(sb.ToString());
+            };
         }
 
-        private string Sanitize(string id)
+        /// <summary>
+        /// Extract components from dependency graph
+        /// </summary>
+        private List<DiagramComponent> ExtractComponentsFromGraph(
+            EnhancedDependencyGraph graph, 
+            FilterOptions filter)
         {
-            return id.Replace(" ", "_").Replace("-", "_").Replace(".", "_").Replace("/", "_");
+            var components = graph.GetNodes().Select(node => new DiagramComponent
+            {
+                Id = node.ComponentId,
+                Name = node.ComponentId,
+                Type = node.Metadata.Type,
+                Layer = DetermineComponentLayer(node.Metadata.Type),
+                Complexity = node.Metadata.CyclomaticComplexity,
+                IsPublic = node.Metadata.IsPublic,
+                HasDocumentation = node.Metadata.HasDocumentation,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["FilePath"] = node.Metadata.FilePath,
+                    ["LineCount"] = node.Metadata.LineCount,
+                    ["FanIn"] = node.InDegree,
+                    ["FanOut"] = node.OutDegree,
+                    ["EstimatedTokens"] = node.Metadata.EstimatedTokens
+                }
+            }).ToList();
+
+            return FilterComponents(components, filter);
         }
 
-        private string SanitizeLabel(string label)
+        /// <summary>
+        /// Extract relationships from dependency graph
+        /// </summary>
+        private List<DiagramRelationship> ExtractRelationshipsFromGraph(
+            EnhancedDependencyGraph graph, 
+            FilterOptions filter)
         {
-            return label.Replace("\"", "'");
+            var relationships = graph.GetEdges().Select(edge => new DiagramRelationship
+            {
+                Id = Guid.NewGuid().ToString(),
+                FromComponent = edge.From,
+                ToComponent = edge.To,
+                Type = edge.Type,
+                Strength = edge.Strength,
+                Description = edge.Type.ToString(),
+                Metadata = new Dictionary<string, object>
+                {
+                    ["CreatedAt"] = edge.CreatedAt,
+                    ["Strength"] = edge.Strength
+                }
+            }).ToList();
+
+            return FilterRelationships(relationships, filter);
+        }
+
+        /// <summary>
+        /// Determine component layer based on type
+        /// </summary>
+        private string DetermineComponentLayer(string componentType)
+        {
+            return componentType.ToLower() switch
+            {
+                "controller" => "Presentation",
+                "service" => "Business",
+                "repository" => "Data",
+                "interface" => "Contract",
+                "class" => "Domain",
+                "enum" => "Domain",
+                _ => "Unknown"
+            };
         }
     }
 }

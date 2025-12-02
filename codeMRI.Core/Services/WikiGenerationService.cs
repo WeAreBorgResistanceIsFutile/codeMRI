@@ -3,6 +3,7 @@ using System.Xml.Linq;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Visualization.Interfaces;
+using codeMRI.Visualization.Models;
 using System.Text;
 
 namespace codeMRI.Core.Services;
@@ -101,10 +102,67 @@ public class WikiGenerationService : IWikiGenerationService
 
         var content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>());
 
-        // Generate Sequence Diagram if applicable (e.g. for Controllers or Services)
-        // We need to reconstruct/get the graph. For this scope, assuming we can get graph or skip.
-        // Ideally, we'd pass the ModuleNode or Component ID to GeneratePageAsync.
-        // Since we don't have it here, we might skip or try to match file path to component.
+        // Generate enhanced interactive diagrams if we have a dependency graph
+        try
+        {
+            var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), CancellationToken.None);
+            if (graph.NodeCount > 0)
+            {
+                // Try to find a component that matches the page title or file paths
+                var entryPointId = FindEntryPointForPage(pageTitle, filePaths, graph);
+                
+                if (!string.IsNullOrEmpty(entryPointId))
+                {
+                    // Generate interactive sequence diagram
+                    if (_diagramGenerator is codeMRI.Visualization.Services.DiagramGeneratorService enhancedGenerator)
+                    {
+                        var interactiveSequenceDiagram = await enhancedGenerator.GenerateInteractiveSequenceDiagramAsync(graph, entryPointId);
+                        if (interactiveSequenceDiagram != null && !string.IsNullOrWhiteSpace(interactiveSequenceDiagram.MermaidContent))
+                        {
+                            content += "\n\n## Interactive Sequence Diagram\n\n";
+                            content += GenerateInteractiveDiagramHtml(interactiveSequenceDiagram, "Sequence Diagram");
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to basic diagram generation
+                        var sequenceDiagram = await _diagramGenerator.GenerateSequenceDiagramAsync(graph, entryPointId);
+                        if (!string.IsNullOrWhiteSpace(sequenceDiagram) && sequenceDiagram.Contains("sequenceDiagram"))
+                        {
+                            content += "\n\n## Sequence Diagram\n\n";
+                            content += sequenceDiagram + "\n";
+                        }
+                    }
+
+                    // Generate interactive component diagram
+                    if (_diagramGenerator is codeMRI.Visualization.Services.DiagramGeneratorService enhancedComponentGenerator)
+                    {
+                        var interactiveComponentDiagram = await enhancedComponentGenerator.GenerateInteractiveComponentDiagramAsync(graph, entryPointId);
+                        if (interactiveComponentDiagram != null && !string.IsNullOrWhiteSpace(interactiveComponentDiagram.MermaidContent))
+                        {
+                            content += "\n\n## Interactive Component Diagram\n\n";
+                            content += GenerateInteractiveDiagramHtml(interactiveComponentDiagram, "Component Diagram");
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to basic diagram generation
+                        var componentDiagram = await _diagramGenerator.GenerateComponentDiagramAsync(graph, entryPointId);
+                        if (!string.IsNullOrWhiteSpace(componentDiagram) && componentDiagram.Contains("classDiagram"))
+                        {
+                            content += "\n## Component Diagram\n\n";
+                            content += componentDiagram + "\n";
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't fail the page generation
+            // In a real implementation, you'd use proper logging
+            Console.WriteLine($"Failed to generate diagrams for page {pageTitle}: {ex.Message}");
+        }
 
         return new WikiPage
         {
@@ -142,20 +200,28 @@ public class WikiGenerationService : IWikiGenerationService
         var prompt = sb.ToString();
         var content = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>());
         
-        // 2. Generate Diagrams
-        var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), CancellationToken.None); // This might be empty if not cached? 
-        // We need a way to get the full graph. Assuming GraphService has state or we pass components.
-        // IMPORTANT: In current architecture, BuildGraphAsync takes components. We likely need to persist the graph or pass it down.
-        // For now, we'll assume we can't easily get the full graph here without re-parsing, 
-        // so we will skip diagram generation in this method unless we refactor to inject the graph.
-        
-        // However, we can generate a diagram based on the ModuleTree structure we have in 'module'
-        // Using a simplified method in DiagramGenerator that takes ModuleNode
-        
-        if (_diagramGenerator is codeMRI.Visualization.Services.DiagramGeneratorService concreteGenerator)
+        // 2. Generate Architecture Diagram
+        try
         {
-             // Assuming we can get at least a partial graph or we rely on what's available
-             // If we can't get the graph, we can't generate edges.
+            var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), CancellationToken.None);
+            if (graph.NodeCount > 0)
+            {
+                // Create a simple module tree for this module and its children
+                var moduleTree = new ModuleTree { Root = module };
+                moduleTree.Nodes[module.Id] = module;
+                
+                var architectureDiagram = await _diagramGenerator.GenerateArchitectureDiagramAsync(moduleTree, graph);
+                if (!string.IsNullOrWhiteSpace(architectureDiagram) && architectureDiagram.Contains("graph TD"))
+                {
+                    content += "\n\n## Architecture Diagram\n\n";
+                    content += architectureDiagram + "\n";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't fail the page generation
+            Console.WriteLine($"Failed to generate architecture diagram for module {module.Name}: {ex.Message}");
         }
         
         return new WikiPage
@@ -173,5 +239,138 @@ public class WikiGenerationService : IWikiGenerationService
         var idx = content.IndexOf("\n\n");
         if (idx > 0) return content.Substring(0, idx);
         return content.Length > 200 ? content.Substring(0, 200) + "..." : content;
+    }
+
+    private string? FindEntryPointForPage(string pageTitle, List<string> filePaths, EnhancedDependencyGraph graph)
+    {
+        // Try to find a component that matches the page title
+        var titleCandidates = graph.GetNodes()
+            .Where(n => n.ComponentId.Equals(pageTitle, StringComparison.OrdinalIgnoreCase) ||
+                        n.ComponentId.Contains(pageTitle, StringComparison.OrdinalIgnoreCase) ||
+                        pageTitle.Contains(n.ComponentId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (titleCandidates.Any())
+        {
+            return titleCandidates.First().ComponentId;
+        }
+
+        // Try to match based on file paths
+        foreach (var filePath in filePaths)
+        {
+            var fileName = Path.GetFileNameWithoutExtension(filePath);
+            var fileCandidates = graph.GetNodes()
+                .Where(n => n.ComponentId.Equals(fileName, StringComparison.OrdinalIgnoreCase) ||
+                            n.ComponentId.Contains(fileName, StringComparison.OrdinalIgnoreCase) ||
+                            fileName.Contains(n.ComponentId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (fileCandidates.Any())
+            {
+                return fileCandidates.First().ComponentId;
+            }
+        }
+
+        // If no specific match, return the first node with outgoing edges (likely an entry point)
+        var entryPoint = graph.GetNodes()
+            .Where(n => n.OutDegree > 0)
+            .OrderByDescending(n => n.OutDegree)
+            .FirstOrDefault();
+
+        return entryPoint?.ComponentId;
+    }
+
+    /// <summary>
+    /// Generate HTML wrapper for interactive diagrams with zoom, filter, and export controls
+    /// </summary>
+    private string GenerateInteractiveDiagramHtml(InteractiveDiagram diagram, string title)
+    {
+        var html = $@"
+<div class=""interactive-diagram-container"" data-diagram-id=""{diagram.Id}"">
+    <h3>{title}</h3>
+    
+    <!-- Control Panel -->
+    <div class=""diagram-controls"">
+        <!-- Zoom Controls -->
+        <div class=""zoom-controls"">
+            <button class=""btn btn-sm btn-outline-secondary"" onclick=""zoomIn('{diagram.Id}')"">+</button>
+            <button class=""btn btn-sm btn-outline-secondary"" onclick=""zoomOut('{diagram.Id}')"">-</button>
+            <button class=""btn btn-sm btn-outline-secondary"" onclick=""resetZoom('{diagram.Id}')"">Reset</button>
+            <button class=""btn btn-sm btn-outline-secondary"" onclick=""fitToView('{diagram.Id}')"">Fit</button>
+        </div>
+        
+        <!-- Filter Controls -->
+        <div class=""filter-controls"">
+            <select class=""form-select form-select-sm"" id=""filter-type-{diagram.Id}"" onchange=""applyFilters('{diagram.Id}')"">
+                <option value="""">All Types</option>
+                {GenerateComponentTypeOptions(diagram.Components)}
+            </select>
+            
+            <select class=""form-select form-select-sm"" id=""filter-layer-{diagram.Id}"" onchange=""applyFilters('{diagram.Id}')"">
+                <option value="""">All Layers</option>
+                {GenerateLayerOptions(diagram.Components)}
+            </select>
+            
+            <input type=""range"" class=""form-range"" id=""filter-complexity-{diagram.Id}"" 
+                   min=""0"" max=""100"" value=""100"" onchange=""applyFilters('{diagram.Id}')""
+                   title=""Filter by complexity"">
+        </div>
+        
+        <!-- Export Controls -->
+        <div class=""export-controls"">
+            <button class=""btn btn-sm btn-primary"" onclick=""exportDiagram('{diagram.Id}', 'png')"">Export PNG</button>
+            <button class=""btn btn-sm btn-primary"" onclick=""exportDiagram('{diagram.Id}', 'svg')"">Export SVG</button>
+            <button class=""btn btn-sm btn-secondary"" onclick=""exportDiagram('{diagram.Id}', 'html')"">Export HTML</button>
+        </div>
+    </div>
+    
+    <!-- Diagram Container -->
+    <div class=""diagram-viewport"" id=""diagram-{diagram.Id}"">
+        <div class=""mermaid"">
+            {diagram.MermaidContent}
+        </div>
+    </div>
+    
+    <!-- Component Info Panel -->
+    <div class=""component-info-panel"" id=""info-{diagram.Id}"" style=""display: none;"">
+        <h5>Component Details</h5>
+        <div id=""component-details-{diagram.Id}""></div>
+    </div>
+</div>
+
+<script>
+// Initialize diagram when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {{
+    initializeDiagram('{diagram.Id}');
+}});
+
+// Diagram data for JavaScript
+window.diagramData = window.diagramData || {{}};
+window.diagramData['{diagram.Id}'] = {{
+    components: {System.Text.Json.JsonSerializer.Serialize(diagram.Components)},
+    relationships: {System.Text.Json.JsonSerializer.Serialize(diagram.Relationships)},
+    options: {System.Text.Json.JsonSerializer.Serialize(diagram.Options)}
+}};
+</script>";
+
+        return html;
+    }
+
+    /// <summary>
+    /// Generate component type options for filter dropdown
+    /// </summary>
+    private string GenerateComponentTypeOptions(List<DiagramComponent> components)
+    {
+        var types = components.Select(c => c.Type).Distinct().OrderBy(t => t);
+        return string.Join("", types.Select(type => $"<option value=\"{type}\">{type}</option>"));
+    }
+
+    /// <summary>
+    /// Generate layer options for filter dropdown
+    /// </summary>
+    private string GenerateLayerOptions(List<DiagramComponent> components)
+    {
+        var layers = components.Select(c => c.Layer).Distinct().OrderBy(l => l);
+        return string.Join("", layers.Select(layer => $"<option value=\"{layer}\">{layer}</option>"));
     }
 }

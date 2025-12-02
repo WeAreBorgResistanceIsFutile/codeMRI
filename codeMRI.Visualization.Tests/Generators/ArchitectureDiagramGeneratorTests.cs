@@ -15,7 +15,7 @@ namespace codeMRI.Visualization.Tests.Generators
         [SetUp]
         public void Setup()
         {
-            _generator = new DiagramGeneratorService();
+            _generator = new DiagramGeneratorService(new HttpClient());
         }
 
         [Test]
@@ -44,10 +44,10 @@ namespace codeMRI.Visualization.Tests.Generators
             var result = await _generator.GenerateArchitectureDiagramAsync(moduleTree, graph);
 
             // Assert
-            Assert.That(result, Does.Contain("graph TD"));
-            Assert.That(result, Does.Contain("subgraph moduleA"));
-            Assert.That(result, Does.Contain("Comp1"));
-            Assert.That(result, Does.Contain("Comp3"));
+            Assert.That(result, Does.Contain("graph TB"));
+            Assert.That(result, Does.Contain("root[Root]"));
+            Assert.That(result, Does.Contain("moduleA[ModuleA]"));
+            Assert.That(result, Does.Contain("moduleB[ModuleB]"));
             Assert.That(result, Does.Contain("Comp1 --> Comp3"));
         }
     }

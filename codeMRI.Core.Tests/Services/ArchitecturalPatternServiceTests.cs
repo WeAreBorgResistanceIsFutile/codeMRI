@@ -292,7 +292,6 @@ namespace codeMRI.Core.Tests.Services
         }
 
         [Test]
-        [Ignore("Temporarily disabled due to implementation-specific behavior")]
         public void RecognizePattern_ShouldHandleNullInputs()
         {
             // Test with null module - actual behavior is to return Unknown pattern

@@ -116,6 +116,8 @@ namespace codeMRI.Core.Services
         private List<GraphNode> GetModuleNodes(ModuleNode module, EnhancedDependencyGraph graph)
         {
             var nodes = new List<GraphNode>();
+            if (module?.Components == null) return nodes;
+            
             foreach (var componentId in module.Components)
             {
                 var node = graph.GetNode(componentId);

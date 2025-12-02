@@ -15,7 +15,7 @@ namespace codeMRI.Visualization.Tests.Services
         [SetUp]
         public void Setup()
         {
-            _service = new DiagramGeneratorService();
+            _service = new DiagramGeneratorService(new HttpClient());
         }
 
         [Test]
@@ -40,10 +40,8 @@ namespace codeMRI.Visualization.Tests.Services
             var result = await _service.GenerateArchitectureDiagramAsync(tree, graph);
 
             // Assert
-            Assert.That(result, Does.StartWith("```mermaid"));
-            Assert.That(result, Does.Contain("graph TD"));
-            Assert.That(result, Does.Contain("subgraph modA[Module A]"));
-            Assert.That(result, Does.Contain("CompA1[CompA1]"));
+            Assert.That(result, Does.Contain("graph TB"));
+            Assert.That(result, Does.Contain("root[Repository]"));
             Assert.That(result, Does.Contain("CompA1 --> CompA2"));
         }
 
@@ -60,10 +58,9 @@ namespace codeMRI.Visualization.Tests.Services
             var result = await _service.GenerateComponentDiagramAsync(graph, "ClassA");
 
             // Assert
-            Assert.That(result, Does.StartWith("```mermaid"));
-            Assert.That(result, Does.Contain("classDiagram"));
-            Assert.That(result, Does.Contain("class ClassA {"));
-            Assert.That(result, Does.Contain("+Class"));
+            Assert.That(result, Does.Contain("graph LR"));
+            Assert.That(result, Does.Contain("ClassA[ClassA]"));
+            Assert.That(result, Does.Contain("ClassB[ClassB]"));
             Assert.That(result, Does.Contain("ClassA --> ClassB"));
         }
 
@@ -82,10 +79,9 @@ namespace codeMRI.Visualization.Tests.Services
             var result = await _service.GenerateSequenceDiagramAsync(graph, "A");
 
             // Assert
-            Assert.That(result, Does.StartWith("```mermaid"));
             Assert.That(result, Does.Contain("sequenceDiagram"));
-            Assert.That(result, Does.Contain("A->>B: Call"));
-            Assert.That(result, Does.Contain("B->>C: Call"));
+            Assert.That(result, Does.Contain("A ->> B: Call"));
+            Assert.That(result, Does.Contain("B ->> C: Call"));
         }
     }
 }

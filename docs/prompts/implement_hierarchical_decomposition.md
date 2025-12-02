@@ -1,67 +1,55 @@
-# LLM Prompt: Implement Hierarchical Decomposition Enhancement
+You are an expert software architect and developer practicing **Test-Driven Development (TDD)**. Your task is to implement the **Hierarchical Decomposition** system for breaking down large repositories into manageable modules in `codeMRI`.
 
 ## Context
-You are an AI assistant tasked with enhancing the hierarchical decomposition service in the CodeWiki documentation system. The current implementation needs improvements in semantic clustering and architectural pattern recognition.
+The current decomposition system needs enhancement to support the sophisticated hierarchical decomposition described in CodeWiki Section 3.1, including dependency graph construction and entry point identification.
 
-## Implementation Plan
-Based on the implementation plan in `docs/implementation_plans/02_hierarchical_decomposition.md`, you need to:
+## TDD Approach
+1. **Write Tests First**: Implement NUnit tests before production code
+2. **Dependency Testing**: Test graph construction and traversal algorithms
+3. **Language-Specific Tests**: Test decomposition for all 7 supported languages
+4. **Scalability Tests**: Test performance with large repository structures
 
-1. Implement semantic clustering
-2. Enhance dependency analysis
-3. Optimize module tree structure
-4. Add quality metrics
+## Objectives
+1.  **Implement NUnit Tests First**:
+    - Create `HierarchicalDecompositionServiceTests.cs` with comprehensive test cases
+    - Test dependency graph construction for different language patterns
+    - Test entry point identification algorithms
+    - Test module tree generation and structure validation
 
-## Task
-Generate the necessary code to enhance the hierarchical decomposition service. Follow these steps:
+2.  **Enhance `codeMRI.Core/Services/HierarchicalDecompositionService.cs`**:
+    - Implement unified dependency graph construction with `depends_on` relations
+    - Enhance entry point identification across all 7 languages
+    - Implement recursive partitioning considering semantic coherence
+    - Support feature-oriented module tree generation
 
-### Step 1: Update HierarchicalDecompositionService
-- Implement Louvain community detection
-- Add architectural pattern recognition
-- Create language-specific clustering rules
+3.  **Implement Language-Specific Decomposition**:
+    - Create language-specific decomposition strategies for Python, Java, JavaScript, TypeScript, C, C++, C#
+    - Handle language-specific entry points (main functions, API endpoints, CLI interfaces)
+    - Support cross-language dependency analysis in mixed repositories
 
-### Step 2: Enhance Dependency Analysis
-- Add cross-language dependency tracking
-- Implement cyclic dependency detection
-- Add architectural dependency types
-
-### Step 3: Optimize Module Tree
-- Implement token-based size constraints
-- Add balanced tree algorithms
-- Create architectural layer identification
-
-### Step 4: Add Quality Metrics
-- Implement cohesion metrics
-- Add coupling analysis
-- Create module quality scoring
+4.  **Enhance AST Service Integration**:
+    - Improve cross-module reference extraction
+    - Support advanced architectural pattern detection
+    - Optimize performance for large-scale repository analysis
 
 ## Constraints
-- Use C# 10+
-- Follow existing code style
-- Add XML documentation
-- Include unit tests
-- Optimize for performance
+- Support all 7 programming languages consistently
+- Ensure architectural coherence across decomposition boundaries
+- Handle repositories of arbitrary size efficiently
+- **Test Requirements**: All code must be accompanied by comprehensive NUnit tests
+- **TDD Mandatory**: Write tests before implementation code
 
-## Expected Output
-- Enhanced HierarchicalDecompositionService
-- New ArchitecturalPatternService
-- Updated dependency graph model
-- Quality metrics system
-- Comprehensive unit tests
+## Input Files
+- `codeMRI.Core/Services/HierarchicalDecompositionService.cs` (Update)
+- `codeMRI.ASTService/src/services/analysisOrchestrator.js` (Update if needed)
+- `codeMRI.Core.Tests/Services/HierarchicalDecompositionServiceTests.cs` (Update)
+- Language-specific test files for each of the 7 languages
 
-## Example Structure
-```csharp
-// ArchitecturalPatternService.cs
-public class ArchitecturalPatternService
-{
-    public ArchitecturalPattern RecognizePattern(ModuleNode module, DependencyGraph graph)
-    {
-        // Implementation here
-    }
-    
-    private bool IsLayeredArchitecture(ModuleNode module) { ... }
-    private bool IsMicroservices(ModuleNode module) { ... }
-    private bool IsEventDriven(ModuleNode module) { ... }
-}
-```
+## Testing Strategy
+- **Unit Tests**: Test individual decomposition algorithms
+- **Integration Tests**: Test full repository decomposition workflow
+- **Language Tests**: Test decomposition for each supported language
+- **Performance Tests**: Test decomposition with large dependency graphs
+- **Edge Cases**: Test repositories with complex nested structures
 
-Now, please generate the complete implementation following these guidelines.
+Generate the C# code for test files first, then the implementation files, following TDD principles. Include comprehensive test coverage for all language-specific decomposition scenarios.

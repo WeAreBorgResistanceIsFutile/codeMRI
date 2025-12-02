@@ -1,55 +1,56 @@
-# LLM Prompt: Implement Reference Management
+You are an expert software architect and developer practicing **Test-Driven Development (TDD)**. Your task is to implement the **Cross-Module Reference Management** system for intelligent cross-linking and dependency-aware resolution in `codeMRI`.
 
 ## Context
-Create a global reference system for cross-module documentation in CodeWiki.
+The current system has basic cross-reference extraction but lacks the sophisticated intelligent resolution system described in CodeWiki. We need to implement a global component registry and automated cross-linking.
 
-## Implementation Plan
-Based on `docs/implementation_plans/05_reference_management.md`:
+## TDD Approach
+1. **Write Tests First**: Implement NUnit tests before production code
+2. **Reference Resolution Testing**: Test cross-reference detection and resolution
+3. **Registry Validation**: Test global component registry functionality
+4. **Integration Testing**: Test reference management integration with documentation generation
 
-1. Reference registry
-2. Cross-reference system
-3. Navigation features
-4. Versioning support
+## Objectives
+1.  **Implement NUnit Tests First**:
+    - Create `ReferenceManagementServiceTests.cs` with comprehensive test cases
+    - Test cross-reference detection across module boundaries
+    - Test global registry component tracking and lookup
+    - Test intelligent resolution algorithms for different dependency types
 
-## Task
-Generate code for:
+2.  **Create `codeMRI.Core/Services/ReferenceManagementService.cs`**:
+    - Implement `IReferenceManagement` interface
+    - Create global component registry for tracking documented components
+    - Implement intelligent cross-reference resolution system
+    - Support automated hyperlink generation between related components
 
-### Step 1: Reference Registry
-- Global component registry
-- Reference resolution
-- Link validation
+3.  **Implement Dependency-Aware Resolution**:
+    - Analyze dependency types (inheritance, composition, usage)
+    - Create appropriate cross-links based on relationship strength
+    - Support navigation between related components in documentation
+    - Avoid content duplication through intelligent reference management
 
-### Step 2: Cross-References
-- Reference generation
-- Link maintenance
-- Integrity checks
-
-### Step 3: Navigation
-- Documentation navigation
-- Breadcrumb system
-- Search index
-
-### Step 4: Versioning
-- Reference versioning
-- Change tracking
-- Migration system
+4.  **Integrate with Documentation System**:
+    - Update `WikiGenerationService` to use reference management
+    - Automatically insert hyperlinks between related documentation sections
+    - Ensure cross-references are maintained during documentation updates
 
 ## Constraints
-- C# 10+ backend
-- Follow existing patterns
-- Add documentation and tests
+- Maintain consistency across module boundaries
+- Ensure intelligent resolution avoids content duplication
+- Support all dependency types mentioned in CodeWiki
+- **Test Requirements**: All code must be accompanied by comprehensive NUnit tests
+- **TDD Mandatory**: Write tests before implementation code
 
-## Expected Output
-- ReferenceManager service
-- Link validation
-- Navigation features
-- Test coverage
+## Input Files
+- `codeMRI.Core/Services/ReferenceManagementService.cs` (New)
+- `codeMRI.Core/Services/WikiGenerationService.cs` (Update)
+- `codeMRI.Core.Tests/Services/ReferenceManagementServiceTests.cs` (New)
+- `codeMRI.Core.Tests/Services/WikiGenerationServiceTests.cs` (Update)
 
-## Example
-```csharp
-public class ReferenceManager
-{
-    public void RegisterReference(string id, ReferenceInfo info) { ... }
-    public ReferenceInfo ResolveReference(string id) { ... }
-    public bool ValidateLinks() { ... }
-}
+## Testing Strategy
+- **Unit Tests**: Test individual reference resolution algorithms
+- **Integration Tests**: Test full reference management workflow
+- **Registry Tests**: Test global component registry functionality
+- **Cross-Module Tests**: Test reference resolution across module boundaries
+- **Edge Cases**: Test complex dependency scenarios and circular references
+
+Generate the C# code for test files first, then the implementation files, following TDD principles. Include comprehensive test coverage for all reference management scenarios.

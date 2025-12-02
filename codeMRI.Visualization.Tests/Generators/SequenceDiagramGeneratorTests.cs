@@ -3,6 +3,7 @@ using codeMRI.Visualization.Interfaces;
 using codeMRI.Visualization.Services;
 using NUnit.Framework;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Threading.Tasks;
 
 namespace codeMRI.Visualization.Tests.Generators
@@ -15,7 +16,7 @@ namespace codeMRI.Visualization.Tests.Generators
         [SetUp]
         public void Setup()
         {
-            _generator = new DiagramGeneratorService();
+            _generator = new DiagramGeneratorService(new HttpClient());
         }
 
         [Test]
@@ -35,8 +36,8 @@ namespace codeMRI.Visualization.Tests.Generators
 
             // Assert
             Assert.That(result, Does.Contain("sequenceDiagram"));
-            Assert.That(result, Does.Contain("Controller->>Service: Call"));
-            Assert.That(result, Does.Contain("Service->>Repository: Call"));
+            Assert.That(result, Does.Contain("Controller ->> Service: MethodCall"));
+            Assert.That(result, Does.Contain("Service ->> Repository: MethodCall"));
         }
     }
 }
