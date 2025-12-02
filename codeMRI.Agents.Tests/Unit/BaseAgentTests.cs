@@ -1,5 +1,4 @@
 using codeMRI.Agents.Agents;
-using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
@@ -12,20 +11,20 @@ namespace codeMRI.Agents.Tests.Unit;
 [TestFixture]
 public class BaseAgentTests
 {
-    private Mock<IASTServiceClient> _mockAstService = null!;
-    private Mock<ILogger<BaseAgent>> _mockLogger = null!;
-    private Mock<AgentMessageBus> _mockMessageBus = null!;
-    private TestAgent _agent = null!;
-
     [SetUp]
     public void Setup()
     {
         _mockAstService = new Mock<IASTServiceClient>();
         _mockLogger = new Mock<ILogger<BaseAgent>>();
-        _mockMessageBus = new Mock<AgentMessageBus>(MockBehavior.Strict, new object[] { Mock.Of<ILogger<AgentMessageBus>>() });
-        
+        _mockMessageBus = new Mock<AgentMessageBus>(MockBehavior.Strict, Mock.Of<ILogger<AgentMessageBus>>());
+
         _agent = new TestAgent(_mockMessageBus.Object, _mockLogger.Object, _mockAstService.Object);
     }
+
+    private Mock<IASTServiceClient> _mockAstService = null!;
+    private Mock<ILogger<BaseAgent>> _mockLogger = null!;
+    private Mock<AgentMessageBus> _mockMessageBus = null!;
+    private TestAgent _agent = null!;
 
     [Test]
     public void CanHandle_ShouldReturnTrue_WhenTaskMatchesAgentRole()
@@ -70,9 +69,9 @@ public class BaseAgentTests
     public async Task ShouldDelegate_ShouldReturnNull_WhenTaskAlreadyDelegated()
     {
         // Arrange
-        var task = new AgentTask 
-        { 
-            Type = "TestAgent", 
+        var task = new AgentTask
+        {
+            Type = "TestAgent",
             Payload = "test code",
             Metadata = new Dictionary<string, string> { ["IsDelegated"] = "true" }
         };
@@ -119,22 +118,22 @@ public class BaseAgentTests
     {
         // Arrange - Create code with multiple if statements on separate lines
         var complexCode = """
-            if (true) { }
-            if (false) { }
-            for (int i=0; i<10; i++) { }
-            while (true) { }
-            switch (x) {
-                case 1: break;
-                case 2: break;
-            }
-            try { } catch { }
-            if (a && b) { }
-            if (c || d) { }
-            if (e) { }
-            if (f) { }
-            if (g) { }
-            if (h) { }
-"""; // Total complexity: 12, exceeds MaxComplexity=10
+                                      if (true) { }
+                                      if (false) { }
+                                      for (int i=0; i<10; i++) { }
+                                      while (true) { }
+                                      switch (x) {
+                                          case 1: break;
+                                          case 2: break;
+                                      }
+                                      try { } catch { }
+                                      if (a && b) { }
+                                      if (c || d) { }
+                                      if (e) { }
+                                      if (f) { }
+                                      if (g) { }
+                                      if (h) { }
+                          """; // Total complexity: 12, exceeds MaxComplexity=10
         var task = new AgentTask { Type = "TestAgent", Payload = complexCode };
 
         // Act
@@ -152,7 +151,7 @@ public class BaseAgentTests
         var code = "public class Test { public void Method() { } }";
         var astResult = new ASTParseResult { Language = "csharp", Metrics = new object() };
         _mockAstService.Setup(s => s.ParseCodeAsync(code, "csharp", "", It.IsAny<CancellationToken>()))
-                      .ReturnsAsync(astResult);
+            .ReturnsAsync(astResult);
 
         // Act
         var result = await _agent.CalculateComplexityInternal(code, CancellationToken.None);
@@ -168,7 +167,7 @@ public class BaseAgentTests
         // Arrange
         var code = "if (true) { return; }";
         _mockAstService.Setup(s => s.ParseCodeAsync(code, "csharp", "", It.IsAny<CancellationToken>()))
-                      .ThrowsAsync(new Exception("Service unavailable"));
+            .ThrowsAsync(new Exception("Service unavailable"));
 
         // Act
         var result = await _agent.CalculateComplexityInternal(code, CancellationToken.None);
@@ -196,12 +195,12 @@ public class BaseAgentTests
 
     private class TestAgent : BaseAgent
     {
-        public override string Role => "TestAgent";
-
-        public TestAgent(AgentMessageBus messageBus, ILogger logger, IASTServiceClient? astService = null) 
+        public TestAgent(AgentMessageBus messageBus, ILogger logger, IASTServiceClient? astService = null)
             : base(messageBus, logger, astService)
         {
         }
+
+        public override string Role => "TestAgent";
 
         public override Task<AgentResult> ExecuteAsync(AgentTask task, CancellationToken cancellationToken)
         {

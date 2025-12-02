@@ -1,5 +1,4 @@
 using System.Net;
-using codeMRI.Core.Models;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
@@ -12,12 +11,6 @@ namespace codeMRI.Infrastructure.Tests.Services;
 [TestFixture]
 public class ASTServiceClientTests
 {
-    private Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private Mock<ILogger<ASTServiceClient>> _loggerMock;
-    private Mock<IOptions<ASTServiceSettings>> _settingsMock;
-    private HttpClient _httpClient;
-    private ASTServiceClient _service;
-
     [SetUp]
     public void Setup()
     {
@@ -26,12 +19,12 @@ public class ASTServiceClientTests
         {
             BaseAddress = new Uri("http://localhost:3000")
         };
-        
+
         _loggerMock = new Mock<ILogger<ASTServiceClient>>();
         _settingsMock = new Mock<IOptions<ASTServiceSettings>>();
-        
-        _settingsMock.Setup(s => s.Value).Returns(new ASTServiceSettings 
-        { 
+
+        _settingsMock.Setup(s => s.Value).Returns(new ASTServiceSettings
+        {
             BaseUrl = "http://localhost:3000",
             TimeoutSeconds = 10,
             Enabled = true
@@ -45,6 +38,12 @@ public class ASTServiceClientTests
     {
         _httpClient.Dispose();
     }
+
+    private Mock<HttpMessageHandler> _httpMessageHandlerMock;
+    private Mock<ILogger<ASTServiceClient>> _loggerMock;
+    private Mock<IOptions<ASTServiceSettings>> _settingsMock;
+    private HttpClient _httpClient;
+    private ASTServiceClient _service;
 
     [Test]
     public async Task ParseCodeAsync_ShouldDeserializeIntoRawDependencyData_AndReturnASTParseResult()
@@ -66,8 +65,8 @@ public class ASTServiceClientTests
         _httpMessageHandlerMock.Protected()
             .Setup<Task<HttpResponseMessage>>(
                 "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(req => 
-                    req.Method == HttpMethod.Post && 
+                ItExpr.Is<HttpRequestMessage>(req =>
+                    req.Method == HttpMethod.Post &&
                     req.RequestUri.ToString().EndsWith("/api/ast/parse")),
                 ItExpr.IsAny<CancellationToken>()
             )
@@ -84,7 +83,7 @@ public class ASTServiceClientTests
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Language, Is.EqualTo("csharp"));
         Assert.That(result.FilePath, Is.EqualTo("test.cs"));
-        
+
         // Verify dependencies were mapped correctly
         Assert.That(result.DependencyGraph, Is.Not.Null);
     }
@@ -92,7 +91,7 @@ public class ASTServiceClientTests
     [Test]
     public async Task ParseCodeAsync_ShouldHandleNetworkFailure()
     {
-         _httpMessageHandlerMock.Protected()
+        _httpMessageHandlerMock.Protected()
             .Setup<Task<HttpResponseMessage>>(
                 "SendAsync",
                 ItExpr.IsAny<HttpRequestMessage>(),
@@ -101,7 +100,7 @@ public class ASTServiceClientTests
             .ThrowsAsync(new HttpRequestException("Network Error"));
 
         var result = await _service.ParseCodeAsync("code", "csharp", "test.cs");
-        
+
         Assert.That(result, Is.Null);
     }
 }

@@ -7,8 +7,8 @@ namespace codeMRI.Agents.Services;
 public class AgentCoordinator : IAgentCoordinator
 {
     private readonly List<IAgent> _agents = new();
-    private readonly ILogger<AgentCoordinator> _logger;
     private readonly DelegationService _delegationService;
+    private readonly ILogger<AgentCoordinator> _logger;
 
     public AgentCoordinator(
         DelegationService delegationService,
@@ -34,9 +34,8 @@ public class AgentCoordinator : IAgentCoordinator
     {
         var agent = GetAgentForTask(task);
         if (agent == null)
-        {
-            return new AgentResult { TaskId = task.Id, Success = false, Errors = { $"No agent found for role {task.Type}" } };
-        }
+            return new AgentResult
+                { TaskId = task.Id, Success = false, Errors = { $"No agent found for role {task.Type}" } };
 
         // Check delegation
         DelegationRequest? delegationRequest = null;
@@ -51,11 +50,12 @@ public class AgentCoordinator : IAgentCoordinator
 
         if (delegationRequest != null)
         {
-            _logger.LogInformation("Task {TaskId} delegated to {Target}. Reason: {Reason}", task.Id, delegationRequest.TargetAgentType, delegationRequest.Reason);
-            
+            _logger.LogInformation("Task {TaskId} delegated to {Target}. Reason: {Reason}", task.Id,
+                delegationRequest.TargetAgentType, delegationRequest.Reason);
+
             // Ensure SubTask has the correct target type
             var subTask = delegationRequest.SubTask with { Type = delegationRequest.TargetAgentType };
-            
+
             // Recursive coordination
             return await CoordinateTaskAsync(subTask, cancellationToken);
         }

@@ -1,4 +1,3 @@
-using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
@@ -9,12 +8,13 @@ namespace codeMRI.Agents.Agents;
 
 public class DocumenterAgent : BaseAgent
 {
-    public override string Role => "Documenter";
-
-    public DocumenterAgent(AgentMessageBus messageBus, ILogger<DocumenterAgent> logger, IASTServiceClient? astService = null) 
+    public DocumenterAgent(AgentMessageBus messageBus, ILogger<DocumenterAgent> logger,
+        IASTServiceClient? astService = null)
         : base(messageBus, logger, astService)
     {
     }
+
+    public override string Role => "Documenter";
 
     public override Task<AgentResult> ExecuteAsync(AgentTask task, CancellationToken cancellationToken)
     {
@@ -22,18 +22,18 @@ public class DocumenterAgent : BaseAgent
 
         if (task.Payload is CodeComponent component)
         {
-             var content = GenerateComponentContent(component);
-             return Task.FromResult(new AgentResult
-             {
-                 TaskId = task.Id,
-                 Success = true,
-                 Output = new WikiPage
-                 {
-                     Id = component.Id,
-                     Title = component.Name,
-                     Content = content
-                 }
-             });
+            var content = GenerateComponentContent(component);
+            return Task.FromResult(new AgentResult
+            {
+                TaskId = task.Id,
+                Success = true,
+                Output = new WikiPage
+                {
+                    Id = component.Id,
+                    Title = component.Name,
+                    Content = content
+                }
+            });
         }
 
         return Task.FromResult(new AgentResult { TaskId = task.Id, Success = false, Errors = { "Invalid payload" } });

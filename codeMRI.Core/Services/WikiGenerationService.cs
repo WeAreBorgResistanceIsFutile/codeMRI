@@ -1,24 +1,25 @@
-using codeMRI.Shared.Models;
+using System.Text;
+using System.Text.Json;
 using System.Xml.Linq;
 using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
+using codeMRI.Shared.Models;
 using codeMRI.Visualization.Interfaces;
 using codeMRI.Visualization.Models;
-using System.Text;
+using codeMRI.Visualization.Services;
 
 namespace codeMRI.Core.Services;
 
 public class WikiGenerationService : IWikiGenerationService
 {
-    private readonly ILLMClient _llmClient;
-    private readonly IEmbedder _embedder;
-    private readonly IVectorDatabase _vectorDb;
     private readonly IDiagramGenerator _diagramGenerator;
+    private readonly IEmbedder _embedder;
     private readonly IEnhancedDependencyGraphService _graphService; // Needed to fetch graph for diagrams
+    private readonly ILLMClient _llmClient;
+    private readonly IVectorDatabase _vectorDb;
 
     public WikiGenerationService(
-        ILLMClient llmClient, 
-        IEmbedder embedder, 
+        ILLMClient llmClient,
+        IEmbedder embedder,
         IVectorDatabase vectorDb,
         IDiagramGenerator diagramGenerator,
         IEnhancedDependencyGraphService graphService)
@@ -34,20 +35,17 @@ public class WikiGenerationService : IWikiGenerationService
     {
         var prompt = PromptTemplates.StructurePrompt(fileTree, readme, language);
         var response = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>());
-        
+
         var cleanXml = response.Replace("```xml", "").Replace("```", "").Trim();
-        try 
+        try
         {
-            int start = cleanXml.IndexOf("<wiki_structure>");
-            int end = cleanXml.LastIndexOf("</wiki_structure>");
-            if (start >= 0 && end > start)
-            {
-                cleanXml = cleanXml.Substring(start, end - start + 17); 
-            }
+            var start = cleanXml.IndexOf("<wiki_structure>");
+            var end = cleanXml.LastIndexOf("</wiki_structure>");
+            if (start >= 0 && end > start) cleanXml = cleanXml.Substring(start, end - start + 17);
 
             var doc = XDocument.Parse(cleanXml);
             var root = doc.Element("wiki_structure");
-            
+
             var structure = new WikiStructure
             {
                 Title = root?.Element("title")?.Value ?? "Wiki",
@@ -56,37 +54,34 @@ public class WikiGenerationService : IWikiGenerationService
                 {
                     Id = s.Attribute("id")?.Value ?? Guid.NewGuid().ToString(),
                     Title = s.Element("title")?.Value ?? "Section",
-                    PageRefs = s.Element("pages")?.Elements("page_ref").Select(p => p.Value).ToList() ?? new()
-                }).ToList() ?? new()
+                    PageRefs = s.Element("pages")?.Elements("page_ref").Select(p => p.Value).ToList() ??
+                               new List<string>()
+                }).ToList() ?? new List<WikiSection>()
             };
-            return structure; 
+            return structure;
         }
         catch (Exception)
         {
-            return new WikiStructure { Title = "Error generating structure", Sections = new() };
+            return new WikiStructure { Title = "Error generating structure", Sections = new List<WikiSection>() };
         }
     }
 
-    public async Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths, Dictionary<string, string> fileContents, string language = "English")
+    public async Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths,
+        Dictionary<string, string> fileContents, string language = "English")
     {
         if (filePaths == null || filePaths.Count == 0)
         {
             var queryEmbedding = await _embedder.EmbedAsync(pageTitle);
-            var docs = await _vectorDb.SearchAsync(queryEmbedding, topK: 5);
+            var docs = await _vectorDb.SearchAsync(queryEmbedding, 5);
             filePaths = docs.Select(d => d.FilePath).Distinct().ToList();
-            
+
             foreach (var doc in docs)
-            {
                 if (!fileContents.ContainsKey(doc.FilePath))
-                {
                     fileContents[doc.FilePath] = doc.Content;
-                }
-            }
         }
 
         var contextBuilder = new StringBuilder();
         foreach (var path in filePaths)
-        {
             if (fileContents.ContainsKey(path))
             {
                 contextBuilder.AppendLine($"File: {path}");
@@ -95,10 +90,9 @@ public class WikiGenerationService : IWikiGenerationService
                 contextBuilder.AppendLine("```");
                 contextBuilder.AppendLine();
             }
-        }
-        
+
         var prompt = PromptTemplates.PagePrompt(pageTitle, filePaths, language);
-        var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + contextBuilder.ToString();
+        var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + contextBuilder;
 
         var content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>());
 
@@ -110,14 +104,16 @@ public class WikiGenerationService : IWikiGenerationService
             {
                 // Try to find a component that matches the page title or file paths
                 var entryPointId = FindEntryPointForPage(pageTitle, filePaths, graph);
-                
+
                 if (!string.IsNullOrEmpty(entryPointId))
                 {
                     // Generate interactive sequence diagram
-                    if (_diagramGenerator is codeMRI.Visualization.Services.DiagramGeneratorService enhancedGenerator)
+                    if (_diagramGenerator is DiagramGeneratorService enhancedGenerator)
                     {
-                        var interactiveSequenceDiagram = await enhancedGenerator.GenerateInteractiveSequenceDiagramAsync(graph, entryPointId);
-                        if (interactiveSequenceDiagram != null && !string.IsNullOrWhiteSpace(interactiveSequenceDiagram.MermaidContent))
+                        var interactiveSequenceDiagram =
+                            await enhancedGenerator.GenerateInteractiveSequenceDiagramAsync(graph, entryPointId);
+                        if (interactiveSequenceDiagram != null &&
+                            !string.IsNullOrWhiteSpace(interactiveSequenceDiagram.MermaidContent))
                         {
                             content += "\n\n## Interactive Sequence Diagram\n\n";
                             content += GenerateInteractiveDiagramHtml(interactiveSequenceDiagram, "Sequence Diagram");
@@ -135,10 +131,13 @@ public class WikiGenerationService : IWikiGenerationService
                     }
 
                     // Generate interactive component diagram
-                    if (_diagramGenerator is codeMRI.Visualization.Services.DiagramGeneratorService enhancedComponentGenerator)
+                    if (_diagramGenerator is DiagramGeneratorService enhancedComponentGenerator)
                     {
-                        var interactiveComponentDiagram = await enhancedComponentGenerator.GenerateInteractiveComponentDiagramAsync(graph, entryPointId);
-                        if (interactiveComponentDiagram != null && !string.IsNullOrWhiteSpace(interactiveComponentDiagram.MermaidContent))
+                        var interactiveComponentDiagram =
+                            await enhancedComponentGenerator.GenerateInteractiveComponentDiagramAsync(graph,
+                                entryPointId);
+                        if (interactiveComponentDiagram != null &&
+                            !string.IsNullOrWhiteSpace(interactiveComponentDiagram.MermaidContent))
                         {
                             content += "\n\n## Interactive Component Diagram\n\n";
                             content += GenerateInteractiveDiagramHtml(interactiveComponentDiagram, "Component Diagram");
@@ -147,7 +146,8 @@ public class WikiGenerationService : IWikiGenerationService
                     else
                     {
                         // Fallback to basic diagram generation
-                        var componentDiagram = await _diagramGenerator.GenerateComponentDiagramAsync(graph, entryPointId);
+                        var componentDiagram =
+                            await _diagramGenerator.GenerateComponentDiagramAsync(graph, entryPointId);
                         if (!string.IsNullOrWhiteSpace(componentDiagram) && componentDiagram.Contains("classDiagram"))
                         {
                             content += "\n## Component Diagram\n\n";
@@ -173,33 +173,28 @@ public class WikiGenerationService : IWikiGenerationService
         };
     }
 
-    public async Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages, string language = "English")
+    public async Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages,
+        string language = "English")
     {
         // 1. Generate Architectural Overview
         var sb = new StringBuilder();
         sb.AppendLine($"Synthesize an architectural overview for the module: {module.Name}");
         sb.AppendLine($"This module is at level {module.Level} in the hierarchy.");
-        
-        if (!string.IsNullOrEmpty(module.Description))
-        {
-            sb.AppendLine($"Module Description: {module.Description}");
-        }
-        
+
+        if (!string.IsNullOrEmpty(module.Description)) sb.AppendLine($"Module Description: {module.Description}");
+
         sb.AppendLine("\nSub-modules/Components:");
-        foreach (var page in childPages)
-        {
-            sb.AppendLine($"- **{page.Title}**: {ExtractSummary(page.Content)}");
-        }
-        
+        foreach (var page in childPages) sb.AppendLine($"- **{page.Title}**: {ExtractSummary(page.Content)}");
+
         sb.AppendLine("\nInstructions:");
         sb.AppendLine("1. Create a high-level overview of this module's responsibilities.");
         sb.AppendLine("2. Explain how the sub-modules interact and contribute to the overall goal.");
         sb.AppendLine("3. Identify key architectural patterns used in this module.");
         sb.AppendLine($"4. Write the response in {language}.");
-        
+
         var prompt = sb.ToString();
         var content = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>());
-        
+
         // 2. Generate Architecture Diagram
         try
         {
@@ -209,7 +204,7 @@ public class WikiGenerationService : IWikiGenerationService
                 // Create a simple module tree for this module and its children
                 var moduleTree = new ModuleTree { Root = module };
                 moduleTree.Nodes[module.Id] = module;
-                
+
                 var architectureDiagram = await _diagramGenerator.GenerateArchitectureDiagramAsync(moduleTree, graph);
                 if (!string.IsNullOrWhiteSpace(architectureDiagram) && architectureDiagram.Contains("graph TD"))
                 {
@@ -223,16 +218,16 @@ public class WikiGenerationService : IWikiGenerationService
             // Log error but don't fail the page generation
             Console.WriteLine($"Failed to generate architecture diagram for module {module.Name}: {ex.Message}");
         }
-        
+
         return new WikiPage
         {
             Id = Guid.NewGuid().ToString(),
             Title = module.Name,
             Content = content,
-            RelevantFiles = new List<string>() 
+            RelevantFiles = new List<string>()
         };
     }
-    
+
     private string ExtractSummary(string content)
     {
         if (string.IsNullOrEmpty(content)) return "";
@@ -250,10 +245,7 @@ public class WikiGenerationService : IWikiGenerationService
                         pageTitle.Contains(n.ComponentId, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        if (titleCandidates.Any())
-        {
-            return titleCandidates.First().ComponentId;
-        }
+        if (titleCandidates.Any()) return titleCandidates.First().ComponentId;
 
         // Try to match based on file paths
         foreach (var filePath in filePaths)
@@ -265,10 +257,7 @@ public class WikiGenerationService : IWikiGenerationService
                             fileName.Contains(n.ComponentId, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            if (fileCandidates.Any())
-            {
-                return fileCandidates.First().ComponentId;
-            }
+            if (fileCandidates.Any()) return fileCandidates.First().ComponentId;
         }
 
         // If no specific match, return the first node with outgoing edges (likely an entry point)
@@ -281,7 +270,7 @@ public class WikiGenerationService : IWikiGenerationService
     }
 
     /// <summary>
-    /// Generate HTML wrapper for interactive diagrams with zoom, filter, and export controls
+    ///     Generate HTML wrapper for interactive diagrams with zoom, filter, and export controls
     /// </summary>
     private string GenerateInteractiveDiagramHtml(InteractiveDiagram diagram, string title)
     {
@@ -347,9 +336,9 @@ document.addEventListener('DOMContentLoaded', function() {{
 // Diagram data for JavaScript
 window.diagramData = window.diagramData || {{}};
 window.diagramData['{diagram.Id}'] = {{
-    components: {System.Text.Json.JsonSerializer.Serialize(diagram.Components)},
-    relationships: {System.Text.Json.JsonSerializer.Serialize(diagram.Relationships)},
-    options: {System.Text.Json.JsonSerializer.Serialize(diagram.Options)}
+    components: {JsonSerializer.Serialize(diagram.Components)},
+    relationships: {JsonSerializer.Serialize(diagram.Relationships)},
+    options: {JsonSerializer.Serialize(diagram.Options)}
 }};
 </script>";
 
@@ -357,7 +346,7 @@ window.diagramData['{diagram.Id}'] = {{
     }
 
     /// <summary>
-    /// Generate component type options for filter dropdown
+    ///     Generate component type options for filter dropdown
     /// </summary>
     private string GenerateComponentTypeOptions(List<DiagramComponent> components)
     {
@@ -366,7 +355,7 @@ window.diagramData['{diagram.Id}'] = {{
     }
 
     /// <summary>
-    /// Generate layer options for filter dropdown
+    ///     Generate layer options for filter dropdown
     /// </summary>
     private string GenerateLayerOptions(List<DiagramComponent> components)
     {

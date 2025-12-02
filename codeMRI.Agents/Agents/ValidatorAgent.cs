@@ -1,4 +1,3 @@
-using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
@@ -9,19 +8,20 @@ namespace codeMRI.Agents.Agents;
 
 public class ValidatorAgent : BaseAgent
 {
-    public override string Role => "Validator";
-
-    public ValidatorAgent(AgentMessageBus messageBus, ILogger<ValidatorAgent> logger, IASTServiceClient? astService = null) 
+    public ValidatorAgent(AgentMessageBus messageBus, ILogger<ValidatorAgent> logger,
+        IASTServiceClient? astService = null)
         : base(messageBus, logger, astService)
     {
     }
+
+    public override string Role => "Validator";
 
     public override Task<AgentResult> ExecuteAsync(AgentTask task, CancellationToken cancellationToken)
     {
         if (task.Payload is WikiStructure structure)
         {
             // Validate structure
-            bool isValid = structure.Sections.Any();
+            var isValid = structure.Sections.Any();
             return Task.FromResult(new AgentResult
             {
                 TaskId = task.Id,
@@ -29,7 +29,7 @@ public class ValidatorAgent : BaseAgent
                 Output = isValid ? "Valid" : "Empty Structure"
             });
         }
-        
+
         return Task.FromResult(new AgentResult { TaskId = task.Id, Success = true });
     }
 }

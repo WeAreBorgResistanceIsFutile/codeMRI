@@ -11,13 +11,14 @@ namespace codeMRI.Api.Controllers;
 [Route("api/[controller]")]
 public class IngestController : ControllerBase
 {
-    private readonly IDocumentProcessor _processor;
     private readonly IEmbedder _embedder;
+    private readonly ILogger<IngestController> _logger;
+    private readonly IDocumentProcessor _processor;
     private readonly IVectorDatabase _vectorDb;
     private readonly IWikiRepository _wikiRepo;
-    private readonly ILogger<IngestController> _logger;
 
-    public IngestController(IDocumentProcessor processor, IEmbedder embedder, IVectorDatabase vectorDb, IWikiRepository wikiRepo, ILogger<IngestController> logger)
+    public IngestController(IDocumentProcessor processor, IEmbedder embedder, IVectorDatabase vectorDb,
+        IWikiRepository wikiRepo, ILogger<IngestController> logger)
     {
         _processor = processor;
         _embedder = embedder;
@@ -40,7 +41,7 @@ public class IngestController : ControllerBase
             return BadRequest($"Directory not found: {request.RepoPath}");
 
         // 1. Test Ollama Connection
-        try 
+        try
         {
             // Try to embed a simple string to verify Ollama is up and model exists
             await _embedder.EmbedAsync("test");
@@ -48,7 +49,8 @@ public class IngestController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Ollama connection failed");
-            return StatusCode(500, $"Ollama Error: Unable to connect or model not found. Details: {ex.Message}. Ensure Ollama is running and model is pulled.");
+            return StatusCode(500,
+                $"Ollama Error: Unable to connect or model not found. Details: {ex.Message}. Ensure Ollama is running and model is pulled.");
         }
 
         try
@@ -61,19 +63,18 @@ public class IngestController : ControllerBase
             }
 
             var manifest = await _wikiRepo.GetIngestionManifestAsync(request.RepoPath);
-            
+
             // 2. Safe Directory Walk
             var allFiles = SafeGetFiles(request.RepoPath);
-            
+
             var documents = new List<Document>();
-            int processedFiles = 0;
-            int upToDateFiles = 0;
-            int skippedErrorFiles = 0;
+            var processedFiles = 0;
+            var upToDateFiles = 0;
+            var skippedErrorFiles = 0;
             var errors = new List<string>();
 
             foreach (var file in allFiles)
-            {
-                try 
+                try
                 {
                     if (IsIgnored(file)) continue;
                     if (!IsTextFile(file)) continue;
@@ -91,11 +92,9 @@ public class IngestController : ControllerBase
 
                     // If updating an existing file, clear its old chunks first to avoid duplicates
                     if (manifest.ContainsKey(relativePath))
-                    {
                         // We rely on the relative path being stored in metadata as "file_path"
                         // Note: QdrantVectorDb implementation of DeleteByMetadataAsync uses exact match.
                         await _vectorDb.DeleteByMetadataAsync("file_path", relativePath);
-                    }
 
                     var doc = new Document
                     {
@@ -106,14 +105,14 @@ public class IngestController : ControllerBase
 
                     // Split into chunks
                     var chunks = _processor.Split(doc).ToList();
-                    
+
                     // Embed chunks
                     foreach (var chunk in chunks)
                     {
                         chunk.Embedding = await _embedder.EmbedAsync(chunk.Content);
                         documents.Add(chunk);
                     }
-                    
+
                     // Update manifest
                     manifest[relativePath] = currentHash;
                     processedFiles++;
@@ -124,19 +123,16 @@ public class IngestController : ControllerBase
                     skippedErrorFiles++;
                     if (errors.Count < 5) errors.Add($"{Path.GetFileName(file)}: {fileEx.Message}");
                 }
-            }
 
-            if (documents.Count > 0)
-            {  
-                await _vectorDb.UpsertAsync(documents);
-            }
-            
+            if (documents.Count > 0) await _vectorDb.UpsertAsync(documents);
+
             // Save updated manifest
             await _wikiRepo.SaveIngestionManifestAsync(request.RepoPath, manifest);
-            
-            var msg = $"Ingested {processedFiles} new/changed files ({documents.Count} chunks). {upToDateFiles} files up-to-date. Skipped {skippedErrorFiles} errors.";
+
+            var msg =
+                $"Ingested {processedFiles} new/changed files ({documents.Count} chunks). {upToDateFiles} files up-to-date. Skipped {skippedErrorFiles} errors.";
             if (errors.Any()) msg += " Sample errors: " + string.Join(", ", errors);
-            
+
             return Ok(new { Message = msg });
         }
         catch (Exception ex)
@@ -170,16 +166,21 @@ public class IngestController : ControllerBase
                 {
                     // Skip hidden directories and common ignore folders early to save time
                     var dirName = Path.GetFileName(subDir);
-                    if (dirName.StartsWith(".") || dirName == "bin" || dirName == "obj" || dirName == "node_modules")
-                    {
-                        continue;
-                    }
+                    if (dirName.StartsWith(".") || dirName == "bin" || dirName == "obj" ||
+                        dirName == "node_modules") continue;
                     stack.Push(subDir);
                 }
             }
-            catch (UnauthorizedAccessException) { /* Ignore */ }
-            catch (DirectoryNotFoundException) { /* Ignore */ }
+            catch (UnauthorizedAccessException)
+            {
+                /* Ignore */
+            }
+            catch (DirectoryNotFoundException)
+            {
+                /* Ignore */
+            }
         }
+
         return files;
     }
 
@@ -187,7 +188,11 @@ public class IngestController : ControllerBase
     {
         var ext = Path.GetExtension(path).ToLower();
         // Added more extensions
-        return new[] { ".cs", ".py", ".js", ".ts", ".md", ".txt", ".json", ".xml", ".html", ".css", ".java", ".cpp", ".h", ".yml", ".yaml", ".csproj", ".sln", ".gitignore", ".sh", ".bat", ".razor" }
+        return new[]
+            {
+                ".cs", ".py", ".js", ".ts", ".md", ".txt", ".json", ".xml", ".html", ".css", ".java", ".cpp", ".h",
+                ".yml", ".yaml", ".csproj", ".sln", ".gitignore", ".sh", ".bat", ".razor"
+            }
             .Contains(ext);
     }
 
@@ -195,9 +200,9 @@ public class IngestController : ControllerBase
     {
         var normalized = path.Replace('\\', '/');
         // Robust check
-        return normalized.Contains("/.git/") || 
-               normalized.Contains("/node_modules/") || 
-               normalized.Contains("/bin/") || 
+        return normalized.Contains("/.git/") ||
+               normalized.Contains("/node_modules/") ||
+               normalized.Contains("/bin/") ||
                normalized.Contains("/obj/") ||
                normalized.Contains("/.vs/") ||
                normalized.Contains("/.idea/") ||

@@ -1,7 +1,7 @@
 @page "/"
-@using codeMRI.Shared.DTOs
 @using codeMRI.Shared.Models
 @using codeMRI.Web.Services
+@using Markdig
 @inject WikiApiClient WikiApi
 @inject IJSRuntime JS
 
@@ -12,18 +12,18 @@
         <!-- Sidebar -->
         <div class="col-md-3 bg-light sidebar p-3" style="min-height: 100vh;">
             <h3>codeMRI</h3>
-            
+
             <div class="mb-3">
                 <label>Repository Path (Local)</label>
-                <input @bind="repoPath" class="form-control" placeholder="/path/to/repo" />
+                <input @bind="repoPath" class="form-control" placeholder="/path/to/repo"/>
             </div>
-            
+
             <div class="d-grid gap-2 mb-2">
-                <button class="btn btn-primary" @onclick="() => IngestRepo(false, false)" disabled="@isBusy">
+                <button class="btn btn-primary" @onclick="() => IngestRepo()" disabled="@isBusy">
                     @(isBusy ? "Processing..." : "1. Smart Ingest")
                 </button>
                 <div class="btn-group" role="group">
-                    <button class="btn btn-warning" @onclick="() => IngestRepo(true, false)" disabled="@isBusy">
+                    <button class="btn btn-warning" @onclick="() => IngestRepo(true)" disabled="@isBusy">
                         Force Re-ingest
                     </button>
                     <button class="btn btn-danger" @onclick="() => IngestRepo(false, true)" disabled="@isBusy">
@@ -31,15 +31,16 @@
                     </button>
                 </div>
             </div>
-            
+
             <div class="form-check mb-2">
                 <input class="form-check-input" type="checkbox" @bind="forceStructureRegen" id="forceRegenCheck">
                 <label class="form-check-label" for="forceRegenCheck">
                     Force Regenerate
                 </label>
             </div>
-            
-            <button class="btn btn-secondary w-100 mb-4" @onclick="GenerateStructure" disabled="@(isBusy || string.IsNullOrEmpty(repoPath))">
+
+            <button class="btn btn-secondary w-100 mb-4" @onclick="GenerateStructure"
+                    disabled="@(isBusy || string.IsNullOrEmpty(repoPath))">
                 2. Generate Structure
             </button>
 
@@ -80,12 +81,12 @@
                 <div class="wiki-content">
                     @((MarkupString)RenderMarkdown(currentPage.Content))
                 </div>
-                
-                <hr />
+
+                <hr/>
                 <details>
                     <summary>Source Files</summary>
                     <ul>
-                        @foreach(var file in currentPage.RelevantFiles)
+                        @foreach (var file in currentPage.RelevantFiles)
                         {
                             <li>@file</li>
                         }
@@ -99,7 +100,7 @@
                     <p>Select a page from the structure or start by ingesting a repository.</p>
                 </div>
             }
-            
+
             <!-- Chat Interface -->
             <div class="chat-box mt-5 border-top pt-3">
                 <h4>RAG Chat</h4>
@@ -113,7 +114,8 @@
                     }
                 </div>
                 <div class="input-group">
-                    <input @bind="chatQuery" class="form-control" placeholder="Ask about the code..." @onkeyup="HandleChatKeyUp" />
+                    <input @bind="chatQuery" class="form-control" placeholder="Ask about the code..."
+                           @onkeyup="HandleChatKeyUp"/>
                     <button class="btn btn-info" @onclick="SendChat">Send</button>
                 </div>
             </div>
@@ -123,29 +125,29 @@
 
 @code {
     private string repoPath = "/Users/levente/AI/nhibernate-core"; // Default for convenience
-    private bool isBusy = false;
-    private bool forceStructureRegen = false;
+    private bool isBusy;
+    private bool forceStructureRegen;
     private string message = "";
-    
+
     private WikiStructure? structure;
-    private codeMRI.Shared.Models.WikiPage? currentPage;
-    
+    private WikiPage? currentPage;
+
     // Chat
     private string chatQuery = "";
-    private List<ChatMessage> chatHistory = new();
+    private readonly List<ChatMessage> chatHistory = new();
 
     private async Task IngestRepo(bool force = false, bool delete = false)
     {
         if (string.IsNullOrEmpty(repoPath)) return;
         isBusy = true;
-        
+
         if (delete) message = "Deleting repository data...";
         else if (force) message = "Force re-ingesting repository... This might take a while.";
         else message = "Smart ingesting repository... Checking for changes.";
-        
+
         StateHasChanged();
-        
-        try 
+
+        try
         {
             var msg = await WikiApi.IngestRepoAsync(repoPath, force, delete);
             message = msg;
@@ -166,8 +168,8 @@
         isBusy = true;
         message = "Generating wiki structure...";
         StateHasChanged();
-        
-        try 
+
+        try
         {
             structure = await WikiApi.GenerateStructureAsync(repoPath);
             message = "Structure generated!";
@@ -187,8 +189,8 @@
         isBusy = true;
         message = $"Generating page '{pageTitle}'...";
         StateHasChanged();
-        
-        try 
+
+        try
         {
             // We assume relevant files are found by the backend or we pass empty list and backend finds them via RAG?
             // The current WikiController needs file paths. 
@@ -197,16 +199,16 @@
             // Actually, the Structure generation logic returned 'page_ref' which are titles. It did NOT return file mappings in the simplified XML parsing I wrote.
             // I should probably update WikiGenerationService to include relevant files in the structure, but for now, I'll send an empty list.
             // AND I will update `WikiGenerationService.GeneratePageAsync` to perform a Search if no files are provided!
-            
+
             // Temporary Fix: Send title as title, empty files. 
             // I need to update Backend to handle this case (Auto-Search).
-            
+
             currentPage = await WikiApi.GeneratePageAsync(pageTitle, new List<string>());
-            
+
             // Fix: The backend currently needs files. I'll update the backend in a moment to use RAG if files are missing.
-            
+
             message = $"Page '{pageTitle}' generated.";
-            
+
             // Give the DOM a moment to render the markdown before invoking Mermaid
             StateHasChanged();
             await JS.InvokeVoidAsync("renderMermaid");
@@ -224,17 +226,17 @@
     private async Task SendChat()
     {
         if (string.IsNullOrWhiteSpace(chatQuery)) return;
-        
+
         var userMsg = new ChatMessage { Role = "user", Content = chatQuery };
         chatHistory.Add(userMsg);
         var currentQuery = chatQuery;
         chatQuery = "";
-        
+
         var assistantMsg = new ChatMessage { Role = "assistant", Content = "" };
         chatHistory.Add(assistantMsg);
         StateHasChanged();
 
-        try 
+        try
         {
             await foreach (var chunk in WikiApi.ChatAsync(currentQuery, chatHistory.Take(chatHistory.Count - 1).ToList()))
             {
@@ -244,10 +246,10 @@
         }
         catch (Exception ex)
         {
-             assistantMsg.Content += $"\n[Error: {ex.Message}]";
+            assistantMsg.Content += $"\n[Error: {ex.Message}]";
         }
     }
-    
+
     private async Task HandleChatKeyUp(KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
@@ -259,6 +261,7 @@
     private string RenderMarkdown(string markdown)
     {
         // Fallback to simple ToHtml if extensions are not found or problematic
-        return Markdig.Markdown.ToHtml(markdown ?? "");
+        return Markdown.ToHtml(markdown ?? "");
     }
+
 }

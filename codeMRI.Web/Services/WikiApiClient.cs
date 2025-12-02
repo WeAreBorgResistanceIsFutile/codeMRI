@@ -1,8 +1,8 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.AspNetCore.Components.WebAssembly.Http;
 using codeMRI.Shared.DTOs;
 using codeMRI.Shared.Models;
+using Microsoft.AspNetCore.Components.WebAssembly.Http;
 
 namespace codeMRI.Web.Services;
 
@@ -17,9 +17,9 @@ public class WikiApiClient
 
     public async Task<string> IngestRepoAsync(string repoPath, bool force = false, bool delete = false)
     {
-        var response = await _httpClient.PostAsJsonAsync("api/ingest", new IngestRequest 
-        { 
-            RepoPath = repoPath, 
+        var response = await _httpClient.PostAsJsonAsync("api/ingest", new IngestRequest
+        {
+            RepoPath = repoPath,
             Force = force,
             Delete = delete
         });
@@ -30,7 +30,8 @@ public class WikiApiClient
 
     public async Task<WikiStructure> GenerateStructureAsync(string repoPath)
     {
-        var response = await _httpClient.PostAsJsonAsync("api/wiki/structure", new StructureRequest { RepoPath = repoPath });
+        var response =
+            await _httpClient.PostAsJsonAsync("api/wiki/structure", new StructureRequest { RepoPath = repoPath });
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<WikiStructure>() ?? new WikiStructure();
     }
@@ -46,15 +47,15 @@ public class WikiApiClient
         // Wait, IngestController runs on Server. Blazor runs in Browser. 
         // If the user enters a local path on the server machine, the Browser cannot read those files.
         // So the Backend must use the stored files in VectorDB or read from disk.
-        
+
         // Refactoring thought: The WikiGenerationService should probably fetch content from the VectorDB/Disk 
         // if not provided. 
         // However, keeping it simple: I will modify WikiController to load content if missing. 
-        
-        var response = await _httpClient.PostAsJsonAsync("api/wiki/page", new PageGenerationRequest 
+
+        var response = await _httpClient.PostAsJsonAsync("api/wiki/page", new PageGenerationRequest
         {
-            Title = title, 
-            FilePaths = filePaths 
+            Title = title,
+            FilePaths = filePaths
         });
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<WikiPage>() ?? new WikiPage();
@@ -79,10 +80,7 @@ public class WikiApiClient
             // If the server sends raw text chunks, ReadLine might block until newline.
             // ChatController writes chunks. Ideally we read char buffer.
             // But for simplicity let's assume chunks come with newlines or we read block.
-            if (!string.IsNullOrEmpty(line))
-            {
-                yield return line + "\n";
-            }
+            if (!string.IsNullOrEmpty(line)) yield return line + "\n";
         }
     }
 }

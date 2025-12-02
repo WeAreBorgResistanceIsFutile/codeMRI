@@ -1,14 +1,13 @@
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
 using codeMRI.Core.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
 
 public class ComponentIdentificationService : IComponentIdentificationService
 {
-    private readonly ILogger<ComponentIdentificationService> _logger;
-    private readonly RoslynCSharpAnalyzer _roslynAnalyzer;
     private readonly IASTServiceClient? _astServiceClient;
+
     private readonly Dictionary<string, string> _languagePatterns = new()
     {
         { ".cs", "C#" },
@@ -21,6 +20,9 @@ public class ComponentIdentificationService : IComponentIdentificationService
         { ".go", "Go" },
         { ".rs", "Rust" }
     };
+
+    private readonly ILogger<ComponentIdentificationService> _logger;
+    private readonly RoslynCSharpAnalyzer _roslynAnalyzer;
 
     public ComponentIdentificationService(
         ILogger<ComponentIdentificationService> logger,
@@ -88,15 +90,14 @@ public class ComponentIdentificationService : IComponentIdentificationService
         return components;
     }
 
-    public async Task<ComponentRelationships> AnalyzeRelationshipsAsync(string repositoryPath, List<CodeComponent> components)
+    public async Task<ComponentRelationships> AnalyzeRelationshipsAsync(string repositoryPath,
+        List<CodeComponent> components)
     {
         var relationships = new ComponentRelationships();
         var componentMap = components.ToDictionary(c => c.Id, c => c);
 
         foreach (var component in components)
-        {
             await AnalyzeComponentDependencies(component, relationships, componentMap);
-        }
 
         // Identify entry points (zero in-degree components)
         relationships.EntryPoints = IdentifyEntryPoints(components, relationships);
@@ -117,7 +118,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
             .ToList();
 
         // Filter for likely entry points based on naming and type
-        return entryPoints.Where(id => 
+        return entryPoints.Where(id =>
         {
             var component = components.FirstOrDefault(c => c.Id == id);
             return component != null && IsLikelyEntryPoint(component);
@@ -133,7 +134,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
         };
 
         var name = component.Name.ToLowerInvariant();
-        
+
         // Check naming patterns
         if (entryPointPatterns.Any(pattern => name.Contains(pattern)))
             return true;
@@ -155,7 +156,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
     {
         var components = new List<CodeComponent>();
         var extension = Path.GetExtension(filePath).ToLowerInvariant();
-        
+
         if (!_languagePatterns.ContainsKey(extension))
             return components;
 
@@ -175,7 +176,6 @@ public class ComponentIdentificationService : IComponentIdentificationService
             case "C":
                 // Try to use AST Service if available
                 if (_astServiceClient != null && await _astServiceClient.IsHealthyAsync())
-                {
                     try
                     {
                         var astResult = await _astServiceClient.ParseCodeAsync(content, language, filePath);
@@ -188,10 +188,10 @@ public class ComponentIdentificationService : IComponentIdentificationService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "AST Service failed to parse {FilePath}, falling back to basic analysis", filePath);
+                        _logger.LogWarning(ex, "AST Service failed to parse {FilePath}, falling back to basic analysis",
+                            filePath);
                     }
-                }
-                
+
                 // Fallback to basic analysis
                 if (language == "Java")
                     components.AddRange(AnalyzeJavaFile(filePath, content));
@@ -215,7 +215,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
         var lines = content.Split('\n');
         var fileName = Path.GetFileNameWithoutExtension(filePath);
         var componentCounter = 1;
-        
+
         // Generic class/function detection for various languages
         var classPatterns = new[]
         {
@@ -235,41 +235,37 @@ public class ComponentIdentificationService : IComponentIdentificationService
         };
 
         foreach (var pattern in classPatterns)
+        foreach (Match match in Regex.Matches(content, pattern, RegexOptions.IgnoreCase))
         {
-            foreach (Match match in Regex.Matches(content, pattern, RegexOptions.IgnoreCase))
+            var componentName = match.Groups[1].Value;
+            components.Add(new CodeComponent
             {
-                var componentName = match.Groups[1].Value;
-                components.Add(new CodeComponent
-                {
-                    Id = $"{fileName}_{componentName}_{componentCounter++}",
-                    Name = componentName,
-                    Type = "Class",
-                    FilePath = filePath,
-                    Language = "Unknown",
-                    LineCount = lines.Length,
-                    ComplexityScore = CalculateComplexity(content),
-                    Metadata = CreateComponentMetadata(filePath, content, componentName)
-                });
-            }
+                Id = $"{fileName}_{componentName}_{componentCounter++}",
+                Name = componentName,
+                Type = "Class",
+                FilePath = filePath,
+                Language = "Unknown",
+                LineCount = lines.Length,
+                ComplexityScore = CalculateComplexity(content),
+                Metadata = CreateComponentMetadata(filePath, content, componentName)
+            });
         }
 
         foreach (var pattern in functionPatterns)
+        foreach (Match match in Regex.Matches(content, pattern, RegexOptions.IgnoreCase))
         {
-            foreach (Match match in Regex.Matches(content, pattern, RegexOptions.IgnoreCase))
+            var componentName = match.Groups[1].Value;
+            components.Add(new CodeComponent
             {
-                var componentName = match.Groups[1].Value;
-                components.Add(new CodeComponent
-                {
-                    Id = $"{fileName}_{componentName}_{componentCounter++}",
-                    Name = componentName,
-                    Type = "Function",
-                    FilePath = filePath,
-                    Language = "Unknown",
-                    LineCount = lines.Length,
-                    ComplexityScore = CalculateComplexity(content),
-                    Metadata = CreateComponentMetadata(filePath, content, componentName)
-                });
-            }
+                Id = $"{fileName}_{componentName}_{componentCounter++}",
+                Name = componentName,
+                Type = "Function",
+                FilePath = filePath,
+                Language = "Unknown",
+                LineCount = lines.Length,
+                ComplexityScore = CalculateComplexity(content),
+                Metadata = CreateComponentMetadata(filePath, content, componentName)
+            });
         }
 
         return components;
@@ -281,7 +277,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
         var lines = content.Split('\n');
         var fileName = Path.GetFileNameWithoutExtension(filePath);
         var componentCounter = 1;
-        
+
         var classPattern = @"(?:public|private|protected)?\s*(?:abstract|final|static)?\s*class\s+(\w+)";
         var interfacePattern = @"(?:public|private|protected)?\s*interface\s+(\w+)";
 
@@ -318,7 +314,6 @@ public class ComponentIdentificationService : IComponentIdentificationService
         }
 
         foreach (Match match in Regex.Matches(content, interfacePattern))
-        {
             components.Add(new CodeComponent
             {
                 Id = $"{fileName}_{match.Groups[1].Value}_{componentCounter++}",
@@ -329,7 +324,6 @@ public class ComponentIdentificationService : IComponentIdentificationService
                 LineCount = lines.Length,
                 ComplexityScore = CalculateComplexity(content)
             });
-        }
 
         return components;
     }
@@ -340,7 +334,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
         var lines = content.Split('\n');
         var fileName = Path.GetFileNameWithoutExtension(filePath);
         var componentCounter = 1;
-        
+
         var classPattern = @"^class\s+(\w+):";
 
         foreach (Match match in Regex.Matches(content, classPattern, RegexOptions.Multiline))
@@ -362,13 +356,14 @@ public class ComponentIdentificationService : IComponentIdentificationService
         return components;
     }
 
-    private async Task AnalyzeComponentDependencies(CodeComponent component, ComponentRelationships relationships, Dictionary<string, CodeComponent> componentMap)
+    private async Task AnalyzeComponentDependencies(CodeComponent component, ComponentRelationships relationships,
+        Dictionary<string, CodeComponent> componentMap)
     {
         if (!File.Exists(component.FilePath))
             return;
 
         var content = await File.ReadAllTextAsync(component.FilePath);
-        
+
         // Improved dependency analysis - look for type references with word boundaries
         foreach (var otherComponent in componentMap.Values)
         {
@@ -377,9 +372,8 @@ public class ComponentIdentificationService : IComponentIdentificationService
             // Use word boundary regex to avoid partial matches
             var pattern = $@"\b{Regex.Escape(otherComponent.Name)}\b";
             var matches = Regex.Matches(content, pattern);
-            
+
             if (matches.Count > 0)
-            {
                 relationships.Dependencies.Add(new Dependency
                 {
                     FromComponent = component.Id,
@@ -387,7 +381,6 @@ public class ComponentIdentificationService : IComponentIdentificationService
                     Type = "TypeReference",
                     Strength = Math.Min(matches.Count, 10) // Cap strength at 10
                 });
-            }
         }
     }
 
@@ -399,27 +392,24 @@ public class ComponentIdentificationService : IComponentIdentificationService
     private int ComputeCyclomaticComplexity(string content)
     {
         var complexity = 1; // Base complexity
-        
+
         // Decision points that increase cyclomatic complexity
         var decisionPatterns = new[]
         {
-            @"\bif\s*\(",           // if statements
-            @"\belse\s+if\s*\(",    // else if statements  
-            @"\bwhile\s*\(",        // while loops
-            @"\bfor\s*\(",          // for loops
-            @"\bforeach\s*\(",      // foreach loops
-            @"\bswitch\s*\(",       // switch statements
-            @"\bcase\s+",           // case statements
-            @"\bcatch\s*\(",        // catch blocks
-            @"\b\?\s*",             // ternary operator
-            @"\|\|",                // logical OR
-            @"&&"                   // logical AND
+            @"\bif\s*\(", // if statements
+            @"\belse\s+if\s*\(", // else if statements  
+            @"\bwhile\s*\(", // while loops
+            @"\bfor\s*\(", // for loops
+            @"\bforeach\s*\(", // foreach loops
+            @"\bswitch\s*\(", // switch statements
+            @"\bcase\s+", // case statements
+            @"\bcatch\s*\(", // catch blocks
+            @"\b\?\s*", // ternary operator
+            @"\|\|", // logical OR
+            @"&&" // logical AND
         };
 
-        foreach (var pattern in decisionPatterns)
-        {
-            complexity += Regex.Matches(content, pattern).Count;
-        }
+        foreach (var pattern in decisionPatterns) complexity += Regex.Matches(content, pattern).Count;
 
         return Math.Max(1, complexity);
     }
@@ -433,14 +423,14 @@ public class ComponentIdentificationService : IComponentIdentificationService
         foreach (var line in lines)
         {
             var trimmedLine = line.Trim();
-            
+
             // Count opening braces/keywords that increase depth
             currentDepth += Regex.Matches(trimmedLine, @"\{").Count;
             currentDepth += Regex.Matches(trimmedLine, @"\b(if|while|for|foreach|switch|using|lock)\s*\(").Count;
-            
+
             // Count closing braces that decrease depth
             currentDepth -= Regex.Matches(trimmedLine, @"\}").Count;
-            
+
             maxDepth = Math.Max(maxDepth, currentDepth);
         }
 
@@ -453,11 +443,11 @@ public class ComponentIdentificationService : IComponentIdentificationService
         var cyclomaticComplexity = ComputeCyclomaticComplexity(content);
         var nestingDepth = CalculateNestingDepth(content);
         var loc = lines.Length;
-        
+
         // Calculate fan-in/fan-out (simplified version)
         var fanIn = CountIncomingReferences(content, componentName);
         var fanOut = CountOutgoingReferences(content);
-        
+
         return new ComponentMetadata
         {
             Loc = loc,
@@ -514,11 +504,11 @@ public class ComponentIdentificationService : IComponentIdentificationService
     {
         var docPatterns = new[]
         {
-            @"/\*\*[\s\S]*?\*/",     // JSDoc/JavaDoc style
-            @"///.*",                 // XML documentation comments
-            @"""[\s\S]*?""",          // Python docstrings (triple quotes)
-            @"#.*",                   // Python comments
-            @"//.*"                   // Single line comments
+            @"/\*\*[\s\S]*?\*/", // JSDoc/JavaDoc style
+            @"///.*", // XML documentation comments
+            @"""[\s\S]*?""", // Python docstrings (triple quotes)
+            @"#.*", // Python comments
+            @"//.*" // Single line comments
         };
 
         return docPatterns.Any(pattern => Regex.IsMatch(content, pattern));
@@ -533,7 +523,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
         if (Regex.IsMatch(content, @"\bfunction\s+\w+|\bdef\s+\w+")) return "Function";
         if (Regex.IsMatch(content, @"@\w+Controller|@RestController")) return "Controller";
         if (Regex.IsMatch(content, @"@\w+Service")) return "Service";
-        
+
         return "Component";
     }
 
@@ -544,7 +534,6 @@ public class ComponentIdentificationService : IComponentIdentificationService
         var complexityOverhead = complexity * 10;
         return baseTokens + complexityOverhead;
     }
-
 
 
     private bool IsSourceFile(string filePath)
@@ -559,7 +548,8 @@ public class ComponentIdentificationService : IComponentIdentificationService
         var ignoredDirectories = new[] { "bin", "obj", "node_modules", ".git", ".vs", "dist", "build" };
         var ignoredExtensions = new[] { ".dll", ".exe", ".pdb", ".cache", ".tmp" };
 
-        return ignoredDirectories.Any(dir => path.Contains(Path.DirectorySeparatorChar + dir + Path.DirectorySeparatorChar)) ||
+        return ignoredDirectories.Any(dir =>
+                   path.Contains(Path.DirectorySeparatorChar + dir + Path.DirectorySeparatorChar)) ||
                ignoredExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
     }
 }

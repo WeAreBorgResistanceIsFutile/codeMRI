@@ -1,3 +1,5 @@
+using codeMRI.Shared.Models;
+
 namespace codeMRI.Shared.DTOs;
 
 public class IngestRequest
@@ -28,6 +30,6 @@ public class PageGenerationRequest
 public class ChatRequest
 {
     public string Query { get; set; } = string.Empty;
-    public List<Models.ChatMessage> History { get; set; } = new();
+    public List<ChatMessage> History { get; set; } = new();
     public string Language { get; set; } = "English";
 }

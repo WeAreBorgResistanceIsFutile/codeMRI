@@ -17,14 +17,132 @@ public class SqliteWikiRepository : IWikiRepository
         InitializeDatabase();
     }
 
+    public async Task SaveStructureAsync(string repoPath, WikiStructure structure)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetOrCreateRepoIdAsync(connection, repoPath);
+        var json = JsonSerializer.Serialize(structure);
+
+        await connection.ExecuteAsync(@"
+            INSERT INTO WikiStructures (RepoId, JsonContent) 
+            VALUES (@RepoId, @Json)
+            ON CONFLICT(RepoId) DO UPDATE SET JsonContent = @Json",
+            new { RepoId = repoId, Json = json });
+    }
+
+    public async Task<WikiStructure?> GetStructureAsync(string repoPath)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId == null) return null;
+
+        var json = await connection.QuerySingleOrDefaultAsync<string>(
+            "SELECT JsonContent FROM WikiStructures WHERE RepoId = @RepoId", new { RepoId = repoId });
+
+        return json == null ? null : JsonSerializer.Deserialize<WikiStructure>(json);
+    }
+
+    public async Task DeleteStructureAsync(string repoPath)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId != null)
+            await connection.ExecuteAsync("DELETE FROM WikiStructures WHERE RepoId = @RepoId", new { RepoId = repoId });
+    }
+
+    public async Task SavePageAsync(string repoPath, WikiPage page)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetOrCreateRepoIdAsync(connection, repoPath);
+        var json = JsonSerializer.Serialize(page);
+
+        await connection.ExecuteAsync(@"
+            INSERT INTO WikiPages (RepoId, PageId, Title, JsonContent) 
+            VALUES (@RepoId, @PageId, @Title, @Json)
+            ON CONFLICT(RepoId, PageId) DO UPDATE SET 
+                Title = @Title,
+                JsonContent = @Json",
+            new { RepoId = repoId, PageId = page.Id, page.Title, Json = json });
+    }
+
+    public async Task<WikiPage?> GetPageAsync(string repoPath, string pageId)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId == null) return null;
+
+        var json = await connection.QuerySingleOrDefaultAsync<string>(
+            "SELECT JsonContent FROM WikiPages WHERE RepoId = @RepoId AND PageId = @PageId",
+            new { RepoId = repoId, PageId = pageId });
+
+        return json == null ? null : JsonSerializer.Deserialize<WikiPage>(json);
+    }
+
+    public async Task<WikiPage?> GetPageByTitleAsync(string repoPath, string pageTitle)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId == null) return null;
+
+        // Case-insensitive search for title
+        var json = await connection.QuerySingleOrDefaultAsync<string>(
+            "SELECT JsonContent FROM WikiPages WHERE RepoId = @RepoId AND Title COLLATE NOCASE = @Title",
+            new { RepoId = repoId, Title = pageTitle });
+
+        return json == null ? null : JsonSerializer.Deserialize<WikiPage>(json);
+    }
+
+    public async Task DeletePageAsync(string repoPath, string pageId)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId != null)
+            await connection.ExecuteAsync(
+                "DELETE FROM WikiPages WHERE RepoId = @RepoId AND PageId = @PageId",
+                new { RepoId = repoId, PageId = pageId });
+    }
+
+    public async Task SaveIngestionManifestAsync(string repoPath, Dictionary<string, string> manifest)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetOrCreateRepoIdAsync(connection, repoPath);
+        var json = JsonSerializer.Serialize(manifest);
+
+        await connection.ExecuteAsync(@"
+            INSERT INTO IngestionManifests (RepoId, JsonContent) 
+            VALUES (@RepoId, @Json)
+            ON CONFLICT(RepoId) DO UPDATE SET JsonContent = @Json",
+            new { RepoId = repoId, Json = json });
+    }
+
+    public async Task<Dictionary<string, string>> GetIngestionManifestAsync(string repoPath)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId == null) return new Dictionary<string, string>();
+
+        var json = await connection.QuerySingleOrDefaultAsync<string>(
+            "SELECT JsonContent FROM IngestionManifests WHERE RepoId = @RepoId", new { RepoId = repoId });
+
+        return json == null
+            ? new Dictionary<string, string>()
+            : JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? new Dictionary<string, string>();
+    }
+
+    public async Task DeleteIngestionManifestAsync(string repoPath)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId != null)
+            await connection.ExecuteAsync("DELETE FROM IngestionManifests WHERE RepoId = @RepoId",
+                new { RepoId = repoId });
+    }
+
     private void InitializeDatabase()
     {
         var dbPath = _connectionString.Replace("Data Source=", "").Trim();
         var dir = Path.GetDirectoryName(dbPath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-        {
-            Directory.CreateDirectory(dir);
-        }
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
@@ -56,7 +174,7 @@ public class SqliteWikiRepository : IWikiRepository
                 FOREIGN KEY(RepoId) REFERENCES Repositories(Id) ON DELETE CASCADE
             );
         ");
-        
+
         // Enable foreign keys
         connection.Execute("PRAGMA foreign_keys = ON;");
     }
@@ -70,7 +188,7 @@ public class SqliteWikiRepository : IWikiRepository
 
         await connection.ExecuteAsync(
             "INSERT INTO Repositories (RepoPath) VALUES (@RepoPath)", new { RepoPath = repoPath });
-        
+
         return await connection.QuerySingleAsync<int>(
             "SELECT Id FROM Repositories WHERE RepoPath = @RepoPath", new { RepoPath = repoPath });
     }
@@ -79,131 +197,5 @@ public class SqliteWikiRepository : IWikiRepository
     {
         return await connection.QuerySingleOrDefaultAsync<int?>(
             "SELECT Id FROM Repositories WHERE RepoPath = @RepoPath", new { RepoPath = repoPath });
-    }
-
-    public async Task SaveStructureAsync(string repoPath, WikiStructure structure)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetOrCreateRepoIdAsync(connection, repoPath);
-        var json = JsonSerializer.Serialize(structure);
-
-        await connection.ExecuteAsync(@"
-            INSERT INTO WikiStructures (RepoId, JsonContent) 
-            VALUES (@RepoId, @Json)
-            ON CONFLICT(RepoId) DO UPDATE SET JsonContent = @Json",
-            new { RepoId = repoId, Json = json });
-    }
-
-    public async Task<WikiStructure?> GetStructureAsync(string repoPath)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetRepoIdAsync(connection, repoPath);
-        if (repoId == null) return null;
-
-        var json = await connection.QuerySingleOrDefaultAsync<string>(
-            "SELECT JsonContent FROM WikiStructures WHERE RepoId = @RepoId", new { RepoId = repoId });
-
-        return json == null ? null : JsonSerializer.Deserialize<WikiStructure>(json);
-    }
-
-    public async Task DeleteStructureAsync(string repoPath)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetRepoIdAsync(connection, repoPath);
-        if (repoId != null)
-        {
-            await connection.ExecuteAsync("DELETE FROM WikiStructures WHERE RepoId = @RepoId", new { RepoId = repoId });
-        }
-    }
-
-    public async Task SavePageAsync(string repoPath, WikiPage page)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetOrCreateRepoIdAsync(connection, repoPath);
-        var json = JsonSerializer.Serialize(page);
-
-        await connection.ExecuteAsync(@"
-            INSERT INTO WikiPages (RepoId, PageId, Title, JsonContent) 
-            VALUES (@RepoId, @PageId, @Title, @Json)
-            ON CONFLICT(RepoId, PageId) DO UPDATE SET 
-                Title = @Title,
-                JsonContent = @Json",
-            new { RepoId = repoId, PageId = page.Id, Title = page.Title, Json = json });
-    }
-
-    public async Task<WikiPage?> GetPageAsync(string repoPath, string pageId)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetRepoIdAsync(connection, repoPath);
-        if (repoId == null) return null;
-
-        var json = await connection.QuerySingleOrDefaultAsync<string>(
-            "SELECT JsonContent FROM WikiPages WHERE RepoId = @RepoId AND PageId = @PageId", 
-            new { RepoId = repoId, PageId = pageId });
-
-        return json == null ? null : JsonSerializer.Deserialize<WikiPage>(json);
-    }
-
-    public async Task<WikiPage?> GetPageByTitleAsync(string repoPath, string pageTitle)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetRepoIdAsync(connection, repoPath);
-        if (repoId == null) return null;
-
-        // Case-insensitive search for title
-        var json = await connection.QuerySingleOrDefaultAsync<string>(
-            "SELECT JsonContent FROM WikiPages WHERE RepoId = @RepoId AND Title COLLATE NOCASE = @Title", 
-            new { RepoId = repoId, Title = pageTitle });
-
-        return json == null ? null : JsonSerializer.Deserialize<WikiPage>(json);
-    }
-
-    public async Task DeletePageAsync(string repoPath, string pageId)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetRepoIdAsync(connection, repoPath);
-        if (repoId != null)
-        {
-            await connection.ExecuteAsync(
-                "DELETE FROM WikiPages WHERE RepoId = @RepoId AND PageId = @PageId", 
-                new { RepoId = repoId, PageId = pageId });
-        }
-    }
-
-    public async Task SaveIngestionManifestAsync(string repoPath, Dictionary<string, string> manifest)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetOrCreateRepoIdAsync(connection, repoPath);
-        var json = JsonSerializer.Serialize(manifest);
-
-        await connection.ExecuteAsync(@"
-            INSERT INTO IngestionManifests (RepoId, JsonContent) 
-            VALUES (@RepoId, @Json)
-            ON CONFLICT(RepoId) DO UPDATE SET JsonContent = @Json",
-            new { RepoId = repoId, Json = json });
-    }
-
-    public async Task<Dictionary<string, string>> GetIngestionManifestAsync(string repoPath)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetRepoIdAsync(connection, repoPath);
-        if (repoId == null) return new Dictionary<string, string>();
-
-        var json = await connection.QuerySingleOrDefaultAsync<string>(
-            "SELECT JsonContent FROM IngestionManifests WHERE RepoId = @RepoId", new { RepoId = repoId });
-
-        return json == null 
-            ? new Dictionary<string, string>() 
-            : JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? new Dictionary<string, string>();
-    }
-
-    public async Task DeleteIngestionManifestAsync(string repoPath)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetRepoIdAsync(connection, repoPath);
-        if (repoId != null)
-        {
-            await connection.ExecuteAsync("DELETE FROM IngestionManifests WHERE RepoId = @RepoId", new { RepoId = repoId });
-        }
     }
 }

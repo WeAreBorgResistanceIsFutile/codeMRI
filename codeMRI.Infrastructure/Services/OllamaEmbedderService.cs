@@ -1,5 +1,4 @@
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using codeMRI.Core.Interfaces;
 using codeMRI.Infrastructure.Configuration;
@@ -41,18 +40,14 @@ public class OllamaEmbedderService : IEmbedder
         // We will run them in parallel with a degree of parallelism control if needed, 
         // but for now, simple Task.WhenAll is fine for local use or sequential loop.
         // Note: Ollama might queue requests.
-        
+
         var results = new List<float[]>();
-        foreach (var text in texts)
-        {
-            results.Add(await EmbedAsync(text));
-        }
+        foreach (var text in texts) results.Add(await EmbedAsync(text));
         return results;
     }
 
     private class OllamaEmbeddingResponse
     {
-        [JsonPropertyName("embedding")]
-        public float[]? Embedding { get; set; }
+        [JsonPropertyName("embedding")] public float[]? Embedding { get; set; }
     }
 }

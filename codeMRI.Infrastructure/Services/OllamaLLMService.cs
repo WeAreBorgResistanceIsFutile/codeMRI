@@ -1,5 +1,4 @@
 using System.Net.Http.Json;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -26,11 +25,11 @@ public class OllamaLLMService : ILLMClient
     public async Task<string> ChatAsync(string systemPrompt, string userPrompt, List<ChatMessage> history)
     {
         var messages = BuildMessages(systemPrompt, userPrompt, history);
-        
+
         var request = new
         {
             model = _settings.ChatModel,
-            messages = messages,
+            messages,
             stream = false
         };
 
@@ -41,14 +40,15 @@ public class OllamaLLMService : ILLMClient
         return result?.Message?.Content ?? string.Empty;
     }
 
-    public async IAsyncEnumerable<string> ChatStreamAsync(string systemPrompt, string userPrompt, List<ChatMessage> history)
+    public async IAsyncEnumerable<string> ChatStreamAsync(string systemPrompt, string userPrompt,
+        List<ChatMessage> history)
     {
         var messages = BuildMessages(systemPrompt, userPrompt, history);
 
         var request = new
         {
             model = _settings.ChatModel,
-            messages = messages,
+            messages,
             stream = true
         };
 
@@ -59,7 +59,7 @@ public class OllamaLLMService : ILLMClient
         {
             Content = content
         };
-        
+
         // Use SendAsync with HttpCompletionOption.ResponseHeadersRead to start reading stream immediately
         using var response = await _httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
@@ -73,17 +73,17 @@ public class OllamaLLMService : ILLMClient
             if (string.IsNullOrWhiteSpace(line)) continue;
 
             OllamaChatResponse? update = null;
-            try 
+            try
             {
                 update = JsonSerializer.Deserialize<OllamaChatResponse>(line);
             }
-            catch { /* Ignore parse errors */ }
-
-            if (update?.Message?.Content != null)
+            catch
             {
-                yield return update.Message.Content;
+                /* Ignore parse errors */
             }
-            
+
+            if (update?.Message?.Content != null) yield return update.Message.Content;
+
             if (update?.Done == true) break;
         }
     }
@@ -92,18 +92,11 @@ public class OllamaLLMService : ILLMClient
     {
         var messages = new List<object>();
 
-        if (!string.IsNullOrWhiteSpace(systemPrompt))
-        {
-            messages.Add(new { role = "system", content = systemPrompt });
-        }
+        if (!string.IsNullOrWhiteSpace(systemPrompt)) messages.Add(new { role = "system", content = systemPrompt });
 
         if (history != null)
-        {
             foreach (var msg in history)
-            {
                 messages.Add(new { role = msg.Role, content = msg.Content });
-            }
-        }
 
         messages.Add(new { role = "user", content = userPrompt });
         return messages;
@@ -111,25 +104,19 @@ public class OllamaLLMService : ILLMClient
 
     private class OllamaChatResponse
     {
-        [JsonPropertyName("model")]
-        public string? Model { get; set; }
-        
-        [JsonPropertyName("created_at")]
-        public string? CreatedAt { get; set; }
-        
-        [JsonPropertyName("message")]
-        public MessagePart? Message { get; set; }
-        
-        [JsonPropertyName("done")]
-        public bool Done { get; set; }
+        [JsonPropertyName("model")] public string? Model { get; set; }
+
+        [JsonPropertyName("created_at")] public string? CreatedAt { get; set; }
+
+        [JsonPropertyName("message")] public MessagePart? Message { get; set; }
+
+        [JsonPropertyName("done")] public bool Done { get; set; }
     }
 
     private class MessagePart
     {
-        [JsonPropertyName("role")]
-        public string? Role { get; set; }
-        
-        [JsonPropertyName("content")]
-        public string? Content { get; set; }
+        [JsonPropertyName("role")] public string? Role { get; set; }
+
+        [JsonPropertyName("content")] public string? Content { get; set; }
     }
 }

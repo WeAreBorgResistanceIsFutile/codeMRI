@@ -8,7 +8,7 @@ public class Document
     public string FilePath { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public Dictionary<string, string> Metadata { get; set; } = new();
-    
+
     [JsonIgnore] // Don't always serialize embedding to client
     public float[]? Embedding { get; set; }
 }

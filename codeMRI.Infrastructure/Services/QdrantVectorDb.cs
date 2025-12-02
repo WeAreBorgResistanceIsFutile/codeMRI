@@ -24,9 +24,8 @@ public class QdrantVectorDb : IVectorDatabase
         _collectionName = collectionName;
         var collections = await _client.ListCollectionsAsync();
         if (collections.All(c => c != _collectionName))
-        {
-            await _client.CreateCollectionAsync(_collectionName, new VectorParams { Size = (ulong)_settings.VectorSize, Distance = Distance.Cosine });
-        }
+            await _client.CreateCollectionAsync(_collectionName,
+                new VectorParams { Size = (ulong)_settings.VectorSize, Distance = Distance.Cosine });
     }
 
     public async Task UpsertAsync(IEnumerable<Document> documents)
@@ -42,10 +41,7 @@ public class QdrantVectorDb : IVectorDatabase
                 { "file_path", doc.FilePath }
             };
 
-            foreach (var kvp in doc.Metadata)
-            {
-                payload[kvp.Key] = kvp.Value;
-            }
+            foreach (var kvp in doc.Metadata) payload[kvp.Key] = kvp.Value;
 
             // Ensure ID is a Guid or convert it safely. coreMRI uses Guid strings.
             // Qdrant supports UUIDs.
@@ -56,19 +52,13 @@ public class QdrantVectorDb : IVectorDatabase
                 Id = id,
                 Vectors = new Vectors { Vector = new Vector { Data = { doc.Embedding } } }
             };
-            
-            foreach (var kvp in payload)
-            {
-                point.Payload.Add(kvp.Key, ConvertToValue(kvp.Value));
-            }
+
+            foreach (var kvp in payload) point.Payload.Add(kvp.Key, ConvertToValue(kvp.Value));
 
             points.Add(point);
         }
 
-        if (points.Any())
-        {
-            await _client.UpsertAsync(_collectionName, points);
-        }
+        if (points.Any()) await _client.UpsertAsync(_collectionName, points);
     }
 
     public async Task<IEnumerable<Document>> SearchAsync(float[] vector, int topK = 20)
@@ -82,7 +72,7 @@ public class QdrantVectorDb : IVectorDatabase
             FilePath = s.Payload.TryGetValue("file_path", out var pathVal) ? pathVal.StringValue : string.Empty,
             Embedding = null, // Optimization: don't return vector unless needed
             Metadata = s.Payload.ToDictionary(
-                k => k.Key, 
+                k => k.Key,
                 v => v.Value.KindCase == Value.KindOneofCase.StringValue ? v.Value.StringValue : v.Value.ToString())
         });
     }

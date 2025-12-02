@@ -1,14 +1,14 @@
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using codeMRI.Core.Interfaces;
 using codeMRI.Shared.Models;
+using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
 
 public class RubricGenerationService : IRubricGenerationService
 {
-    private readonly ILogger<RubricGenerationService> _logger;
     private readonly ILLMClient _llmClient;
+    private readonly ILogger<RubricGenerationService> _logger;
 
     public RubricGenerationService(
         ILogger<RubricGenerationService> logger,
@@ -26,12 +26,13 @@ public class RubricGenerationService : IRubricGenerationService
         _logger.LogInformation("Generating evaluation rubric for repository: {RepositoryName}", repositoryInfo.Name);
 
         var prompt = BuildRubricGenerationPrompt(documentationStructure, repositoryInfo);
-        
-        var response = await _llmClient.ChatAsync("You are a documentation evaluation assistant.", prompt, new List<ChatMessage>());
-        
+
+        var response = await _llmClient.ChatAsync("You are a documentation evaluation assistant.", prompt,
+            new List<ChatMessage>());
+
         var rubric = ParseRubricFromResponse(response);
-        
-        _logger.LogInformation("Generated rubric with {RequirementCount} requirements", 
+
+        _logger.LogInformation("Generated rubric with {RequirementCount} requirements",
             CountLeafRequirements(rubric));
 
         return rubric;
@@ -56,11 +57,8 @@ public class RubricGenerationService : IRubricGenerationService
             {
                 var modelRubric = await GenerateRubricWithModelAsync(
                     documentationStructure, repositoryInfo, modelName, cancellationToken);
-                
-                if (modelRubric != null)
-                {
-                    rubrics.Add(modelRubric);
-                }
+
+                if (modelRubric != null) rubrics.Add(modelRubric);
             }
             catch (Exception ex)
             {
@@ -70,8 +68,8 @@ public class RubricGenerationService : IRubricGenerationService
 
         // Synthesize consensus
         var consensusRubric = await SynthesizeRubricsAsync(rubrics, cancellationToken);
-        
-        _logger.LogInformation("Consensus rubric generated with {RequirementCount} requirements", 
+
+        _logger.LogInformation("Consensus rubric generated with {RequirementCount} requirements",
             CountLeafRequirements(consensusRubric));
 
         return consensusRubric;
@@ -93,7 +91,7 @@ public class RubricGenerationService : IRubricGenerationService
         CancellationToken cancellationToken)
     {
         var allRequirements = new List<RubricRequirement>();
-        
+
         // Extract all requirements from all rubrics
         foreach (var rubric in rubrics)
         {
@@ -126,7 +124,7 @@ public class RubricGenerationService : IRubricGenerationService
         foreach (var requirement in requirements)
         {
             var normalizedText = NormalizeRequirementText(requirement.Description);
-            
+
             if (!seenTexts.Contains(normalizedText))
             {
                 seenTexts.Add(normalizedText);
@@ -152,17 +150,11 @@ public class RubricGenerationService : IRubricGenerationService
 
         void ExtractRecursive(RubricNode node)
         {
-            if (node is RubricRequirement requirement && requirement.IsLeaf)
-            {
+            if (node is RubricRequirement requirement && node.IsLeaf)
                 requirements.Add(requirement);
-            }
             else if (node.Children != null)
-            {
                 foreach (var child in node.Children)
-                {
                     ExtractRecursive(child);
-                }
-            }
         }
 
         ExtractRecursive(rubric);
@@ -189,19 +181,15 @@ public class RubricGenerationService : IRubricGenerationService
 
         // Build hierarchy
         var children = new List<RubricNode>();
-        
+
         foreach (var category in categories)
-        {
             if (category.Value.Any())
-            {
                 children.Add(new RubricCategory
                 {
                     Title = category.Key,
                     Weight = 0.25, // Equal weight for now
                     Children = category.Value.Cast<RubricNode>().ToList()
                 });
-            }
-        }
 
         return children;
     }
@@ -212,10 +200,10 @@ public class RubricGenerationService : IRubricGenerationService
 
         if (text.Contains("example") || text.Contains("code") || text.Contains("sample"))
             return "Code Examples";
-        
+
         if (text.Contains("api") || text.Contains("endpoint") || text.Contains("method"))
             return "API Coverage";
-        
+
         if (text.Contains("structure") || text.Contains("organization") || text.Contains("format"))
             return "Structure & Organization";
 
@@ -224,8 +212,11 @@ public class RubricGenerationService : IRubricGenerationService
 
     private string BuildRubricGenerationPrompt(WikiStructure documentationStructure, RepositoryInfo repositoryInfo)
     {
-        return $@"
-You are a technical documentation evaluator. Given the repository information and documentation structure, 
+        var structureJson =
+            JsonSerializer.Serialize(documentationStructure, new JsonSerializerOptions { WriteIndented = true });
+
+        return
+            $@"You are a technical documentation evaluator. Given the repository information and documentation structure, 
 generate a comprehensive evaluation rubric that captures:
 
 1. Core architectural components
@@ -240,7 +231,7 @@ Repository Information:
 - Components: {repositoryInfo.ComponentCount}
 
 Documentation Structure:
-{JsonSerializer.Serialize(documentationStructure, new JsonSerializerOptions { WriteIndented = true })}
+{structureJson}
 
 Generate a hierarchical evaluation rubric with the following JSON structure:
 {{
@@ -283,7 +274,7 @@ Return only valid JSON.";
             };
 
             var rubric = JsonSerializer.Deserialize<EvaluationRubric>(response, options);
-            
+
             if (rubric == null)
             {
                 _logger.LogWarning("Failed to parse rubric from LLM response");
@@ -369,69 +360,14 @@ Return only valid JSON.";
 
         void CountRecursive(RubricNode node)
         {
-            if (node is RubricRequirement requirement && requirement.IsLeaf)
-            {
+            if (node is RubricRequirement requirement && node.IsLeaf)
                 count++;
-            }
             else if (node.Children != null)
-            {
                 foreach (var child in node.Children)
-                {
                     CountRecursive(child);
-                }
-            }
         }
 
         CountRecursive(rubric);
         return count;
     }
-}
-
-public interface IRubricGenerationService
-{
-    Task<EvaluationRubric> GenerateRubricAsync(
-        WikiStructure documentationStructure,
-        RepositoryInfo repositoryInfo,
-        CancellationToken cancellationToken = default);
-
-    Task<EvaluationRubric> GenerateConsensusRubricAsync(
-        WikiStructure documentationStructure,
-        RepositoryInfo repositoryInfo,
-        List<string> modelNames,
-        CancellationToken cancellationToken = default);
-}
-
-public class RepositoryInfo
-{
-    public string Name { get; set; } = string.Empty;
-    public string Language { get; set; } = string.Empty;
-    public int LinesOfCode { get; set; }
-    public int ComponentCount { get; set; }
-    public string Description { get; set; } = string.Empty;
-}
-
-public class EvaluationRubric : RubricNode
-{
-    public new string Title { get; set; } = string.Empty;
-    public new double Weight { get; set; }
-    public new List<RubricNode>? Children { get; set; }
-}
-
-public abstract class RubricNode
-{
-    public string Title { get; set; } = string.Empty;
-    public double Weight { get; set; }
-    public List<RubricNode>? Children { get; set; }
-}
-
-public class RubricCategory : RubricNode
-{
-    public new List<RubricNode>? Children { get; set; }
-}
-
-public class RubricRequirement : RubricNode
-{
-    public bool IsLeaf { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public new List<RubricNode>? Children { get; set; }
 }

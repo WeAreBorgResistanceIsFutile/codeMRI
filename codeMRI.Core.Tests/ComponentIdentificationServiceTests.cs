@@ -1,16 +1,12 @@
+using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
-using codeMRI.Core.Services;
 
 namespace codeMRI.Core.Tests;
 
 [TestFixture]
 public class ComponentIdentificationServiceTests
 {
-    private Mock<ILogger<ComponentIdentificationService>> _mockLogger;
-    private ComponentIdentificationService _service;
-    private string _testRepoPath;
-
     [SetUp]
     public void Setup()
     {
@@ -22,22 +18,23 @@ public class ComponentIdentificationServiceTests
     [TearDown]
     public void TearDown()
     {
-        if (Directory.Exists(_testRepoPath))
-        {
-            Directory.Delete(_testRepoPath, true);
-        }
+        if (Directory.Exists(_testRepoPath)) Directory.Delete(_testRepoPath, true);
     }
+
+    private Mock<ILogger<ComponentIdentificationService>> _mockLogger;
+    private ComponentIdentificationService _service;
+    private string _testRepoPath;
 
     [Test]
     public async Task AnalyzeRepositoryAsync_ShouldReturnRepositoryStructure_WhenValidPathProvided()
     {
         // Arrange
         Directory.CreateDirectory(_testRepoPath);
-        
+
         // Create test files
         await File.WriteAllTextAsync(Path.Combine(_testRepoPath, "Program.cs"), "public class Program { }");
         await File.WriteAllTextAsync(Path.Combine(_testRepoPath, "IService.cs"), "public interface IService { }");
-        
+
         // Create subdirectory
         var servicesDir = Path.Combine(_testRepoPath, "Services");
         Directory.CreateDirectory(servicesDir);
@@ -105,7 +102,7 @@ const (
     {
         // Arrange
         Directory.CreateDirectory(_testRepoPath);
-        
+
         var files = new Dictionary<string, string>
         {
             { "test.cs", "C#" },
@@ -130,7 +127,7 @@ const (
                 "Go" => "package main\n\ntype TestClass struct {}",
                 _ => ""
             };
-            
+
             await File.WriteAllTextAsync(Path.Combine(_testRepoPath, file.Key), content);
         }
 
@@ -140,13 +137,11 @@ const (
         // Assert
         Assert.That(result, Is.Not.Null);
         Assert.That(result.Count, Is.GreaterThan(0));
-        
+
         // Verify that components were detected for supported languages
         var detectedLanguages = result.Select(c => c.Language).Distinct().ToList();
         Assert.That(detectedLanguages.Contains("C#"), Is.True);
     }
-
-    #region Complex Scenarios Tests
 
     [Test]
     public async Task IdentifyComponentsAsync_ShouldHandleGenericsAndTemplates()
@@ -364,24 +359,20 @@ public class User
         Assert.That(result.Any(c => c.Name == "ValidateModelAttribute"), Is.True);
     }
 
-    #endregion
-
-    #region Performance Tests
-
     [Test]
     public async Task IdentifyComponentsAsync_ShouldHandleLargeCodebaseSimulation()
     {
         // Arrange
         Directory.CreateDirectory(_testRepoPath);
-        
+
         // Create multiple directories with files
-        for (int dirIndex = 0; dirIndex < 10; dirIndex++)
+        for (var dirIndex = 0; dirIndex < 10; dirIndex++)
         {
             var dir = Path.Combine(_testRepoPath, $"Module{dirIndex}");
             Directory.CreateDirectory(dir);
-            
+
             // Create multiple files per directory
-            for (int fileIndex = 0; fileIndex < 20; fileIndex++)
+            for (var fileIndex = 0; fileIndex < 20; fileIndex++)
             {
                 var file = Path.Combine(dir, $"Class{fileIndex}.cs");
                 var content = $@"
@@ -421,42 +412,53 @@ namespace Module{dirIndex}
     {
         // Arrange
         Directory.CreateDirectory(_testRepoPath);
-        
+
         // Create a complex dependency scenario
         var files = new Dictionary<string, string>
         {
-            { "IRepository.cs", @"
+            {
+                "IRepository.cs", @"
 public interface IRepository<T> where T : class
 {
     Task<T> GetByIdAsync(int id);
     Task SaveAsync(T entity);
-}" },
-            { "IUserService.cs", @"
+}"
+            },
+            {
+                "IUserService.cs", @"
 public interface IUserService
 {
     Task<User> GetUserAsync(int id);
     Task CreateUserAsync(User user);
-}" },
-            { "User.cs", @"
+}"
+            },
+            {
+                "User.cs", @"
 public class User
 {
     public int Id { get; set; }
     public string Name { get; set; }
     public Address Address { get; set; }
-}" },
-            { "Address.cs", @"
+}"
+            },
+            {
+                "Address.cs", @"
 public class Address
 {
     public string Street { get; set; }
     public string City { get; set; }
-}" },
-            { "UserRepository.cs", @"
+}"
+            },
+            {
+                "UserRepository.cs", @"
 public class UserRepository : IRepository<User>
 {
     public async Task<User> GetByIdAsync(int id) => new User();
     public async Task SaveAsync(User entity) { }
-}" },
-            { "UserService.cs", @"
+}"
+            },
+            {
+                "UserService.cs", @"
 public class UserService : IUserService
 {
     private readonly IRepository<User> _repository;
@@ -475,8 +477,10 @@ public class UserService : IUserService
     {
         await _repository.SaveAsync(user);
     }
-}" },
-            { "UserController.cs", @"
+}"
+            },
+            {
+                "UserController.cs", @"
 public class UserController
 {
     private readonly IUserService _userService;
@@ -490,13 +494,11 @@ public class UserController
     {
         return await _userService.GetUserAsync(id);
     }
-}" }
+}"
+            }
         };
 
-        foreach (var file in files)
-        {
-            await File.WriteAllTextAsync(Path.Combine(_testRepoPath, file.Key), file.Value);
-        }
+        foreach (var file in files) await File.WriteAllTextAsync(Path.Combine(_testRepoPath, file.Key), file.Value);
 
         var components = await _service.IdentifyComponentsAsync(_testRepoPath);
 
@@ -512,18 +514,16 @@ public class UserController
         Assert.That(result, Is.Not.Null);
         Assert.That(result.Dependencies.Count, Is.GreaterThan(0));
         Assert.That(duration.TotalSeconds, Is.LessThan(10)); // Should complete quickly
-        
+
         // Verify that dependencies were detected (may not be exact matches due to parsing limitations)
         Assert.That(result.Dependencies.Count, Is.GreaterThan(0));
-        
+
         // Check for any dependencies involving the key components
-        var hasUserControllerDependencies = result.Dependencies.Any(d => 
+        var hasUserControllerDependencies = result.Dependencies.Any(d =>
             d.FromComponent.Contains("UserController") || d.ToComponent.Contains("UserController"));
-        var hasUserServiceDependencies = result.Dependencies.Any(d => 
+        var hasUserServiceDependencies = result.Dependencies.Any(d =>
             d.FromComponent.Contains("UserService") || d.ToComponent.Contains("UserService"));
-        
+
         Assert.That(hasUserControllerDependencies || hasUserServiceDependencies, Is.True);
     }
-
-    #endregion
 }

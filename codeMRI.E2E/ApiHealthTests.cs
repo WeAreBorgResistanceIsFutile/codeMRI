@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Mvc.Testing;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc.Testing;
 using NUnit.Framework;
 
 namespace codeMRI.E2E;
@@ -7,8 +7,6 @@ namespace codeMRI.E2E;
 [TestFixture]
 public class ApiHealthTests
 {
-    private WebApplicationFactory<Program>? _factory;
-
     [OneTimeSetUp]
     public void Setup()
     {
@@ -20,6 +18,8 @@ public class ApiHealthTests
     {
         _factory?.Dispose();
     }
+
+    private WebApplicationFactory<Program>? _factory;
 
     [Test]
     public async Task Get_SwaggerUI_ReturnsSuccessAndHtml()

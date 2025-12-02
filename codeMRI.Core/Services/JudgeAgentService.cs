@@ -1,13 +1,13 @@
-using Microsoft.Extensions.Logging;
 using codeMRI.Core.Interfaces;
 using codeMRI.Shared.Models;
+using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
 
 public class JudgeAgentService : IJudgeAgent
 {
-    private readonly ILogger<IJudgeAgent> _logger;
     private readonly ILLMClient _llmClient;
+    private readonly ILogger<IJudgeAgent> _logger;
 
     public JudgeAgentService(ILogger<IJudgeAgent> logger, ILLMClient llmClient)
     {
@@ -31,10 +31,10 @@ public class JudgeAgentService : IJudgeAgent
                 new List<ChatMessage>());
 
             var result = ParseEvaluationResponse(response, requirement.Title);
-            
-            _logger.LogInformation("Evaluation completed for {Requirement}: Score={Score}", 
+
+            _logger.LogInformation("Evaluation completed for {Requirement}: Score={Score}",
                 requirement.Title, result.Score);
-                
+
             return result;
         }
         catch (Exception ex)
@@ -52,34 +52,32 @@ public class JudgeAgentService : IJudgeAgent
     private static string BuildEvaluationPrompt(string documentationContent, string requirementDescription)
     {
         return $"""
-Read this documentation:
-{documentationContent}
+                Read this documentation:
+                {documentationContent}
 
-Does it satisfy this requirement: {requirementDescription}?
+                Does it satisfy this requirement: {requirementDescription}?
 
-Answer Yes/No and explain.
-""";
+                Answer Yes/No and explain.
+                """;
     }
 
     private static RequirementScore ParseEvaluationResponse(string response, string requirementId)
     {
         if (string.IsNullOrWhiteSpace(response))
-        {
             return new RequirementScore
             {
                 RequirementId = requirementId,
                 Score = 0.0,
                 Reasoning = "Empty response received from LLM"
             };
-        }
 
         var normalizedResponse = response.Trim().ToLowerInvariant();
-        
+
         // Parse binary score (0 or 1) based on Yes/No answer
         var score = 0.0;
         var reasoning = response.Trim();
 
-        if (normalizedResponse.StartsWith("yes") || 
+        if (normalizedResponse.StartsWith("yes") ||
             normalizedResponse.StartsWith("yes,") ||
             normalizedResponse.StartsWith("yes:") ||
             normalizedResponse.StartsWith("yes ") ||
@@ -89,7 +87,7 @@ Answer Yes/No and explain.
             // Extract reasoning after the "Yes" part
             reasoning = ExtractReasoning(response, "yes");
         }
-        else if (normalizedResponse.StartsWith("no") || 
+        else if (normalizedResponse.StartsWith("no") ||
                  normalizedResponse.StartsWith("no,") ||
                  normalizedResponse.StartsWith("no:") ||
                  normalizedResponse.StartsWith("no ") ||
@@ -111,20 +109,18 @@ Answer Yes/No and explain.
     {
         var normalizedPrefix = prefix.ToLowerInvariant();
         var responseLower = response.ToLowerInvariant();
-        
+
         // Find the position after the prefix
         var prefixIndex = responseLower.IndexOf(normalizedPrefix);
         if (prefixIndex >= 0)
         {
             var reasoningStart = prefixIndex + prefix.Length;
-            
+
             // Skip any punctuation or whitespace immediately after the prefix
-            while (reasoningStart < response.Length && 
-                   (char.IsPunctuation(response[reasoningStart]) || 
+            while (reasoningStart < response.Length &&
+                   (char.IsPunctuation(response[reasoningStart]) ||
                     char.IsWhiteSpace(response[reasoningStart])))
-            {
                 reasoningStart++;
-            }
 
             if (reasoningStart < response.Length)
             {

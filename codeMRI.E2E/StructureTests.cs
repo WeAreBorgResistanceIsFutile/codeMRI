@@ -1,8 +1,8 @@
 using System.Net.Http.Json;
 using codeMRI.Shared.DTOs;
 using codeMRI.Shared.Models;
-using Microsoft.AspNetCore.Mvc.Testing;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc.Testing;
 using NUnit.Framework;
 
 namespace codeMRI.E2E;
@@ -10,8 +10,6 @@ namespace codeMRI.E2E;
 [TestFixture]
 public class StructureTests
 {
-    private WebApplicationFactory<Program>? _factory;
-
     [OneTimeSetUp]
     public void Setup()
     {
@@ -23,6 +21,8 @@ public class StructureTests
     {
         _factory?.Dispose();
     }
+
+    private WebApplicationFactory<Program>? _factory;
 
     [Test]
     public async Task GenerateStructure_OllamaRAG5_ReturnsValidStructure()
@@ -56,7 +56,7 @@ public class StructureTests
         structure.Sections.Should().NotBeNull();
         // We expect at least one section if the LLM works correctly
         structure.Sections.Should().HaveCountGreaterThan(0);
-        
+
         TestContext.WriteLine($"Generated Title: {structure.Title}");
         TestContext.WriteLine($"Generated {structure.Sections.Count} sections.");
     }

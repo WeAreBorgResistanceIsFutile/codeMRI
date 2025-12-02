@@ -16,10 +16,7 @@ public class AgentFactory : IAgentFactory
     {
         var agents = _serviceProvider.GetServices<IAgent>();
         var agent = agents.FirstOrDefault(a => a.Role == agentType);
-        if (agent == null)
-        {
-            throw new ArgumentException($"Agent type {agentType} not found");
-        }
+        if (agent == null) throw new ArgumentException($"Agent type {agentType} not found");
         return agent;
     }
 }

@@ -1,7 +1,8 @@
+using System.Text.RegularExpressions;
+using codeMRI.Core.Interfaces;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using codeMRI.Core.Interfaces;
 
 namespace codeMRI.Core.Services;
 
@@ -10,7 +11,7 @@ public class RoslynCSharpAnalyzer
     public async Task<List<CodeComponent>> AnalyzeCSharpFileAsync(string filePath)
     {
         var components = new List<CodeComponent>();
-        
+
         try
         {
             var sourceCode = await File.ReadAllTextAsync(filePath);
@@ -59,9 +60,9 @@ public class RoslynCSharpAnalyzer
     }
 
     private Task<CodeComponent?> AnalyzeClassOrInterfaceAsync(
-        BaseTypeDeclarationSyntax declaration, 
-        SemanticModel semanticModel, 
-        string filePath, 
+        BaseTypeDeclarationSyntax declaration,
+        SemanticModel semanticModel,
+        string filePath,
         string componentType)
     {
         var symbol = semanticModel.GetDeclaredSymbol(declaration);
@@ -74,17 +75,17 @@ public class RoslynCSharpAnalyzer
             Type = DetermineComponentType(symbol, componentType),
             FilePath = filePath,
             Language = "C#",
-            LineCount = declaration.GetLocation().GetLineSpan().EndLinePosition.Line - 
-                       declaration.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+            LineCount = declaration.GetLocation().GetLineSpan().EndLinePosition.Line -
+                declaration.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ComplexityScore = CalculateComplexity(declaration, semanticModel)
         };
 
         // Extract methods
         var methods = declaration.DescendantNodes().OfType<MethodDeclarationSyntax>();
-        component.Methods = methods.Select(m => 
+        component.Methods = methods.Select(m =>
         {
             var methodSymbol = semanticModel.GetDeclaredSymbol(m);
-            return methodSymbol != null 
+            return methodSymbol != null
                 ? $"{methodSymbol.ReturnType.Name} {methodSymbol.Name}({string.Join(", ", methodSymbol.Parameters.Select(p => p.Type.Name))})"
                 : m.Identifier.Text;
         }).ToList();
@@ -94,7 +95,7 @@ public class RoslynCSharpAnalyzer
         component.Properties = properties.Select(p =>
         {
             var propertySymbol = semanticModel.GetDeclaredSymbol(p);
-            return propertySymbol != null 
+            return propertySymbol != null
                 ? $"{propertySymbol.Type.Name} {propertySymbol.Name}"
                 : $"{p.Type} {p.Identifier.Text}";
         }).ToList();
@@ -123,29 +124,30 @@ public class RoslynCSharpAnalyzer
             Type = "Record",
             FilePath = filePath,
             Language = "C#",
-            LineCount = declaration.GetLocation().GetLineSpan().EndLinePosition.Line - 
-                       declaration.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+            LineCount = declaration.GetLocation().GetLineSpan().EndLinePosition.Line -
+                declaration.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ComplexityScore = CalculateComplexity(declaration, semanticModel)
         };
 
         // Extract methods
         var methods = declaration.DescendantNodes().OfType<MethodDeclarationSyntax>();
-        component.Methods = methods.Select(m => 
+        component.Methods = methods.Select(m =>
         {
             var methodSymbol = semanticModel.GetDeclaredSymbol(m);
-            return methodSymbol != null 
+            return methodSymbol != null
                 ? $"{methodSymbol.ReturnType.Name} {methodSymbol.Name}({string.Join(", ", methodSymbol.Parameters.Select(p => p.Type.Name))})"
                 : m.Identifier.Text;
         }).ToList();
 
         // Extract properties (including record parameters)
         var properties = declaration.DescendantNodes().OfType<PropertyDeclarationSyntax>().ToList();
-        var parameterList = declaration.ParameterList?.Parameters.Select(p => $"{p.Type} {p.Identifier.Text}") ?? new List<string>();
-        
+        var parameterList = declaration.ParameterList?.Parameters.Select(p => $"{p.Type} {p.Identifier.Text}") ??
+                            new List<string>();
+
         component.Properties = properties.Select(p =>
         {
             var propertySymbol = semanticModel.GetDeclaredSymbol(p);
-            return propertySymbol != null 
+            return propertySymbol != null
                 ? $"{propertySymbol.Type.Name} {propertySymbol.Name}"
                 : $"{p.Type} {p.Identifier.Text}";
         }).Concat(parameterList).ToList();
@@ -164,10 +166,10 @@ public class RoslynCSharpAnalyzer
         // Check for common patterns and attributes
         if (symbol.GetAttributes().Any(attr => attr.AttributeClass?.Name.Contains("Controller") == true))
             return "Controller";
-        
+
         if (symbol.GetAttributes().Any(attr => attr.AttributeClass?.Name.Contains("Service") == true))
             return "Service";
-        
+
         if (symbol.GetAttributes().Any(attr => attr.AttributeClass?.Name.Contains("Repository") == true))
             return "Repository";
 
@@ -188,29 +190,29 @@ public class RoslynCSharpAnalyzer
 
     private int CalculateComplexity(BaseTypeDeclarationSyntax declaration, SemanticModel semanticModel)
     {
-        int complexity = 1; // Base complexity
+        var complexity = 1; // Base complexity
 
         // Count decision points
         var descendantNodes = declaration.DescendantNodes();
 
         // If statements
         complexity += descendantNodes.OfType<IfStatementSyntax>().Count();
-        
+
         // Switch statements
         complexity += descendantNodes.OfType<SwitchStatementSyntax>().Count() * 2;
-        
+
         // While loops
         complexity += descendantNodes.OfType<WhileStatementSyntax>().Count();
-        
+
         // For loops
         complexity += descendantNodes.OfType<ForStatementSyntax>().Count();
-        
+
         // Foreach loops
         complexity += descendantNodes.OfType<ForEachStatementSyntax>().Count();
-        
+
         // Conditional operator (?:)
         complexity += descendantNodes.OfType<ConditionalExpressionSyntax>().Count();
-        
+
         // Logical AND/OR operators
         complexity += descendantNodes.OfType<BinaryExpressionSyntax>()
             .Count(be => be.Kind() == SyntaxKind.LogicalAndExpression || be.Kind() == SyntaxKind.LogicalOrExpression);
@@ -230,30 +232,20 @@ public class RoslynCSharpAnalyzer
         if (declaration is ClassDeclarationSyntax classDecl)
         {
             if (classDecl.BaseList != null)
-            {
                 foreach (var baseType in classDecl.BaseList.Types)
                 {
                     var typeInfo = semanticModel.GetTypeInfo(baseType.Type);
-                    if (typeInfo.Type != null)
-                    {
-                        dependencies.Add(typeInfo.Type.ToDisplayString());
-                    }
+                    if (typeInfo.Type != null) dependencies.Add(typeInfo.Type.ToDisplayString());
                 }
-            }
         }
         else if (declaration is InterfaceDeclarationSyntax interfaceDecl)
         {
             if (interfaceDecl.BaseList != null)
-            {
                 foreach (var baseType in interfaceDecl.BaseList.Types)
                 {
                     var typeInfo = semanticModel.GetTypeInfo(baseType.Type);
-                    if (typeInfo.Type != null)
-                    {
-                        dependencies.Add(typeInfo.Type.ToDisplayString());
-                    }
+                    if (typeInfo.Type != null) dependencies.Add(typeInfo.Type.ToDisplayString());
                 }
-            }
         }
 
         // Method return types and parameter types
@@ -263,58 +255,44 @@ public class RoslynCSharpAnalyzer
             // Return type
             var returnTypeInfo = semanticModel.GetTypeInfo(method.ReturnType);
             if (returnTypeInfo.Type != null && !IsSystemType(returnTypeInfo.Type))
-            {
                 dependencies.Add(returnTypeInfo.Type.ToDisplayString());
-            }
 
             // Parameter types
             foreach (var param in method.ParameterList.Parameters)
-            {
                 if (param.Type != null)
                 {
                     var paramTypeInfo = semanticModel.GetTypeInfo(param.Type);
                     if (paramTypeInfo.Type != null && !IsSystemType(paramTypeInfo.Type))
-                    {
                         dependencies.Add(paramTypeInfo.Type.ToDisplayString());
-                    }
                 }
-            }
         }
 
         // Property types
         var properties = declaration.DescendantNodes().OfType<PropertyDeclarationSyntax>();
         foreach (var property in properties)
-        {
             if (property.Type != null)
             {
                 var propertyTypeInfo = semanticModel.GetTypeInfo(property.Type);
                 if (propertyTypeInfo.Type != null && !IsSystemType(propertyTypeInfo.Type))
-                {
                     dependencies.Add(propertyTypeInfo.Type.ToDisplayString());
-                }
             }
-        }
 
         // Field types
         var fields = declaration.DescendantNodes().OfType<FieldDeclarationSyntax>();
         foreach (var field in fields)
-        {
             if (field.Declaration?.Type != null)
             {
                 var fieldTypeInfo = semanticModel.GetTypeInfo(field.Declaration.Type);
                 if (fieldTypeInfo.Type != null && !IsSystemType(fieldTypeInfo.Type))
-                {
                     dependencies.Add(fieldTypeInfo.Type.ToDisplayString());
-                }
             }
-        }
 
         return dependencies.ToList();
     }
 
     private bool IsSystemType(ITypeSymbol type)
     {
-        return type.ContainingNamespace?.Name == "System" && 
+        return type.ContainingNamespace?.Name == "System" &&
                (type.ContainingNamespace.ContainingNamespace?.IsGlobalNamespace == true ||
                 type.ContainingNamespace.Name == "Collections" ||
                 type.ContainingNamespace.Name == "Generic" ||
@@ -328,19 +306,17 @@ public class RoslynCSharpAnalyzer
 
         // Add inheritance information
         if (symbol.BaseType != null && symbol.BaseType.SpecialType != SpecialType.System_Object)
-        {
             description += $" inheriting from {symbol.BaseType.Name}";
-        }
 
         if (symbol.Interfaces.Length > 0)
-        {
             description += $" implementing {string.Join(", ", symbol.Interfaces.Select(i => i.Name))}";
-        }
 
         // Add member count summary
-        var publicMethods = symbol.GetMembers().OfType<IMethodSymbol>().Count(m => m.DeclaredAccessibility == Accessibility.Public);
-        var publicProperties = symbol.GetMembers().OfType<IPropertySymbol>().Count(p => p.DeclaredAccessibility == Accessibility.Public);
-        
+        var publicMethods = symbol.GetMembers().OfType<IMethodSymbol>()
+            .Count(m => m.DeclaredAccessibility == Accessibility.Public);
+        var publicProperties = symbol.GetMembers().OfType<IPropertySymbol>()
+            .Count(p => p.DeclaredAccessibility == Accessibility.Public);
+
         description += $". Contains {publicMethods} public methods and {publicProperties} public properties.";
 
         // Add XML documentation if available
@@ -348,11 +324,11 @@ public class RoslynCSharpAnalyzer
         if (!string.IsNullOrEmpty(xmlComment))
         {
             // Simple extraction of summary from XML docs
-            var summaryMatch = System.Text.RegularExpressions.Regex.Match(xmlComment, @"<summary>(.*?)</summary>", System.Text.RegularExpressions.RegexOptions.Singleline);
+            var summaryMatch = Regex.Match(xmlComment, @"<summary>(.*?)</summary>", RegexOptions.Singleline);
             if (summaryMatch.Success)
             {
                 var summary = summaryMatch.Groups[1].Value.Trim();
-                summary = System.Text.RegularExpressions.Regex.Replace(summary, @"<[^>]*>", ""); // Remove HTML tags
+                summary = Regex.Replace(summary, @"<[^>]*>", ""); // Remove HTML tags
                 description += $" Documentation: {summary}";
             }
         }

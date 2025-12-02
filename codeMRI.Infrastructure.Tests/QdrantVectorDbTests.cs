@@ -12,11 +12,6 @@ namespace codeMRI.Infrastructure.Tests;
 [TestFixture]
 public class QdrantVectorDbTests
 {
-    private QdrantContainer _qdrantContainer;
-    private QdrantClient _qdrantClient;
-    private Mock<IOptions<QdrantSettings>> _mockSettings;
-    private QdrantSettings _settings;
-
     [OneTimeSetUp]
     public async Task GlobalSetup()
     {
@@ -33,7 +28,7 @@ public class QdrantVectorDbTests
 
         _settings = new QdrantSettings
         {
-            VectorSize = 4, 
+            VectorSize = 4,
             Host = "localhost",
             Port = _qdrantContainer.GetMappedPublicPort(6334)
         };
@@ -48,6 +43,11 @@ public class QdrantVectorDbTests
         _qdrantClient.Dispose();
         await _qdrantContainer.DisposeAsync();
     }
+
+    private QdrantContainer _qdrantContainer;
+    private QdrantClient _qdrantClient;
+    private Mock<IOptions<QdrantSettings>> _mockSettings;
+    private QdrantSettings _settings;
 
     private QdrantVectorDb CreateSut()
     {
@@ -85,7 +85,7 @@ public class QdrantVectorDbTests
                 Id = docId,
                 Content = "This is a test document about search.",
                 FilePath = "/path/to/doc.txt",
-                Embedding = new float[] { 0.1f, 0.2f, 0.3f, 0.4f }, // Size 4 matches settings
+                Embedding = new[] { 0.1f, 0.2f, 0.3f, 0.4f }, // Size 4 matches settings
                 Metadata = new Dictionary<string, string> { { "author", "tester" } }
             }
         };
@@ -95,11 +95,11 @@ public class QdrantVectorDbTests
 
         // Allow slight delay for indexing (though Qdrant is usually instant for small data)
         // In a real unit test, we might want to wait/poll, but for this integrated test:
-        await Task.Delay(200); 
+        await Task.Delay(200);
 
         // Search with a similar vector
-        var searchVector = new float[] { 0.1f, 0.2f, 0.3f, 0.4f };
-        var results = await sut.SearchAsync(searchVector, topK: 1);
+        var searchVector = new[] { 0.1f, 0.2f, 0.3f, 0.4f };
+        var results = await sut.SearchAsync(searchVector, 1);
 
         // Assert
         results.Should().HaveCount(1);
@@ -126,14 +126,14 @@ public class QdrantVectorDbTests
             {
                 Id = Guid.NewGuid().ToString(),
                 Content = "Doc 1",
-                Embedding = new float[] { 0.1f, 0.1f, 0.1f, 0.1f },
+                Embedding = new[] { 0.1f, 0.1f, 0.1f, 0.1f },
                 Metadata = new Dictionary<string, string> { { "category", "delete_me" } }
             },
-             new Document
+            new Document
             {
                 Id = Guid.NewGuid().ToString(),
                 Content = "Doc 2",
-                Embedding = new float[] { 0.2f, 0.2f, 0.2f, 0.2f },
+                Embedding = new[] { 0.2f, 0.2f, 0.2f, 0.2f },
                 Metadata = new Dictionary<string, string> { { "category", "keep_me" } }
             }
         };
@@ -142,7 +142,7 @@ public class QdrantVectorDbTests
         await Task.Delay(200);
 
         // Verify both exist
-        var initialSearch = await sut.SearchAsync(new float[] { 0.1f, 0.1f, 0.1f, 0.1f }, topK: 10);
+        var initialSearch = await sut.SearchAsync(new[] { 0.1f, 0.1f, 0.1f, 0.1f }, 10);
         initialSearch.Should().HaveCount(2);
 
         // Act
@@ -150,7 +150,7 @@ public class QdrantVectorDbTests
         await Task.Delay(200);
 
         // Assert
-        var finalSearch = await sut.SearchAsync(new float[] { 0.1f, 0.1f, 0.1f, 0.1f }, topK: 10);
+        var finalSearch = await sut.SearchAsync(new[] { 0.1f, 0.1f, 0.1f, 0.1f }, 10);
         finalSearch.Should().HaveCount(1);
         finalSearch.First().Metadata["category"].Should().Be("keep_me");
     }

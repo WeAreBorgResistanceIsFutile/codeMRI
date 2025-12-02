@@ -1,27 +1,27 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using codeMRI.Infrastructure.Configuration;
-using codeMRI.Shared.Models;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Infrastructure.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace codeMRI.Infrastructure.Services;
 
 public class ASTServiceClient : IASTServiceClient
 {
+    private const int FailureThreshold = 5;
+    private readonly TimeSpan _circuitBreakTimeout = TimeSpan.FromMinutes(1);
     private readonly HttpClient _httpClient;
+    private readonly JsonSerializerOptions _jsonOptions;
     private readonly ILogger<ASTServiceClient> _logger;
     private readonly ASTServiceSettings _settings;
-    private readonly JsonSerializerOptions _jsonOptions;
-    
+
     // Circuit breaker state
-    private volatile bool _circuitOpen = false;
+    private volatile bool _circuitOpen;
     private DateTime _circuitOpenTime = DateTime.MinValue;
-    private readonly TimeSpan _circuitBreakTimeout = TimeSpan.FromMinutes(1);
-    private int _failureCount = 0;
-    private const int FailureThreshold = 5;
+    private int _failureCount;
 
     public ASTServiceClient(
         HttpClient httpClient,
@@ -31,10 +31,10 @@ public class ASTServiceClient : IASTServiceClient
         _httpClient = httpClient;
         _logger = logger;
         _settings = settings.Value;
-        
+
         _httpClient.BaseAddress = new Uri(_settings.BaseUrl);
         _httpClient.Timeout = TimeSpan.FromSeconds(_settings.TimeoutSeconds);
-        
+
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -57,11 +57,10 @@ public class ASTServiceClient : IASTServiceClient
                 return false;
             }
         }
-        
+
         const int maxRetries = 2;
-        
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
-        {
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
             try
             {
                 if (!_settings.Enabled)
@@ -69,19 +68,16 @@ public class ASTServiceClient : IASTServiceClient
 
                 var response = await _httpClient.GetAsync("/health", cancellationToken);
                 var success = response.IsSuccessStatusCode;
-                
-                if (success)
-                {
-                    _failureCount = 0; // Reset failure count on success
-                }
-                
+
+                if (success) _failureCount = 0; // Reset failure count on success
+
                 return success;
             }
             catch (HttpRequestException ex) when (attempt < maxRetries)
             {
-                _logger.LogDebug(ex, "AST Service health check failed on attempt {Attempt}/{MaxRetries}. Retrying...", 
+                _logger.LogDebug(ex, "AST Service health check failed on attempt {Attempt}/{MaxRetries}. Retrying...",
                     attempt, maxRetries);
-                
+
                 await Task.Delay(500 * attempt, cancellationToken);
             }
             catch (Exception ex)
@@ -90,8 +86,7 @@ public class ASTServiceClient : IASTServiceClient
                 _logger.LogWarning(ex, "AST Service health check failed after {Attempts} attempts", attempt);
                 return false;
             }
-        }
-        
+
         RecordFailure();
         return false;
     }
@@ -105,10 +100,10 @@ public class ASTServiceClient : IASTServiceClient
 
             var response = await _httpClient.GetAsync("/api/ast/supported-languages", cancellationToken);
             response.EnsureSuccessStatusCode();
-            
+
             var content = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<SupportedLanguagesResponse>(content, _jsonOptions);
-            
+
             return result?.Languages ?? new List<string>();
         }
         catch (Exception ex)
@@ -118,7 +113,8 @@ public class ASTServiceClient : IASTServiceClient
         }
     }
 
-    public async Task<ASTParseResult?> ParseCodeAsync(string code, string language, string filePath = "", CancellationToken cancellationToken = default)
+    public async Task<ASTParseResult?> ParseCodeAsync(string code, string language, string filePath = "",
+        CancellationToken cancellationToken = default)
     {
         if (_circuitOpen)
         {
@@ -134,12 +130,11 @@ public class ASTServiceClient : IASTServiceClient
                 return null;
             }
         }
-        
+
         const int maxRetries = 3;
         const int baseDelayMs = 1000;
-        
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
-        {
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
             try
             {
                 if (!_settings.Enabled)
@@ -153,18 +148,18 @@ public class ASTServiceClient : IASTServiceClient
                 };
 
                 var json = JsonSerializer.Serialize(request, _jsonOptions);
-                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-                
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
                 var response = await _httpClient.PostAsync("/api/ast/parse", content, cancellationToken);
                 response.EnsureSuccessStatusCode();
-                
+
                 var responseContent = await response.Content.ReadAsStringAsync();
                 var rawResult = JsonSerializer.Deserialize<RawDependencyData>(responseContent, _jsonOptions);
-                
+
                 // Convert to Core ASTParseResult
                 if (rawResult == null)
                     return null;
-                
+
                 var result = new ASTParseResult
                 {
                     Language = rawResult.Language,
@@ -177,44 +172,48 @@ public class ASTServiceClient : IASTServiceClient
                     HierarchicalStructure = rawResult.HierarchicalStructure,
                     CrossModuleReferences = rawResult.CrossModuleReferences
                 };
-                
+
                 RecordSuccess();
                 return result;
             }
             catch (HttpRequestException ex) when (attempt < maxRetries)
             {
-                _logger.LogWarning(ex, "AST Service request failed on attempt {Attempt}/{MaxRetries} for {FilePath}. Retrying...", 
+                _logger.LogWarning(ex,
+                    "AST Service request failed on attempt {Attempt}/{MaxRetries} for {FilePath}. Retrying...",
                     attempt, maxRetries, filePath);
-                
+
                 // Exponential backoff with jitter
-                var delay = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1) + Random.Shared.Next(0, 500));
+                var delay = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1) +
+                                                      Random.Shared.Next(0, 500));
                 await Task.Delay(delay, cancellationToken);
             }
             catch (TaskCanceledException ex) when (attempt < maxRetries && !cancellationToken.IsCancellationRequested)
             {
-                _logger.LogWarning(ex, "AST Service request timed out on attempt {Attempt}/{MaxRetries} for {FilePath}. Retrying...", 
+                _logger.LogWarning(ex,
+                    "AST Service request timed out on attempt {Attempt}/{MaxRetries} for {FilePath}. Retrying...",
                     attempt, maxRetries, filePath);
-                
+
                 var delay = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
                 await Task.Delay(delay, cancellationToken);
             }
             catch (Exception ex)
             {
                 RecordFailure();
-                _logger.LogError(ex, "Failed to parse code using AST Service for language: {Language}, file: {FilePath} after {Attempts} attempts", 
+                _logger.LogError(ex,
+                    "Failed to parse code using AST Service for language: {Language}, file: {FilePath} after {Attempts} attempts",
                     language, filePath, attempt);
                 return null;
             }
-        }
-        
+
         RecordFailure();
         return null;
     }
 
-    public Task<List<CodeComponent>> ConvertToCodeComponentsAsync(ASTParseResult astResult, CancellationToken cancellationToken = default)
+    public Task<List<CodeComponent>> ConvertToCodeComponentsAsync(ASTParseResult astResult,
+        CancellationToken cancellationToken = default)
     {
         var components = new List<CodeComponent>();
-        
+
         if (astResult?.HierarchicalStructure == null)
             return Task.FromResult(components);
 
@@ -223,12 +222,11 @@ public class ASTServiceClient : IASTServiceClient
 
         // Use dynamic to access the object properties since we don't have concrete types
         dynamic hierarchicalStructure = astResult.HierarchicalStructure;
-        
+
         try
         {
             // Try to extract classes
             if (hierarchicalStructure.Classes != null)
-            {
                 foreach (var classInfo in (IEnumerable<dynamic>)hierarchicalStructure.Classes)
                 {
                     var component = new CodeComponent
@@ -248,12 +246,11 @@ public class ASTServiceClient : IASTServiceClient
 
                     components.Add(component);
                 }
-            }
 
             // Try to extract standalone functions
             if (hierarchicalStructure.Functions != null)
-            {
-                foreach (var functionInfo in ((IEnumerable<dynamic>)hierarchicalStructure.Functions).Where(f => f.Parent == null))
+                foreach (var functionInfo in ((IEnumerable<dynamic>)hierarchicalStructure.Functions).Where(f =>
+                             f.Parent == null))
                 {
                     var component = new CodeComponent
                     {
@@ -272,7 +269,6 @@ public class ASTServiceClient : IASTServiceClient
 
                     components.Add(component);
                 }
-            }
         }
         catch (Exception ex)
         {
@@ -292,6 +288,7 @@ public class ASTServiceClient : IASTServiceClient
                 if (methods != null)
                     return methods.Select(m => m?.ToString() ?? "").ToList();
             }
+
             return new List<string>();
         }
         catch
@@ -310,6 +307,7 @@ public class ASTServiceClient : IASTServiceClient
                 if (properties != null)
                     return properties.Select(p => p?.ToString() ?? "").ToList();
             }
+
             return new List<string>();
         }
         catch
@@ -326,9 +324,7 @@ public class ASTServiceClient : IASTServiceClient
             {
                 // Check if it's the typed DependencyGraphData
                 if (astResult.DependencyGraph is DependencyGraphData graphData)
-                {
                     return graphData.Dependencies ?? new List<string>();
-                }
 
                 // Fallback: Try to access Dependencies property dynamically
                 var dependencyGraph = astResult.DependencyGraph as dynamic;
@@ -339,6 +335,7 @@ public class ASTServiceClient : IASTServiceClient
                         return deps.Select(d => d?.ToString() ?? "").ToList();
                 }
             }
+
             return new List<string>();
         }
         catch
@@ -354,7 +351,7 @@ public class ASTServiceClient : IASTServiceClient
             var name = classInfo.Name?.ToString() ?? "Unknown";
             var lines = classInfo.Metrics?.Lines ?? 0;
             var complexity = classInfo.Metrics?.Complexity ?? 1;
-            
+
             var description = $"{classInfo.Type} {name} in {language}";
             description += $" with {lines} lines of code";
             description += $" and complexity score of {complexity}";
@@ -374,7 +371,7 @@ public class ASTServiceClient : IASTServiceClient
             var name = functionInfo.Name?.ToString() ?? "Unknown";
             var lines = functionInfo.Metrics?.Lines ?? 0;
             var complexity = functionInfo.Metrics?.Complexity ?? 1;
-            
+
             var description = $"Function {name} in {language}";
             description += $" with {lines} lines of code";
             description += $" and complexity score of {complexity}";
@@ -392,14 +389,14 @@ public class ASTServiceClient : IASTServiceClient
         try
         {
             var name = classInfo.Name?.ToString() ?? "";
-            
+
             // Check for common patterns based on naming and attributes
             if (name.ToLowerInvariant().Contains("controller"))
                 return "Controller";
-            
+
             if (name.ToLowerInvariant().Contains("service"))
                 return "Service";
-            
+
             if (name.ToLowerInvariant().Contains("repository"))
                 return "Repository";
 
@@ -410,7 +407,7 @@ public class ASTServiceClient : IASTServiceClient
             return "Class";
         }
     }
-    
+
     private void RecordFailure()
     {
         _failureCount++;
@@ -421,7 +418,7 @@ public class ASTServiceClient : IASTServiceClient
             _logger.LogWarning("Circuit breaker opened for AST Service after {FailureCount} failures", _failureCount);
         }
     }
-    
+
     private void RecordSuccess()
     {
         _failureCount = 0;

@@ -4,7 +4,9 @@ namespace codeMRI.Core.Interfaces;
 
 public interface IEvaluationMetricsSystem
 {
-    Task<DocumentationQualityMetrics> EvaluateDocumentationQualityAsync(WikiStructure structure, List<WikiPage> pages, List<CodeComponent> components);
+    Task<DocumentationQualityMetrics> EvaluateDocumentationQualityAsync(WikiStructure structure, List<WikiPage> pages,
+        List<CodeComponent> components);
+
     Task<CoverageMetrics> CalculateCoverageMetricsAsync(List<WikiPage> pages, List<CodeComponent> components);
     Task<ReadabilityMetrics> AnalyzeReadabilityAsync(List<WikiPage> pages);
     Task<BenchmarkReport> GenerateBenchmarkReportAsync(string repositoryPath, DocumentationQualityMetrics metrics);

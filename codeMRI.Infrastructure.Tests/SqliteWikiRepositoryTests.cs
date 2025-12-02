@@ -1,16 +1,12 @@
 using codeMRI.Infrastructure.Services;
 using codeMRI.Shared.Models;
 using FluentAssertions;
-using NUnit.Framework;
 
 namespace codeMRI.Infrastructure.Tests;
 
 [TestFixture]
 public class SqliteWikiRepositoryTests
 {
-    private string _dbFile;
-    private string _connectionString;
-
     [SetUp]
     public void Setup()
     {
@@ -22,7 +18,6 @@ public class SqliteWikiRepositoryTests
     public void TearDown()
     {
         if (File.Exists(_dbFile))
-        {
             try
             {
                 File.Delete(_dbFile);
@@ -31,8 +26,10 @@ public class SqliteWikiRepositoryTests
             {
                 // Ignore errors during cleanup
             }
-        }
     }
+
+    private string _dbFile;
+    private string _connectionString;
 
     [Test]
     public async Task SaveAndGetStructure_ShouldPersistData()
@@ -45,7 +42,7 @@ public class SqliteWikiRepositoryTests
             Title = "Test Wiki",
             Sections = new List<WikiSection>
             {
-                new WikiSection { Title = "Intro", PageRefs = { "p1" } }
+                new() { Title = "Intro", PageRefs = { "p1" } }
             }
         };
 

@@ -1,184 +1,175 @@
-using codeMRI.Visualization.Models;
 using System.Text;
 using System.Text.Json;
+using codeMRI.Visualization.Models;
 
-namespace codeMRI.Visualization.Services
+namespace codeMRI.Visualization.Services;
+
+/// <summary>
+///     Service for exporting diagrams to various formats (PNG, SVG, PDF)
+/// </summary>
+public class DiagramExportService
 {
-    /// <summary>
-    /// Service for exporting diagrams to various formats (PNG, SVG, PDF)
-    /// </summary>
-    public class DiagramExportService
+    private readonly HttpClient _httpClient;
+
+    public DiagramExportService(HttpClient httpClient)
     {
-        private readonly HttpClient _httpClient;
+        _httpClient = httpClient;
+    }
 
-        public DiagramExportService(HttpClient httpClient)
+    /// <summary>
+    ///     Export diagram to PNG format
+    /// </summary>
+    public async Task<ExportResult> ExportToPngAsync(InteractiveDiagram diagram, PngExportOptions? options = null)
+    {
+        try
         {
-            _httpClient = httpClient;
+            options ??= diagram.ExportOptions.Png;
+
+            var exportData = new
+            {
+                code = diagram.MermaidContent,
+                format = "png",
+                width = options.Width,
+                height = options.Height,
+                backgroundColor = options.BackgroundColor,
+                transparent = options.Transparent,
+                quality = options.Quality
+            };
+
+            var result = await ExportWithMermaidLiveAsync(exportData, "png");
+            if (result.Success) result.FileName = $"{SanitizeFileName(diagram.Title)}.png";
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            return new ExportResult
+            {
+                Success = false,
+                Format = "png",
+                ErrorMessage = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    ///     Export diagram to SVG format
+    /// </summary>
+    public async Task<ExportResult> ExportToSvgAsync(InteractiveDiagram diagram, SvgExportOptions? options = null)
+    {
+        try
+        {
+            options ??= diagram.ExportOptions.Svg;
+
+            var exportData = new
+            {
+                code = diagram.MermaidContent,
+                format = "svg",
+                backgroundColor = options.BackgroundColor,
+                includeStyles = options.IncludeStyles,
+                includeMetadata = options.IncludeMetadata
+            };
+
+            var result = await ExportWithMermaidLiveAsync(exportData, "svg");
+            if (result.Success)
+            {
+                result.FileName = $"{SanitizeFileName(diagram.Title)}.svg";
+
+                // Post-process SVG if needed
+                if (options.Compressed) result.Data = await CompressSvgAsync(result.Data);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            return new ExportResult
+            {
+                Success = false,
+                Format = "svg",
+                ErrorMessage = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    ///     Export diagram to PDF format
+    /// </summary>
+    public async Task<ExportResult> ExportToPdfAsync(InteractiveDiagram diagram, PdfExportOptions? options = null)
+    {
+        try
+        {
+            options ??= diagram.ExportOptions.Pdf;
+
+            var exportData = new
+            {
+                code = diagram.MermaidContent,
+                format = "pdf",
+                paperSize = options.PaperSize,
+                orientation = options.Orientation,
+                margin = options.Margin,
+                includeBookmarks = options.IncludeBookmarks
+            };
+
+            var result = await ExportWithMermaidLiveAsync(exportData, "pdf");
+            if (result.Success) result.FileName = $"{SanitizeFileName(diagram.Title)}.pdf";
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            return new ExportResult
+            {
+                Success = false,
+                Format = "pdf",
+                ErrorMessage = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    ///     Export diagram to multiple formats
+    /// </summary>
+    public async Task<List<ExportResult>> ExportToMultipleFormatsAsync(InteractiveDiagram diagram)
+    {
+        var results = new List<ExportResult>();
+
+        if (diagram.ExportOptions.EnablePng)
+        {
+            var pngResult = await ExportToPngAsync(diagram);
+            results.Add(pngResult);
         }
 
-        /// <summary>
-        /// Export diagram to PNG format
-        /// </summary>
-        public async Task<ExportResult> ExportToPngAsync(InteractiveDiagram diagram, PngExportOptions? options = null)
+        if (diagram.ExportOptions.EnableSvg)
         {
-            try
-            {
-                options ??= diagram.ExportOptions.Png;
-                
-                var exportData = new
-                {
-                    code = diagram.MermaidContent,
-                    format = "png",
-                    width = options.Width,
-                    height = options.Height,
-                    backgroundColor = options.BackgroundColor,
-                    transparent = options.Transparent,
-                    quality = options.Quality
-                };
-
-                var result = await ExportWithMermaidLiveAsync(exportData, "png");
-                if (result.Success)
-                {
-                    result.FileName = $"{SanitizeFileName(diagram.Title)}.png";
-                }
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                return new ExportResult
-                {
-                    Success = false,
-                    Format = "png",
-                    ErrorMessage = ex.Message
-                };
-            }
+            var svgResult = await ExportToSvgAsync(diagram);
+            results.Add(svgResult);
         }
 
-        /// <summary>
-        /// Export diagram to SVG format
-        /// </summary>
-        public async Task<ExportResult> ExportToSvgAsync(InteractiveDiagram diagram, SvgExportOptions? options = null)
+        if (diagram.ExportOptions.EnablePdf)
         {
-            try
-            {
-                options ??= diagram.ExportOptions.Svg;
-                
-                var exportData = new
-                {
-                    code = diagram.MermaidContent,
-                    format = "svg",
-                    backgroundColor = options.BackgroundColor,
-                    includeStyles = options.IncludeStyles,
-                    includeMetadata = options.IncludeMetadata
-                };
-
-                var result = await ExportWithMermaidLiveAsync(exportData, "svg");
-                if (result.Success)
-                {
-                    result.FileName = $"{SanitizeFileName(diagram.Title)}.svg";
-                    
-                    // Post-process SVG if needed
-                    if (options.Compressed)
-                    {
-                        result.Data = await CompressSvgAsync(result.Data);
-                    }
-                }
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                return new ExportResult
-                {
-                    Success = false,
-                    Format = "svg",
-                    ErrorMessage = ex.Message
-                };
-            }
+            var pdfResult = await ExportToPdfAsync(diagram);
+            results.Add(pdfResult);
         }
 
-        /// <summary>
-        /// Export diagram to PDF format
-        /// </summary>
-        public async Task<ExportResult> ExportToPdfAsync(InteractiveDiagram diagram, PdfExportOptions? options = null)
-        {
-            try
-            {
-                options ??= diagram.ExportOptions.Pdf;
-                
-                var exportData = new
-                {
-                    code = diagram.MermaidContent,
-                    format = "pdf",
-                    paperSize = options.PaperSize,
-                    orientation = options.Orientation,
-                    margin = options.Margin,
-                    includeBookmarks = options.IncludeBookmarks
-                };
+        return results;
+    }
 
-                var result = await ExportWithMermaidLiveAsync(exportData, "pdf");
-                if (result.Success)
-                {
-                    result.FileName = $"{SanitizeFileName(diagram.Title)}.pdf";
-                }
+    /// <summary>
+    ///     Generate interactive HTML with zoom and filtering capabilities
+    /// </summary>
+    public string GenerateInteractiveHtml(InteractiveDiagram diagram)
+    {
+        var html = GenerateHtmlTemplate(diagram);
+        return html;
+    }
 
-                return result;
-            }
-            catch (Exception ex)
-            {
-                return new ExportResult
-                {
-                    Success = false,
-                    Format = "pdf",
-                    ErrorMessage = ex.Message
-                };
-            }
-        }
+    private string GenerateHtmlTemplate(InteractiveDiagram diagram)
+    {
+        var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        var diagramJson = JsonSerializer.Serialize(diagram, jsonOptions);
 
-        /// <summary>
-        /// Export diagram to multiple formats
-        /// </summary>
-        public async Task<List<ExportResult>> ExportToMultipleFormatsAsync(InteractiveDiagram diagram)
-        {
-            var results = new List<ExportResult>();
-
-            if (diagram.ExportOptions.EnablePng)
-            {
-                var pngResult = await ExportToPngAsync(diagram);
-                results.Add(pngResult);
-            }
-
-            if (diagram.ExportOptions.EnableSvg)
-            {
-                var svgResult = await ExportToSvgAsync(diagram);
-                results.Add(svgResult);
-            }
-
-            if (diagram.ExportOptions.EnablePdf)
-            {
-                var pdfResult = await ExportToPdfAsync(diagram);
-                results.Add(pdfResult);
-            }
-
-            return results;
-        }
-
-        /// <summary>
-        /// Generate interactive HTML with zoom and filtering capabilities
-        /// </summary>
-        public string GenerateInteractiveHtml(InteractiveDiagram diagram)
-        {
-            var html = GenerateHtmlTemplate(diagram);
-            return html;
-        }
-
-        private string GenerateHtmlTemplate(InteractiveDiagram diagram)
-        {
-            var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-            var diagramJson = JsonSerializer.Serialize(diagram, jsonOptions);
-            
-            var html = $@"<!DOCTYPE html>
+        var html = $@"<!DOCTYPE html>
 <html lang=""en"">
 <head>
     <meta charset=""UTF-8"">
@@ -399,49 +390,48 @@ namespace codeMRI.Visualization.Services
 </body>
 </html>";
 
-            return html;
-        }
+        return html;
+    }
 
-        private async Task<ExportResult> ExportWithMermaidLiveAsync(object exportData, string format)
+    private async Task<ExportResult> ExportWithMermaidLiveAsync(object exportData, string format)
+    {
+        try
         {
-            try
+            // In a real implementation, you would use Mermaid's official rendering service
+            // For now, we'll simulate the export process
+            var json = JsonSerializer.Serialize(exportData);
+            var content = Encoding.UTF8.GetBytes(json);
+
+            return new ExportResult
             {
-                // In a real implementation, you would use Mermaid's official rendering service
-                // For now, we'll simulate the export process
-                var json = JsonSerializer.Serialize(exportData);
-                var content = Encoding.UTF8.GetBytes(json);
-                
-                return new ExportResult
-                {
-                    Success = true,
-                    Format = format,
-                    Data = content,
-                    FileSize = content.Length
-                };
-            }
-            catch (Exception ex)
+                Success = true,
+                Format = format,
+                Data = content,
+                FileSize = content.Length
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ExportResult
             {
-                return new ExportResult
-                {
-                    Success = false,
-                    Format = format,
-                    ErrorMessage = ex.Message
-                };
-            }
+                Success = false,
+                Format = format,
+                ErrorMessage = ex.Message
+            };
         }
+    }
 
-        private async Task<byte[]> CompressSvgAsync(byte[] svgData)
-        {
-            // Simple SVG compression - in real implementation, use proper SVG optimization
-            var svg = Encoding.UTF8.GetString(svgData);
-            var compressed = svg.Replace("  ", " ").Replace("\n", "").Replace("\r", "");
-            return Encoding.UTF8.GetBytes(compressed);
-        }
+    private async Task<byte[]> CompressSvgAsync(byte[] svgData)
+    {
+        // Simple SVG compression - in real implementation, use proper SVG optimization
+        var svg = Encoding.UTF8.GetString(svgData);
+        var compressed = svg.Replace("  ", " ").Replace("\n", "").Replace("\r", "");
+        return Encoding.UTF8.GetBytes(compressed);
+    }
 
-        private string SanitizeFileName(string fileName)
-        {
-            var invalidChars = Path.GetInvalidFileNameChars();
-            return string.Join("_", fileName.Split(invalidChars, StringSplitOptions.RemoveEmptyEntries)).Trim();
-        }
+    private string SanitizeFileName(string fileName)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        return string.Join("_", fileName.Split(invalidChars, StringSplitOptions.RemoveEmptyEntries)).Trim();
     }
 }

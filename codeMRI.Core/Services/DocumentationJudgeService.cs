@@ -1,14 +1,14 @@
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using codeMRI.Core.Interfaces;
 using codeMRI.Shared.Models;
+using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
 
 public class DocumentationJudgeService : IDocumentationJudgeService
 {
-    private readonly ILogger<DocumentationJudgeService> _logger;
     private readonly ILLMClient _llmClient;
+    private readonly ILogger<DocumentationJudgeService> _logger;
 
     public DocumentationJudgeService(
         ILogger<DocumentationJudgeService> logger,
@@ -26,16 +26,16 @@ public class DocumentationJudgeService : IDocumentationJudgeService
         _logger.LogInformation("Evaluating requirement: {RequirementTitle}", requirement.Title);
 
         var prompt = BuildEvaluationPrompt(requirement, documentationStructure);
-        
+
         var response = await _llmClient.ChatAsync(
             "You are a technical documentation evaluator.",
             prompt,
             new List<ChatMessage>());
 
         var assessment = ParseAssessmentFromResponse(response, requirement);
-        
+
         _logger.LogInformation("Requirement assessment completed with score: {Score}", assessment.MeanScore);
-        
+
         return assessment;
     }
 
@@ -45,7 +45,7 @@ public class DocumentationJudgeService : IDocumentationJudgeService
         List<string> judgeModels,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Evaluating {RequirementCount} requirements using {JudgeCount} judges", 
+        _logger.LogInformation("Evaluating {RequirementCount} requirements using {JudgeCount} judges",
             requirements.Count, judgeModels.Count);
 
         var assessments = new List<RequirementAssessment>();
@@ -58,12 +58,11 @@ public class DocumentationJudgeService : IDocumentationJudgeService
             var modelAssessments = new List<ModelAssessment>();
 
             foreach (var modelName in judgeModels)
-            {
                 try
                 {
                     var assessment = await EvaluateRequirementWithModelAsync(
                         requirement, documentationStructure, modelName, cancellationToken);
-                    
+
                     modelAssessments.Add(new ModelAssessment
                     {
                         ModelName = modelName,
@@ -76,7 +75,6 @@ public class DocumentationJudgeService : IDocumentationJudgeService
                 {
                     _logger.LogWarning(ex, "Failed to evaluate with model: {ModelName}", modelName);
                 }
-            }
 
             // Aggregate assessments
             var aggregatedAssessment = AggregateAssessments(modelAssessments, requirement);
@@ -98,11 +96,10 @@ public class DocumentationJudgeService : IDocumentationJudgeService
     }
 
     private RequirementAssessment AggregateAssessments(
-        List<ModelAssessment> modelAssessments, 
+        List<ModelAssessment> modelAssessments,
         RubricRequirement requirement)
     {
-        if (!modelAssessments.Any()) 
-        {
+        if (!modelAssessments.Any())
             return new RequirementAssessment
             {
                 RequirementId = requirement.Title,
@@ -113,7 +110,6 @@ public class DocumentationJudgeService : IDocumentationJudgeService
                 Reasoning = new List<string> { "No assessments available" },
                 Evidence = new List<string>()
             };
-        }
 
         var scores = modelAssessments.Select(m => m.Score).ToList();
         var meanScore = scores.Average();
@@ -174,8 +170,8 @@ Respond with JSON format:
     private string FormatDocumentationStructure(WikiStructure structure)
     {
         // Simple formatting - in real implementation would be more sophisticated
-        return JsonSerializer.Serialize(structure, new JsonSerializerOptions 
-        { 
+        return JsonSerializer.Serialize(structure, new JsonSerializerOptions
+        {
             WriteIndented = true,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         });
@@ -192,7 +188,7 @@ Respond with JSON format:
             };
 
             var assessment = JsonSerializer.Deserialize<JudgeResponse>(response, options);
-            
+
             if (assessment == null)
             {
                 _logger.LogWarning("Failed to parse assessment from LLM response");

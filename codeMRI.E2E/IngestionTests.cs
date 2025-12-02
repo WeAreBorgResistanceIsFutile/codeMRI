@@ -1,7 +1,6 @@
 using System.Net.Http.Json;
 using codeMRI.Shared.DTOs;
 using Microsoft.AspNetCore.Mvc.Testing;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace codeMRI.E2E;
@@ -9,8 +8,6 @@ namespace codeMRI.E2E;
 [TestFixture]
 public class IngestionTests
 {
-    private WebApplicationFactory<Program>? _factory;
-
     [OneTimeSetUp]
     public void Setup()
     {
@@ -23,13 +20,15 @@ public class IngestionTests
         _factory?.Dispose();
     }
 
+    private WebApplicationFactory<Program>? _factory;
+
     [Test]
     public async Task Ingest_OllamaRAG5_ReturnsSuccess()
     {
         // Arrange
         var client = _factory!.CreateClient();
         // Use a generous timeout as ingestion can take time depending on repo size and embedding speed
-        client.Timeout = TimeSpan.FromMinutes(5); 
+        client.Timeout = TimeSpan.FromMinutes(5);
 
         var request = new IngestRequest
         {

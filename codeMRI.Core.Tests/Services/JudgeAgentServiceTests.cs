@@ -1,19 +1,14 @@
+using codeMRI.Core.Interfaces;
+using codeMRI.Core.Services;
+using codeMRI.Shared.Models;
 using Microsoft.Extensions.Logging;
 using Moq;
-using NUnit.Framework;
-using codeMRI.Core.Services;
-using codeMRI.Core.Interfaces;
-using codeMRI.Shared.Models;
 
 namespace codeMRI.Core.Tests.Services;
 
 [TestFixture]
 public class JudgeAgentServiceTests
 {
-    private Mock<ILogger<IJudgeAgent>> _mockLogger;
-    private Mock<ILLMClient> _mockLlmClient;
-    private IJudgeAgent _service;
-
     [SetUp]
     public void Setup()
     {
@@ -21,6 +16,10 @@ public class JudgeAgentServiceTests
         _mockLlmClient = new Mock<ILLMClient>();
         _service = new JudgeAgentService(_mockLogger.Object, _mockLlmClient.Object);
     }
+
+    private Mock<ILogger<IJudgeAgent>> _mockLogger;
+    private Mock<ILLMClient> _mockLlmClient;
+    private IJudgeAgent _service;
 
     [Test]
     public async Task EvaluateRequirementAsync_ShouldReturnScoreAndReasoning_WhenValidInputProvided()
@@ -43,9 +42,9 @@ public class JudgeAgentServiceTests
 
         var expectedResponse = "Yes. The documentation provides a system overview with clear explanations.";
         _mockLlmClient.Setup(x => x.ChatAsync(
-            It.IsAny<string>(),
-            It.Is<string>(p => p.Contains("documentation") && p.Contains(requirement.Description)),
-            It.IsAny<List<ChatMessage>>()))
+                It.IsAny<string>(),
+                It.Is<string>(p => p.Contains("documentation") && p.Contains(requirement.Description)),
+                It.IsAny<List<ChatMessage>>()))
             .ReturnsAsync(expectedResponse);
 
         // Act
@@ -54,7 +53,8 @@ public class JudgeAgentServiceTests
         // Assert
         Assert.That(result, Is.Not.Null);
         Assert.That(result.Score, Is.EqualTo(1.0));
-        Assert.That(result.Reasoning, Is.EqualTo("The documentation provides a system overview with clear explanations."));
+        Assert.That(result.Reasoning,
+            Is.EqualTo("The documentation provides a system overview with clear explanations."));
         Assert.That(result.RequirementId, Is.EqualTo(requirement.Title));
     }
 
@@ -75,9 +75,9 @@ public class JudgeAgentServiceTests
 
         var expectedResponse = "No. The documentation is too brief and lacks comprehensive details.";
         _mockLlmClient.Setup(x => x.ChatAsync(
-            It.IsAny<string>(), 
-            It.IsAny<string>(), 
-            It.IsAny<List<ChatMessage>>()))
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<ChatMessage>>()))
             .ReturnsAsync(expectedResponse);
 
         // Act
@@ -96,9 +96,9 @@ public class JudgeAgentServiceTests
         var page = new WikiPage();
         var requirement = new RubricRequirement { Description = "Test", IsLeaf = true };
         _mockLlmClient.Setup(x => x.ChatAsync(
-            It.IsAny<string>(), 
-            It.IsAny<string>(), 
-            It.IsAny<List<ChatMessage>>()))
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<ChatMessage>>()))
             .ThrowsAsync(new Exception("LLM service unavailable"));
 
         // Act
