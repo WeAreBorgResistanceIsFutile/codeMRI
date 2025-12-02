@@ -85,13 +85,7 @@ public abstract class BaseAgent : IAgent
         {
             try 
             {
-                // Basic heuristic to guess language or default to C#
-                // In a real scenario, we'd pass language in Metadata
                 var result = await _astService.ParseCodeAsync(code, "csharp", "", cancellationToken);
-                // Note: ParseCodeAsync might return null or throw if not supported
-                
-                // If result.Metrics is available, we'd use it. 
-                // Assuming we fallback for now as we don't have strong typing on Metrics object yet
             }
             catch (Exception ex)
             {
@@ -100,23 +94,31 @@ public abstract class BaseAgent : IAgent
         }
 
         // 2. Fallback / Basic Heuristic
-        var tokenCount = code.Length / 4; // Rough estimate: 4 chars per token
-        var lines = code.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        var tokenCount = code.Length / 4;
         
-        var complexity = lines.Count(l => 
-            l.Contains("if") || 
-            l.Contains("for") || 
-            l.Contains("while") || 
-            l.Contains("case") || 
-            l.Contains("catch") || 
-            l.Contains("&&") || 
-            l.Contains("||"));
-
-        var nesting = 0;
-        if (lines.Length > 0)
+        // Fix: Use StringSplitOptions.None to preserve empty lines as empty strings
+        var lines = code.Split(new[] { '\r', '\n' }, StringSplitOptions.None);
+        
+        var complexity = lines.Sum(l =>
         {
-             nesting = lines.Max(l => l.TakeWhile(char.IsWhiteSpace).Count() / 4);
-        }
+            if (string.IsNullOrWhiteSpace(l)) return 0;
+            
+            var count = 0;
+            if (l.Contains("if")) count++;
+            if (l.Contains("for")) count++;
+            if (l.Contains("while")) count++;
+            if (l.Contains("case")) count++;
+            if (l.Contains("catch")) count++;
+            if (l.Contains("&&")) count++;
+            if (l.Contains("||")) count++;
+            return count;
+        });
+
+        var nesting = lines
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .Select(l => l.TakeWhile(char.IsWhiteSpace).Count() / 4)
+            .DefaultIfEmpty(0)
+            .Max();
 
         return new CodeComplexityMetrics
         {
