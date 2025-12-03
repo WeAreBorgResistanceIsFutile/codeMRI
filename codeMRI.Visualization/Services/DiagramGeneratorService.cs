@@ -109,32 +109,6 @@ public class DiagramGeneratorService : IDiagramGenerator
     }
 
     /// <summary>
-    ///     Generate interactive diagram with zoom, filtering, and export capabilities
-    /// </summary>
-    public async Task<InteractiveDiagram> GenerateInteractiveArchitectureDiagramAsync(
-        ModuleTree moduleTree,
-        EnhancedDependencyGraph graph,
-        DiagramOptions? options = null)
-    {
-        options ??= GetDefaultOptions();
-
-        var diagram = new InteractiveDiagram
-        {
-            Title = "Architecture Diagram",
-            Type = DiagramType.Architecture,
-            Options = options,
-            MermaidContent = await GenerateArchitectureDiagramAsync(moduleTree, graph),
-            ExportOptions = GetDefaultExportOptions()
-        };
-
-        // Extract components and relationships for filtering
-        diagram.Components = ExtractComponentsFromGraph(graph, options.Filter);
-        diagram.Relationships = ExtractRelationshipsFromGraph(graph, options.Filter);
-
-        return diagram;
-    }
-
-    /// <summary>
     ///     Generate interactive component diagram with filtering capabilities
     /// </summary>
     public async Task<InteractiveDiagram> GenerateInteractiveComponentDiagramAsync(
@@ -176,6 +150,32 @@ public class DiagramGeneratorService : IDiagramGenerator
             MermaidContent = await GenerateSequenceDiagramAsync(graph, entryPointId)
         };
 
+        diagram.Components = ExtractComponentsFromGraph(graph, options.Filter);
+        diagram.Relationships = ExtractRelationshipsFromGraph(graph, options.Filter);
+
+        return diagram;
+    }
+
+    /// <summary>
+    ///     Generate interactive diagram with zoom, filtering, and export capabilities
+    /// </summary>
+    public async Task<InteractiveDiagram> GenerateInteractiveArchitectureDiagramAsync(
+        ModuleTree moduleTree,
+        EnhancedDependencyGraph graph,
+        DiagramOptions? options = null)
+    {
+        options ??= GetDefaultOptions();
+
+        var diagram = new InteractiveDiagram
+        {
+            Title = "Architecture Diagram",
+            Type = DiagramType.Architecture,
+            Options = options,
+            MermaidContent = await GenerateArchitectureDiagramAsync(moduleTree, graph),
+            ExportOptions = GetDefaultExportOptions()
+        };
+
+        // Extract components and relationships for filtering
         diagram.Components = ExtractComponentsFromGraph(graph, options.Filter);
         diagram.Relationships = ExtractRelationshipsFromGraph(graph, options.Filter);
 
@@ -371,7 +371,7 @@ public class DiagramGeneratorService : IDiagramGenerator
             _ => "Unknown"
         };
     }
-    
+
     private IEnumerable<ModuleNode> GetModules(ModuleTree tree)
     {
         var modules = new List<ModuleNode>();

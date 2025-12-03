@@ -3,6 +3,7 @@ using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
+
 // For ArchitecturalPattern and ArchitecturalLayerType
 // For ModuleTree, ModuleNode, EnhancedDependencyGraph, etc.
 

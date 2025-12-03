@@ -1,9 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-        <ProjectReference Include="..\codeMRI.Agents\codeMRI.Agents.csproj" />
+        <ProjectReference Include="..\codeMRI.Agents\codeMRI.Agents.csproj"/>
         <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj"/>
-        <ProjectReference Include="..\codeMRI.Visualization\codeMRI.Visualization.csproj" />
+        <ProjectReference Include="..\codeMRI.Visualization\codeMRI.Visualization.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

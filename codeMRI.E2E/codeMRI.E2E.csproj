@@ -17,7 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\codeMRI.Server\codeMRI.Server.csproj" />
+        <ProjectReference Include="..\codeMRI.Server\codeMRI.Server.csproj"/>
     </ItemGroup>
 
 </Project>

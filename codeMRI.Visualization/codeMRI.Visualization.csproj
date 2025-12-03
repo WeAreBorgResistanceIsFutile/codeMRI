@@ -1,13 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-        <Folder Include="Interfaces\" />
-        <Folder Include="Models\" />
+        <Folder Include="Interfaces\"/>
+        <Folder Include="Models\"/>
         <Folder Include="obj\Debug\net9.0\"/>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj" />
+        <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj"/>
     </ItemGroup>
 
     <PropertyGroup>

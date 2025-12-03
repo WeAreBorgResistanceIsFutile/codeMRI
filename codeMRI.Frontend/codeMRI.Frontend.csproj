@@ -13,7 +13,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\codeMRI.Server.Api\codeMRI.Server.Api.csproj" />
+        <ProjectReference Include="..\codeMRI.Server.Api\codeMRI.Server.Api.csproj"/>
     </ItemGroup>
 
 </Project>

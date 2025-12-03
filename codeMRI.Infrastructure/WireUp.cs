@@ -21,10 +21,10 @@ public class WireUp
         services.AddScoped<IAgentCoordinator, AgentCoordinator>();
         services.AddScoped<IComponentIdentificationService, ComponentIdentificationService>();
         services.AddScoped<IDocumentationGenerationPipeline, DocumentationGenerationPipeline>();
-       
+
         services.AddScoped<IDiagramGenerator, DiagramGeneratorService>();
         services.AddScoped<IVisualSynthesisService, VisualSynthesisService>();
-        
+
         services.AddScoped<IArchitecturalPatternService, ArchitecturalPatternService>();
         services.AddScoped<IEnhancedDependencyGraphService, EnhancedDependencyGraphService>();
         services.AddScoped<RAGService>();
