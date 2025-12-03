@@ -13,19 +13,22 @@ public class WikiGenerationService : IWikiGenerationService
     private readonly IEnhancedDependencyGraphService _graphService; // Needed to fetch graph for diagrams
     private readonly ILLMClient _llmClient;
     private readonly IVectorDatabase _vectorDb;
+    private readonly IDocumentationSynthesisService _synthesisService;
 
     public WikiGenerationService(
         ILLMClient llmClient,
         IEmbedder embedder,
         IVectorDatabase vectorDb,
         IDiagramGenerator diagramGenerator,
-        IEnhancedDependencyGraphService graphService)
+        IEnhancedDependencyGraphService graphService,
+        IDocumentationSynthesisService synthesisService)
     {
         _llmClient = llmClient;
         _embedder = embedder;
         _vectorDb = vectorDb;
         _diagramGenerator = diagramGenerator;
         _graphService = graphService;
+        _synthesisService = synthesisService;
     }
 
     public async Task<WikiStructure> GenerateStructureAsync(string fileTree, string readme, string language = "English")
@@ -173,24 +176,9 @@ public class WikiGenerationService : IWikiGenerationService
     public async Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages,
         string language = "English")
     {
-        // 1. Generate Architectural Overview
-        var sb = new StringBuilder();
-        sb.AppendLine($"Synthesize an architectural overview for the module: {module.Name}");
-        sb.AppendLine($"This module is at level {module.Level} in the hierarchy.");
-
-        if (!string.IsNullOrEmpty(module.Description)) sb.AppendLine($"Module Description: {module.Description}");
-
-        sb.AppendLine("\nSub-modules/Components:");
-        foreach (var page in childPages) sb.AppendLine($"- **{page.Title}**: {ExtractSummary(page.Content)}");
-
-        sb.AppendLine("\nInstructions:");
-        sb.AppendLine("1. Create a high-level overview of this module's responsibilities.");
-        sb.AppendLine("2. Explain how the sub-modules interact and contribute to the overall goal.");
-        sb.AppendLine("3. Identify key architectural patterns used in this module.");
-        sb.AppendLine($"4. Write the response in {language}.");
-
-        var prompt = sb.ToString();
-        var content = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>());
+        // 1. Delegate synthesis to the specialized service
+        var page = await _synthesisService.SynthesizeParentPageAsync(module, childPages, language);
+        var content = page.Content;
 
         // 2. Generate Architecture Diagram
         try
@@ -216,13 +204,8 @@ public class WikiGenerationService : IWikiGenerationService
             Console.WriteLine($"Failed to generate architecture diagram for module {module.Name}: {ex.Message}");
         }
 
-        return new WikiPage
-        {
-            Id = Guid.NewGuid().ToString(),
-            Title = module.Name,
-            Content = content,
-            RelevantFiles = new List<string>()
-        };
+        page.Content = content;
+        return page;
     }
 
     private string ExtractSummary(string content)
@@ -271,75 +254,77 @@ public class WikiGenerationService : IWikiGenerationService
     /// </summary>
     private string GenerateInteractiveDiagramHtml(InteractiveDiagram diagram, string title)
     {
-        var html = $@"
-<div class=""interactive-diagram-container"" data-diagram-id=""{diagram.Id}"">
-    <h3>{title}</h3>
-    
-    <!-- Control Panel -->
-    <div class=""diagram-controls"">
-        <!-- Zoom Controls -->
-        <div class=""zoom-controls"">
-            <button class=""btn btn-sm btn-outline-secondary"" onclick=""zoomIn('{diagram.Id}')"">+</button>
-            <button class=""btn btn-sm btn-outline-secondary"" onclick=""zoomOut('{diagram.Id}')"">-</button>
-            <button class=""btn btn-sm btn-outline-secondary"" onclick=""resetZoom('{diagram.Id}')"">Reset</button>
-            <button class=""btn btn-sm btn-outline-secondary"" onclick=""fitToView('{diagram.Id}')"">Fit</button>
-        </div>
+        var sb = new StringBuilder();
         
-        <!-- Filter Controls -->
-        <div class=""filter-controls"">
-            <select class=""form-select form-select-sm"" id=""filter-type-{diagram.Id}"" onchange=""applyFilters('{diagram.Id}')"">
-                <option value="""">All Types</option>
-                {GenerateComponentTypeOptions(diagram.Components)}
-            </select>
-            
-            <select class=""form-select form-select-sm"" id=""filter-layer-{diagram.Id}"" onchange=""applyFilters('{diagram.Id}')"">
-                <option value="""">All Layers</option>
-                {GenerateLayerOptions(diagram.Components)}
-            </select>
-            
-            <input type=""range"" class=""form-range"" id=""filter-complexity-{diagram.Id}"" 
-                   min=""0"" max=""100"" value=""100"" onchange=""applyFilters('{diagram.Id}')""
-                   title=""Filter by complexity"">
-        </div>
+        sb.AppendLine($"<div class=\"interactive-diagram-container\" data-diagram-id=\"{diagram.Id}\">");
+        sb.AppendLine($"    <h3>{title}</h3>");
         
-        <!-- Export Controls -->
-        <div class=""export-controls"">
-            <button class=""btn btn-sm btn-primary"" onclick=""exportDiagram('{diagram.Id}', 'png')"">Export PNG</button>
-            <button class=""btn btn-sm btn-primary"" onclick=""exportDiagram('{diagram.Id}', 'svg')"">Export SVG</button>
-            <button class=""btn btn-sm btn-secondary"" onclick=""exportDiagram('{diagram.Id}', 'html')"">Export HTML</button>
-        </div>
-    </div>
-    
-    <!-- Diagram Container -->
-    <div class=""diagram-viewport"" id=""diagram-{diagram.Id}"">
-        <div class=""mermaid"">
-            {diagram.MermaidContent}
-        </div>
-    </div>
-    
-    <!-- Component Info Panel -->
-    <div class=""component-info-panel"" id=""info-{diagram.Id}"" style=""display: none;"">
-        <h5>Component Details</h5>
-        <div id=""component-details-{diagram.Id}""></div>
-    </div>
-</div>
+        // Control Panel
+        sb.AppendLine("    <div class=\"diagram-controls\">");
+        // Zoom Controls
+        sb.AppendLine("        <div class=\"zoom-controls\">");
+        sb.AppendLine($"            <button class=\"btn btn-sm btn-outline-secondary\" onclick=\"zoomIn('{diagram.Id}')\">+</button>");
+        sb.AppendLine($"            <button class=\"btn btn-sm btn-outline-secondary\" onclick=\"zoomOut('{diagram.Id}')\">-</button>");
+        sb.AppendLine($"            <button class=\"btn btn-sm btn-outline-secondary\" onclick=\"resetZoom('{diagram.Id}')\">Reset</button>");
+        sb.AppendLine($"            <button class=\"btn btn-sm btn-outline-secondary\" onclick=\"fitToView('{diagram.Id}')\">Fit</button>");
+        sb.AppendLine("        </div>");
+        
+        // Filter Controls
+        sb.AppendLine("        <div class=\"filter-controls\">");
+        sb.AppendLine($"            <select class=\"form-select form-select-sm\" id=\"filter-type-{diagram.Id}\" onchange=\"applyFilters('{diagram.Id}')\">");
+        sb.AppendLine("                <option value=\"\">All Types</option>");
+        sb.AppendLine($"                {GenerateComponentTypeOptions(diagram.Components)}");
+        sb.AppendLine("            </select>");
+        
+        sb.AppendLine($"            <select class=\"form-select form-select-sm\" id=\"filter-layer-{diagram.Id}\" onchange=\"applyFilters('{diagram.Id}')\">");
+        sb.AppendLine("                <option value=\"\">All Layers</option>");
+        sb.AppendLine($"                {GenerateLayerOptions(diagram.Components)}");
+        sb.AppendLine("            </select>");
+        
+        sb.AppendLine($"            <input type=\"range\" class=\"form-range\" id=\"filter-complexity-{diagram.Id}\" ");
+        sb.AppendLine($"                   min=\"0\" max=\"100\" value=\"100\" onchange=\"applyFilters('{diagram.Id}')\"");
+        sb.AppendLine("                   title=\"Filter by complexity\">");
+        sb.AppendLine("        </div>");
+        
+        // Export Controls
+        sb.AppendLine("        <div class=\"export-controls\">");
+        sb.AppendLine($"            <button class=\"btn btn-sm btn-primary\" onclick=\"exportDiagram('{diagram.Id}', 'png')\">Export PNG</button>");
+        sb.AppendLine($"            <button class=\"btn btn-sm btn-primary\" onclick=\"exportDiagram('{diagram.Id}', 'svg')\">Export SVG</button>");
+        sb.AppendLine($"            <button class=\"btn btn-sm btn-secondary\" onclick=\"exportDiagram('{diagram.Id}', 'html')\">Export HTML</button>");
+        sb.AppendLine("        </div>");
+        sb.AppendLine("    </div>");
+        
+        // Diagram Container
+        sb.AppendLine($"    <div class=\"diagram-viewport\" id=\"diagram-{diagram.Id}\">");
+        sb.AppendLine("        <div class=\"mermaid\">");
+        sb.AppendLine($"            {diagram.MermaidContent}");
+        sb.AppendLine("        </div>");
+        sb.AppendLine("    </div>");
+        
+        // Component Info Panel
+        sb.AppendLine($"    <div class=\"component-info-panel\" id=\"info-{diagram.Id}\" style=\"display: none;\">");
+        sb.AppendLine("        <h5>Component Details</h5>");
+        sb.AppendLine($"        <div id=\"component-details-{diagram.Id}\"></div>");
+        sb.AppendLine("    </div>");
+        sb.AppendLine("</div>");
 
-<script>
-// Initialize diagram when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {{
-    initializeDiagram('{diagram.Id}');
-}});
+        // Script
+        sb.AppendLine("<script>");
+        sb.AppendLine("// Initialize diagram when DOM is ready");
+        sb.AppendLine($"document.addEventListener('DOMContentLoaded', function() {{");
+        sb.AppendLine($"    initializeDiagram('{diagram.Id}');");
+        sb.AppendLine("}});");
 
-// Diagram data for JavaScript
-window.diagramData = window.diagramData || {{}};
-window.diagramData['{diagram.Id}'] = {{
-    components: {JsonSerializer.Serialize(diagram.Components)},
-    relationships: {JsonSerializer.Serialize(diagram.Relationships)},
-    options: {JsonSerializer.Serialize(diagram.Options)}
-}};
-</script>";
+        sb.AppendLine("// Diagram data for JavaScript");
+        sb.AppendLine("window.diagramData = window.diagramData || {};");
+        sb.AppendLine($"window.diagramData['{diagram.Id}'] = {{");
+        sb.AppendLine($"    components: {JsonSerializer.Serialize(diagram.Components)},");
+        sb.AppendLine($"    relationships: {JsonSerializer.Serialize(diagram.Relationships)},");
+        sb.AppendLine($"    options: {JsonSerializer.Serialize(diagram.Options)}");
+        sb.AppendLine("}};");
+        sb.AppendLine("</script>");
 
-        return html;
+        return sb.ToString();
     }
 
     /// <summary>

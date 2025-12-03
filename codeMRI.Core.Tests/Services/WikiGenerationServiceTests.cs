@@ -17,14 +17,16 @@ public class WikiGenerationServiceTests
         _mockVectorDb = new Mock<IVectorDatabase>();
         _mockDiagramGenerator = new Mock<IDiagramGenerator>();
         _mockGraphService = new Mock<IEnhancedDependencyGraphService>();
-        _mockLogger = new Mock<ILogger<WikiGenerationService>>();
+        _mockLogger = new Mock<ILogger<WikiGenerationService>> ();
+        _mockSynthesisService = new Mock<IDocumentationSynthesisService>();
 
         _service = new WikiGenerationService(
             _mockLlmClient!.Object,
             _mockEmbedder!.Object,
             _mockVectorDb!.Object,
             _mockDiagramGenerator!.Object,
-            _mockGraphService!.Object);
+            _mockGraphService!.Object,
+            _mockSynthesisService!.Object);
     }
 
     private Mock<ILLMClient>? _mockLlmClient;
@@ -32,6 +34,7 @@ public class WikiGenerationServiceTests
     private Mock<IVectorDatabase>? _mockVectorDb;
     private Mock<IDiagramGenerator>? _mockDiagramGenerator;
     private Mock<IEnhancedDependencyGraphService>? _mockGraphService;
+    private Mock<IDocumentationSynthesisService>? _mockSynthesisService;
     private Mock<ILogger<WikiGenerationService>>? _mockLogger;
     private WikiGenerationService? _service;
 
@@ -68,14 +71,14 @@ public class WikiGenerationServiceTests
         _mockDiagramGenerator.Setup(x =>
                 x.GenerateInteractiveSequenceDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>(), It.IsAny<DiagramOptions>()))
             .ReturnsAsync(new InteractiveDiagram 
-            { 
+            {
                 MermaidContent = "sequenceDiagram\n    TestController->>TestService: Call",
                 Type = DiagramType.Sequence 
             });
         _mockDiagramGenerator.Setup(x =>
                 x.GenerateInteractiveComponentDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>(), It.IsAny<DiagramOptions>()))
             .ReturnsAsync(new InteractiveDiagram 
-            { 
+            {
                 MermaidContent = "classDiagram\n    class TestController {\n        +Class\n    }\n    TestController --> TestService",
                 Type = DiagramType.Component
             });
@@ -146,8 +149,15 @@ public class WikiGenerationServiceTests
         graph.AddNode("Component2", new NodeMetadata { Type = "Class" });
         graph.AddEdge("Component1", "Component2", EdgeType.Dependency, 1.0);
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>()))
-            .ReturnsAsync("# Test Module\n\nThis is a test module overview.");
+        // Setup Synthesis Service to return the base page
+        var synthesizedPage = new WikiPage 
+        { 
+             Title = module.Name,
+             Content = "# Test Module\n\nThis is a test module overview."
+        };
+        _mockSynthesisService.Setup(x => x.SynthesizeParentPageAsync(module, childPages, "English"))
+            .ReturnsAsync(synthesizedPage);
+
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _mockDiagramGenerator.Setup(x =>
@@ -165,6 +175,9 @@ public class WikiGenerationServiceTests
 
         _mockDiagramGenerator.Verify(x => x.GenerateArchitectureDiagramAsync(It.IsAny<ModuleTree>(), graph),
             Times.Once);
+        
+        // Verify delegation to synthesis service
+        _mockSynthesisService.Verify(x => x.SynthesizeParentPageAsync(module, childPages, "English"), Times.Once);
     }
 
     [Test]
