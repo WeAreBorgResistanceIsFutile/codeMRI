@@ -383,8 +383,8 @@ class ParserService {
             }
             // --- C/C++ Specific Constructs ---
             else if (['c', 'cpp'].includes(language)) {
-                if (node.type === 'preproc_define') {
-                    const macroNameNode = this.getChildByFieldName(node, 'name');
+                if (['preproc_define', 'preproc_def'].includes(node.type)) {
+                    const macroNameNode = this.getChildByFieldName(node, 'name') || node.child(1);
                     if (macroNameNode) {
                         const macroId = `${filePath}::MACRO::${macroNameNode.text}`;
                         addGraphNode(macroId, 'MacroDefinition', language);
@@ -398,11 +398,20 @@ class ParserService {
                         addGraphEdge(filePath, structId, "DependsOn", "DEFINES_TYPE");
                     }
                 } else if (language === 'cpp' && node.type === 'template_declaration') {
-                    const templateNameNode = this.getChildByFieldName(node.child(1), 'name'); // child(1) is often the templated type's name
-                    if (templateNameNode) {
-                        const templateId = `${filePath}::TEMPLATE::${templateNameNode.text}`;
-                        addGraphNode(templateId, 'TemplateDefinition', language);
-                        addGraphEdge(filePath, templateId, "DependsOn", "DEFINES_TEMPLATE");
+                    // Find the declaration being templated (class, function, etc.)
+                    let declarationNode = node.child(1); 
+                    // Robustness: look for specific declaration types if child(1) is not it (e.g. comment in between)
+                    if (!declarationNode || !['class_specifier', 'function_definition'].includes(declarationNode.type)) {
+                        declarationNode = node.children.find(c => ['class_specifier', 'function_definition', 'struct_specifier'].includes(c.type));
+                    }
+
+                    if (declarationNode) {
+                         const templateNameNode = this.getChildByFieldName(declarationNode, 'name');
+                         if (templateNameNode) {
+                            const templateId = `${filePath}::TEMPLATE::${templateNameNode.text}`;
+                            addGraphNode(templateId, 'TemplateDefinition', language);
+                            addGraphEdge(filePath, templateId, "DependsOn", "DEFINES_TEMPLATE");
+                         }
                     }
                 }
             }
@@ -527,10 +536,13 @@ class ParserService {
         if (!node) {
             return null;
         }
-        const child = node.childForFieldName(fieldName);
-        if (child) {
-            return child;
+        if (typeof node.childForFieldName === 'function') {
+             const child = node.childForFieldName(fieldName);
+             if (child) {
+                 return child;
+             }
         }
+        
         // Fallback for languages where field names might not be consistently used
         // or for more generic node types. This part might need to be language-specific.
         // For example, in many languages, the name of a function/class is the first identifier child.
@@ -552,7 +564,7 @@ class ParserService {
             case 'python':
                 nameNode = this.getChildByFieldName(node, 'name');
                 if (!nameNode && node.type === 'decorated_definition') {
-                    const decorated = node.childForFieldName('definition');
+                    const decorated = this.getChildByFieldName(node, 'definition');
                     if (decorated) {
                         nameNode = this.getChildByFieldName(decorated, 'name');
                     }
@@ -884,13 +896,13 @@ class ParserService {
             const cursor = node.walk();
             if (cursor.gotoFirstChild()) {
                 do {
-                    if (cursor.node.type === 'attribute_list') {
-                        const attributeCursor = cursor.node.walk();
+                    if (cursor.currentNode.type === 'attribute_list') {
+                        const attributeCursor = cursor.currentNode.walk();
                         if (attributeCursor.gotoFirstChild()) { // Go to '['
                             if (attributeCursor.gotoNextSibling()) { // Go to attribute_target or attribute
                                 do {
-                                    if (attributeCursor.node.type === 'attribute') {
-                                        const nameNode = this.getChildByFieldName(attributeCursor.node, 'name');
+                                    if (attributeCursor.currentNode.type === 'attribute') {
+                                        const nameNode = this.getChildByFieldName(attributeCursor.currentNode, 'name');
                                         if (nameNode) {
                                             attributes.push(nameNode.text);
                                         }
@@ -898,34 +910,34 @@ class ParserService {
                                 } while (attributeCursor.gotoNextSibling());
                             }
                         }
-                        attributeCursor.reset();
+                        // attributeCursor.reset(); - removed
                     }
                 } while (cursor.gotoNextSibling());
             }
-            cursor.reset();
+            // cursor.reset(); - removed
         } else if (language === 'java') {
             // Java annotations are typically children of 'modifiers' node or directly on declaration
             // Simplified: look for '@' followed by identifier
             const cursor = node.walk();
             if (cursor.gotoFirstChild()) {
                 do {
-                    if (cursor.node.type === 'modifiers') {
-                        const modifierCursor = cursor.node.walk();
+                    if (cursor.currentNode.type === 'modifiers') {
+                        const modifierCursor = cursor.currentNode.walk();
                         if (modifierCursor.gotoFirstChild()) {
                             do {
-                                if (modifierCursor.node.type === 'annotation') {
-                                    const nameNode = modifierCursor.node.child(1); // Usually identifier after '@'
+                                if (modifierCursor.currentNode.type.includes('annotation')) {
+                                    const nameNode = modifierCursor.currentNode.child(1); // Usually identifier after '@'
                                     if (nameNode) {
                                         attributes.push(nameNode.text);
                                     }
                                 }
                             } while (modifierCursor.gotoNextSibling());
                         }
-                        modifierCursor.reset();
+                        // modifierCursor.reset(); - removed
                     }
                 } while (cursor.gotoNextSibling());
             }
-            cursor.reset();
+            // cursor.reset(); - removed
         }
         return attributes;
     }
@@ -1082,129 +1094,6 @@ class ParserService {
         return isLocal;
     }
 
-    // Placeholder for inferring target language. This would need to be much smarter.
-    inferTargetLanguage(target) {
-        // Very basic heuristic for demo/testing purposes
-        if (target.includes("PythonService") || target.includes(".py")) return "python";
-        if (target.includes("JavaProcessor") || target.includes(".java")) return "java";
-        if (target.includes("CSharpComponent") || target.includes(".cs")) return "csharp";
-        if (target.includes("JavaScriptService") || target.includes(".js")) return "javascript";
-        if (target.includes("TypeScriptService") || target.includes(".ts")) return "typescript";
-        if (target.includes("CModule") || target.includes(".c")) return "c";
-        if (target.includes("CppModule") || target.includes(".cpp")) return "cpp";
-        return "unknown";
-    }
-
-    extractAnnotationsAttributes(node, language) {
-        const attributes = [];
-        if (language === 'csharp') {
-            // C# attributes are typically children of 'attribute_list' or 'attribute_target' nodes
-            // attached to class/method declarations.
-            // Simplified: look for identifier preceded by '[' and followed by ']'
-            const cursor = node.walk();
-            if (cursor.gotoFirstChild()) {
-                do {
-                    if (cursor.node.type === 'attribute_list') {
-                        const attributeCursor = cursor.node.walk();
-                        if (attributeCursor.gotoFirstChild()) { // Go to '['
-                            if (attributeCursor.gotoNextSibling()) { // Go to attribute_target or attribute
-                                do {
-                                    if (attributeCursor.node.type === 'attribute') {
-                                        const nameNode = this.getChildByFieldName(attributeCursor.node, 'name');
-                                        if (nameNode) {
-                                            attributes.push(nameNode.text);
-                                        }
-                                    }
-                                } while (attributeCursor.gotoNextSibling());
-                            }
-                        }
-                        attributeCursor.reset();
-                    }
-                } while (cursor.gotoNextSibling());
-            }
-            cursor.reset();
-        } else if (language === 'java') {
-            // Java annotations are typically children of 'modifiers' node or directly on declaration
-            // Simplified: look for '@' followed by identifier
-            const cursor = node.walk();
-            if (cursor.gotoFirstChild()) {
-                do {
-                    if (cursor.node.type === 'modifiers') {
-                        const modifierCursor = cursor.node.walk();
-                        if (modifierCursor.gotoFirstChild()) {
-                            do {
-                                if (modifierCursor.node.type === 'annotation') {
-                                    const nameNode = modifierCursor.node.child(1); // Usually identifier after '@'
-                                    if (nameNode) {
-                                        attributes.push(nameNode.text);
-                                    }
-                                }
-                            } while (modifierCursor.gotoNextSibling());
-                        }
-                        modifierCursor.reset();
-                    }
-                } while (cursor.gotoNextSibling());
-            }
-            cursor.reset();
-        }
-        return attributes;
-    }
-
-    extractDecorators(node, language) {
-        const decorators = [];
-        if (language === 'python') {
-            const decoratorNodes = node.children.filter(child => child.type === 'decorator');
-            for (const decoratorNode of decoratorNodes) {
-                const nameNode = decoratorNode.child(1); // Typically the name after '@'
-                if (nameNode) {
-                    decorators.push(nameNode.text);
-                }
-            }
-        } else if (['javascript', 'typescript'].includes(language)) {
-            // Decorators in TS/JS often appear as 'decorator' nodes preceding class/method definitions
-            const decoratorNodes = node.children.filter(child => child.type === 'decorator');
-            for (const decoratorNode of decoratorNodes) {
-                const expression = decoratorNode.child(1); // Expression inside the decorator
-                if (expression && expression.type === 'call_expression') {
-                    const identifier = expression.child(0);
-                    if (identifier) {
-                        decorators.push(identifier.text);
-                    }
-                } else if (expression) {
-                    decorators.push(expression.text);
-                }
-            }
-        }
-        return decorators;
-    }
-
-    isDynamicImport(node, language) {
-        if (language === 'python') {
-            // Look for call expressions to 'importlib.import_module' or similar patterns
-            return node.type === 'call_expression' && node.text.includes('importlib.import_module');
-        } else if (['javascript', 'typescript'].includes(language)) {
-            // Look for dynamic import() syntax
-            return node.type === 'call_expression' && node.text.startsWith('import(');
-        }
-        return false;
-    }
-
-    extractDynamicImportTarget(node, language) {
-        if (language === 'python') {
-            // Extract the module name from importlib.import_module('module_name')
-            const argList = node.childForFieldName('arguments');
-            if (argList && argList.child(0) && argList.child(0).type === 'string') {
-                return argList.child(0).text.slice(1, -1); // Remove quotes
-            }
-        } else if (['javascript', 'typescript'].includes(language)) {
-            // Extract module from import('module_name')
-            const argList = node.childForFieldName('arguments');
-            if (argList && argList.child(0) && argList.child(0).type === 'string') {
-                return argList.child(0).text.slice(1, -1); // Remove quotes
-            }
-        }
-        return null;
-    }
 }
 
 module.exports = ParserService;

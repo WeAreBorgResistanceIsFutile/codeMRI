@@ -107,6 +107,7 @@ public class NodeMetadata
 {
     public string Id { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
+    public string Language { get; set; } = string.Empty;
     public int LineCount { get; set; }
     public int CyclomaticComplexity { get; set; }
     public int NestingDepth { get; set; }
@@ -121,6 +122,7 @@ public class NodeMetadata
     public string Layer { get; set; } = string.Empty;
     public double Complexity { get; set; }
     public string Visibility { get; set; } = "public";
+    public Dictionary<string, object> Properties { get; set; } = new();
 }
 
 public class GraphAnalysisResult

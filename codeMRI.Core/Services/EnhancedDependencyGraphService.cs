@@ -39,10 +39,59 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
                     var astResult = await _astServiceClient.ParseCodeAsync(code, component.Language, component.FilePath,
                         cancellationToken);
 
-                    if (astResult?.DependencyGraph is DependencyGraphData graphData)
+                    if (astResult?.DependencyGraph != null)
+                    {
+                        var graphData = astResult.DependencyGraph;
+
+                        // Process Rich AST Nodes
+                        if (graphData.Nodes != null && graphData.Nodes.Any())
+                        {
+                            foreach (var node in graphData.Nodes)
+                            {
+                                // Avoid overwriting the main component node if it exists, or maybe enrich it?
+                                // For now, add sub-nodes.
+                                if (node.Id == component.Id) continue;
+
+                                var nodeMetadata = new NodeMetadata
+                                {
+                                    Id = node.Id,
+                                    Type = node.Type,
+                                    Language = node.Language,
+                                    FilePath = component.FilePath,
+                                    Properties = new Dictionary<string, object>
+                                    {
+                                        ["Annotations"] = node.Properties?.Annotations ?? new List<string>(),
+                                        ["Decorators"] = node.Properties?.Decorators ?? new List<string>()
+                                    }
+                                };
+                                graph.AddNode(node.Id, nodeMetadata);
+                            }
+                        }
+
+                        // Process Rich AST Edges
+                        if (graphData.Edges != null && graphData.Edges.Any())
+                        {
+                            foreach (var edge in graphData.Edges)
+                            {
+                                // Map EdgeType string to Enum
+                                if (Enum.TryParse<EdgeType>(edge.Type, true, out var type))
+                                {
+                                    graph.AddEdge(edge.Source, edge.Target, type, 1.0);
+                                }
+                                else
+                                {
+                                    graph.AddEdge(edge.Source, edge.Target, EdgeType.Dependency, 1.0);
+                                }
+                            }
+                        }
+
+                        // Legacy Dependencies Support
                         foreach (var dep in graphData.Dependencies)
+                        {
                             if (!component.Dependencies.Contains(dep))
                                 component.Dependencies.Add(dep);
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
