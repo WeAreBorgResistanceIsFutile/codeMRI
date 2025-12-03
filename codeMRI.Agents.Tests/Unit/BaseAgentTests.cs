@@ -149,7 +149,23 @@ public class BaseAgentTests
     {
         // Arrange
         var code = "public class Test { public void Method() { } }";
-        var astResult = new ASTParseResult { Language = "csharp", Metrics = new object() };
+        
+        // Mock the AST service to return high complexity metrics
+        // We use an anonymous object that matches CodeComplexityMetrics structure
+        // or simply an object that we will verify is used.
+        var mockedMetrics = new 
+        { 
+            TokenCount = 500, 
+            CyclomaticComplexity = 25, 
+            NestingDepth = 8 
+        };
+
+        var astResult = new ASTParseResult 
+        { 
+            Language = "csharp", 
+            Metrics = mockedMetrics 
+        };
+
         _mockAstService.Setup(s => s.ParseCodeAsync(code, "csharp", "", It.IsAny<CancellationToken>()))
             .ReturnsAsync(astResult);
 
@@ -158,6 +174,12 @@ public class BaseAgentTests
 
         // Assert
         Assert.That(result, Is.Not.Null);
+        // Verify that the values from the AST service are returned, NOT the fallback calculation
+        // Fallback for this code string would be very low complexity.
+        Assert.That(result.TokenCount, Is.EqualTo(500));
+        Assert.That(result.CyclomaticComplexity, Is.EqualTo(25));
+        Assert.That(result.NestingDepth, Is.EqualTo(8));
+
         _mockAstService.Verify(s => s.ParseCodeAsync(code, "csharp", "", It.IsAny<CancellationToken>()), Times.Once);
     }
 

@@ -3,6 +3,7 @@ using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace codeMRI.Agents.Agents;
 
@@ -80,6 +81,15 @@ public abstract class BaseAgent : IAgent
             try
             {
                 var result = await _astService.ParseCodeAsync(code, "csharp", "", cancellationToken);
+                if (result?.Metrics != null)
+                {
+                    var json = JsonSerializer.Serialize(result.Metrics);
+                    var metrics = JsonSerializer.Deserialize<CodeComplexityMetrics>(json);
+                    if (metrics != null)
+                    {
+                        return metrics;
+                    }
+                }
             }
             catch (Exception ex)
             {
