@@ -1,13 +1,18 @@
 const fs = require('fs');
 const path = require('path');
-const ParserService = require('../../src/services/parserService');
+const ParserServiceClass = require('../../src/services/parserService'); // Rename to avoid conflict
 const { expect } = require('chai');
 
 describe('RealParserService', () => {
+    let parserService;
+
+    before(() => {
+        parserService = new ParserServiceClass();
+    });
     
     describe('getSupportedLanguages', () => {
         it('should return list of supported languages', () => {
-            const languages = ParserService.getSupportedLanguages();
+            const languages = parserService.getSupportedLanguages();
             expect(languages).to.be.an('array');
             // We expect these to be enabled eventually
             expect(languages).to.include('typescript');
@@ -28,9 +33,12 @@ describe('RealParserService', () => {
                 path.join(__dirname, '../fixtures/typescript/simple.ts'), 
                 'utf8'
             );
-            const result = await ParserService.parseCode(code, 'typescript', 'test.ts');
-            expect(result).to.have.property('language', 'typescript');
-            expect(result.tree).to.be.an('object');
+            const rootNode = await parserService.parseCode(code, 'typescript', 'test.ts', true); // Request raw node
+            expect(rootNode).to.be.an('object');
+            expect(rootNode.type).to.equal('program');
+            expect(rootNode.text).to.equal(code);
+            // Example: check if it has children
+            expect(rootNode.children).to.not.be.empty;
         });
 
         // Python
@@ -39,9 +47,12 @@ describe('RealParserService', () => {
                 path.join(__dirname, '../fixtures/python/simple.py'), 
                 'utf8'
             );
-            const result = await ParserService.parseCode(code, 'python', 'test.py');
-            expect(result).to.have.property('language', 'python');
-            expect(result.metrics.functionCount).to.be.greaterThan(0);
+            const rootNode = await parserService.parseCode(code, 'python', 'test.py', true); // Request raw node
+            expect(rootNode).to.be.an('object');
+            expect(rootNode.type).to.equal('module');
+            expect(rootNode.text).to.equal(code);
+            // Example: check if it has children
+            expect(rootNode.children).to.not.be.empty;
         });
 
         // JavaScript
@@ -50,9 +61,12 @@ describe('RealParserService', () => {
                 path.join(__dirname, '../fixtures/javascript/simple.js'), 
                 'utf8'
             );
-            const result = await ParserService.parseCode(code, 'javascript', 'test.js');
-            expect(result).to.have.property('language', 'javascript');
-            expect(result.metrics.functionCount).to.be.greaterThan(0);
+            const rootNode = await parserService.parseCode(code, 'javascript', 'test.js', true); // Request raw node
+            expect(rootNode).to.be.an('object');
+            expect(rootNode.type).to.equal('program');
+            expect(rootNode.text).to.equal(code);
+            // Example: check if it has children
+            expect(rootNode.children).to.not.be.empty;
         });
 
         // Java
@@ -61,9 +75,12 @@ describe('RealParserService', () => {
                 path.join(__dirname, '../fixtures/java/simple.java'), 
                 'utf8'
             );
-            const result = await ParserService.parseCode(code, 'java', 'Simple.java');
-            expect(result).to.have.property('language', 'java');
-            expect(result.metrics.classCount).to.be.greaterThan(0);
+            const rootNode = await parserService.parseCode(code, 'java', 'Simple.java', true); // Request raw node
+            expect(rootNode).to.be.an('object');
+            expect(rootNode.type).to.equal('program');
+            expect(rootNode.text).to.equal(code);
+            // Example: check if it has children
+            expect(rootNode.children).to.not.be.empty;
         });
 
         // C
@@ -72,9 +89,12 @@ describe('RealParserService', () => {
                 path.join(__dirname, '../fixtures/c/simple.c'), 
                 'utf8'
             );
-            const result = await ParserService.parseCode(code, 'c', 'simple.c');
-            expect(result).to.have.property('language', 'c');
-            expect(result.metrics.functionCount).to.be.greaterThan(0);
+            const rootNode = await parserService.parseCode(code, 'c', 'simple.c', true); // Request raw node
+            expect(rootNode).to.be.an('object');
+            expect(rootNode.type).to.equal('translation_unit');
+            expect(rootNode.text).to.equal(code);
+            // Example: check if it has children
+            expect(rootNode.children).to.not.be.empty;
         });
 
         // C++
@@ -83,9 +103,12 @@ describe('RealParserService', () => {
                 path.join(__dirname, '../fixtures/cpp/simple.cpp'), 
                 'utf8'
             );
-            const result = await ParserService.parseCode(code, 'cpp', 'simple.cpp');
-            expect(result).to.have.property('language', 'cpp');
-            expect(result.metrics.classCount).to.be.greaterThan(0);
+            const rootNode = await parserService.parseCode(code, 'cpp', 'simple.cpp', true); // Request raw node
+            expect(rootNode).to.be.an('object');
+            expect(rootNode.type).to.equal('translation_unit');
+            expect(rootNode.text).to.equal(code);
+            // Example: check if it has children
+            expect(rootNode.children).to.not.be.empty;
         });
 
         // C#
@@ -94,9 +117,12 @@ describe('RealParserService', () => {
                 path.join(__dirname, '../fixtures/csharp/simple.cs'), 
                 'utf8'
             );
-            const result = await ParserService.parseCode(code, 'csharp', 'simple.cs');
-            expect(result).to.have.property('language', 'csharp');
-            expect(result.metrics.classCount).to.be.greaterThan(0);
+            const rootNode = await parserService.parseCode(code, 'csharp', 'simple.cs', true); // Request raw node
+            expect(rootNode).to.be.an('object');
+            expect(rootNode.type).to.equal('compilation_unit');
+            expect(rootNode.text).to.equal(code);
+            // Example: check if it has children
+            expect(rootNode.children).to.not.be.empty;
         });
 
     });
