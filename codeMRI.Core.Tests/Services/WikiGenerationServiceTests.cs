@@ -19,6 +19,7 @@ public class WikiGenerationServiceTests
         _mockGraphService = new Mock<IEnhancedDependencyGraphService>();
         _mockLogger = new Mock<ILogger<WikiGenerationService>> ();
         _mockSynthesisService = new Mock<IDocumentationSynthesisService>();
+        _mockRefService = new Mock<IReferenceManagementService>();
 
         _service = new WikiGenerationService(
             _mockLlmClient!.Object,
@@ -26,7 +27,8 @@ public class WikiGenerationServiceTests
             _mockVectorDb!.Object,
             _mockDiagramGenerator!.Object,
             _mockGraphService!.Object,
-            _mockSynthesisService!.Object);
+            _mockSynthesisService!.Object,
+            _mockRefService!.Object);
     }
 
     private Mock<ILLMClient>? _mockLlmClient;
@@ -35,6 +37,7 @@ public class WikiGenerationServiceTests
     private Mock<IDiagramGenerator>? _mockDiagramGenerator;
     private Mock<IEnhancedDependencyGraphService>? _mockGraphService;
     private Mock<IDocumentationSynthesisService>? _mockSynthesisService;
+    private Mock<IReferenceManagementService>? _mockRefService;
     private Mock<ILogger<WikiGenerationService>>? _mockLogger;
     private WikiGenerationService? _service;
 
@@ -66,6 +69,8 @@ public class WikiGenerationServiceTests
             .ReturnsAsync("# TestController\n\nThis is a test controller.");
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
+        _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns<string, string>((c, id) => c); // Identity transformation
 
         // Setup Interactive Diagrams
         _mockDiagramGenerator.Setup(x =>
@@ -113,6 +118,8 @@ public class WikiGenerationServiceTests
             .ReturnsAsync("# TestController\n\nThis is a test controller.");
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(emptyGraph);
+        _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns<string, string>((c, id) => c);
 
         // Act
         var result = await _service.GeneratePageAsync(pageTitle, filePaths, fileContents);
@@ -157,6 +164,8 @@ public class WikiGenerationServiceTests
         };
         _mockSynthesisService.Setup(x => x.SynthesizeParentPageAsync(module, childPages, "English"))
             .ReturnsAsync(synthesizedPage);
+        _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns<string, string>((c, id) => c);
 
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
@@ -198,6 +207,9 @@ public class WikiGenerationServiceTests
             .ReturnsAsync("# TestController\n\nThis is a test controller.");
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
+        _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns<string, string>((c, id) => c);
+
         _mockDiagramGenerator.Setup(x =>
                 x.GenerateInteractiveSequenceDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>(), It.IsAny<DiagramOptions>()))
             .ThrowsAsync(new Exception("Diagram generation failed"));
@@ -210,5 +222,29 @@ public class WikiGenerationServiceTests
         Assert.That(result.Content, Does.Not.Contain("## Interactive Sequence Diagram"));
 
         _mockDiagramGenerator.Verify(x => x.GenerateInteractiveSequenceDiagramAsync(graph, It.IsAny<string>(), It.IsAny<DiagramOptions>()), Times.Once);
+    }
+
+    [Test]
+    public async Task GeneratePageAsync_ShouldEnrichContentWithLinks()
+    {
+        // Arrange
+        var pageTitle = "TestController";
+        var content = "TestController uses TestService.";
+        var enrichedContent = "[TestController](...) uses [TestService](...).";
+
+        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>()))
+            .ReturnsAsync(content);
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnhancedDependencyGraph());
+        
+        _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(enrichedContent);
+
+        // Act
+        var result = await _service.GeneratePageAsync(pageTitle, new List<string>(), new Dictionary<string, string>());
+
+        // Assert
+        Assert.That(result.Content, Is.EqualTo(enrichedContent));
+        _mockRefService.Verify(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
     }
 }

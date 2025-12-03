@@ -14,6 +14,7 @@ public class WikiGenerationService : IWikiGenerationService
     private readonly ILLMClient _llmClient;
     private readonly IVectorDatabase _vectorDb;
     private readonly IDocumentationSynthesisService _synthesisService;
+    private readonly IReferenceManagementService _referenceManagementService;
 
     public WikiGenerationService(
         ILLMClient llmClient,
@@ -21,7 +22,8 @@ public class WikiGenerationService : IWikiGenerationService
         IVectorDatabase vectorDb,
         IDiagramGenerator diagramGenerator,
         IEnhancedDependencyGraphService graphService,
-        IDocumentationSynthesisService synthesisService)
+        IDocumentationSynthesisService synthesisService,
+        IReferenceManagementService referenceManagementService)
     {
         _llmClient = llmClient;
         _embedder = embedder;
@@ -29,6 +31,7 @@ public class WikiGenerationService : IWikiGenerationService
         _diagramGenerator = diagramGenerator;
         _graphService = graphService;
         _synthesisService = synthesisService;
+        _referenceManagementService = referenceManagementService;
     }
 
     public async Task<WikiStructure> GenerateStructureAsync(string fileTree, string readme, string language = "English")
@@ -164,9 +167,14 @@ public class WikiGenerationService : IWikiGenerationService
             Console.WriteLine($"Failed to generate diagrams for page {pageTitle}: {ex.Message}");
         }
 
+        // Enrich content with intelligent cross-links
+        // Use pageTitle as sourceComponentId context if possible, or a safe fallback
+        var pageId = Guid.NewGuid().ToString();
+        content = _referenceManagementService.EnrichContentWithLinks(content, pageTitle); // Using title as ID proxy for now
+
         return new WikiPage
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = pageId,
             Title = pageTitle,
             Content = content,
             RelevantFiles = filePaths
@@ -203,6 +211,9 @@ public class WikiGenerationService : IWikiGenerationService
             // Log error but don't fail the page generation
             Console.WriteLine($"Failed to generate architecture diagram for module {module.Name}: {ex.Message}");
         }
+
+        // Enrich with links
+        content = _referenceManagementService.EnrichContentWithLinks(content, module.Id);
 
         page.Content = content;
         return page;
