@@ -21,13 +21,103 @@ public class DiagramGeneratorService : IDiagramGenerator
         var mermaid = new StringBuilder();
         mermaid.AppendLine("graph TB");
 
-        // Add modules
-        foreach (var module in GetModules(moduleTree)) mermaid.AppendLine($"    {module.Id}[{module.Name}]");
+        var nodes = graph.GetNodes().ToList();
+        var printedNodes = new HashSet<string>();
+
+        // Strategy 1: Recursively render ModuleTree structure
+        if (moduleTree.Root != null)
+        {
+            RenderModule(moduleTree.Root, mermaid, printedNodes);
+        }
+
+        // Strategy 2: Group remaining nodes by Layer/Pattern
+        var remainingNodes = nodes.Where(n => !printedNodes.Contains(n.ComponentId)).ToList();
+        
+        if (remainingNodes.Any())
+        {
+            var groupedNodes = new Dictionary<string, List<GraphNode>>();
+
+            foreach (var node in remainingNodes)
+            {
+                string group = "Default";
+                if (node.Metadata.Properties.TryGetValue("Module", out var moduleObj) && moduleObj is string moduleName)
+                {
+                    group = moduleName;
+                }
+                else
+                {
+                    // Fallback to Layer
+                    string layer = node.Metadata.Layer;
+                    if (string.IsNullOrEmpty(layer))
+                    {
+                        layer = DetermineComponentLayer(node.Metadata.Type);
+                    }
+                    
+                    if (layer != "Unknown")
+                    {
+                        group = layer;
+                    }
+                }
+                
+                if (!groupedNodes.ContainsKey(group))
+                    groupedNodes[group] = new List<GraphNode>();
+                
+                groupedNodes[group].Add(node);
+            }
+
+            // Generate subgraphs for remaining nodes
+            foreach (var group in groupedNodes)
+            {
+                if (group.Key != "Default")
+                {
+                    mermaid.AppendLine($"    subgraph {group.Key}");
+                }
+
+                foreach (var node in group.Value)
+                {
+                    mermaid.AppendLine($"        {node.ComponentId}[{node.ComponentId}]");
+                }
+
+                if (group.Key != "Default")
+                {
+                    mermaid.AppendLine("    end");
+                }
+            }
+        }
 
         // Add relationships
-        foreach (var edge in graph.GetEdges()) mermaid.AppendLine($"    {edge.From} --> {edge.To}");
+        foreach (var edge in graph.GetEdges())
+        {
+            mermaid.AppendLine($"    {edge.From} --> {edge.To}");
+        }
 
         return Task.FromResult(mermaid.ToString());
+    }
+
+    private void RenderModule(ModuleNode module, StringBuilder sb, HashSet<string> printedNodes)
+    {
+        // Only render if it has content or is meaningful
+        bool hasContent = module.Components.Count > 0 || module.Children.Count > 0;
+        
+        if (hasContent)
+        {
+            sb.AppendLine($"    subgraph {module.Id}[{module.Name}]");
+            
+            // Render Components
+            foreach (var compId in module.Components)
+            {
+                sb.AppendLine($"        {compId}[{compId}]");
+                printedNodes.Add(compId);
+            }
+
+            // Render Children
+            foreach (var child in module.Children)
+            {
+                RenderModule(child, sb, printedNodes);
+            }
+            
+            sb.AppendLine("    end");
+        }
     }
 
     public Task<string> GenerateComponentDiagramAsync(EnhancedDependencyGraph graph, string? focusComponentId = null)
@@ -71,18 +161,36 @@ public class DiagramGeneratorService : IDiagramGenerator
         var queue = new Queue<string>();
         queue.Enqueue(entryPointId);
 
-        while (queue.Count > 0)
+        // Limit depth or count to prevent infinite loops/huge diagrams
+        int maxSteps = 20;
+        int steps = 0;
+
+        while (queue.Count > 0 && steps < maxSteps)
         {
             var current = queue.Dequeue();
+            
+            // We allow revisiting for sequence flow, but need to be careful. 
+            // For a static graph walk, we just list dependencies as calls.
             if (visited.Contains(current)) continue;
             visited.Add(current);
 
             var outgoingEdges = graph.GetEdges().Where(e => e.From == current);
             foreach (var edge in outgoingEdges)
             {
-                mermaid.AppendLine($"    {current} ->> {edge.To}: {edge.Type}");
+                string arrow = "->>"; // Solid line with arrow
+                if (edge.Type == EdgeType.Call || edge.Type == EdgeType.MethodCall)
+                {
+                    arrow = "->>"; 
+                }
+                else
+                {
+                    arrow = "-->>"; // Dotted line for loose dependencies? Or just stick to solid.
+                }
+
+                mermaid.AppendLine($"    {current} {arrow} {edge.To}: {edge.Type}");
                 if (!visited.Contains(edge.To)) queue.Enqueue(edge.To);
             }
+            steps++;
         }
 
         return Task.FromResult(mermaid.ToString());
@@ -96,11 +204,14 @@ public class DiagramGeneratorService : IDiagramGenerator
         var focusNode = graph.GetNode(focusComponentId);
         if (focusNode != null)
         {
-            mermaid.AppendLine($"    {focusComponentId}((Data))");
+            // Focus node as data/process center
+            mermaid.AppendLine($"    {focusComponentId}(({focusComponentId}))");
 
+            // Incoming Data
             foreach (var edge in graph.GetEdges().Where(e => e.To == focusComponentId))
                 mermaid.AppendLine($"    {edge.From} --> {focusComponentId}");
 
+            // Outgoing Data
             foreach (var edge in graph.GetEdges().Where(e => e.From == focusComponentId))
                 mermaid.AppendLine($"    {focusComponentId} --> {edge.To}");
         }
@@ -368,6 +479,7 @@ public class DiagramGeneratorService : IDiagramGenerator
             "interface" => "Contract",
             "class" => "Domain",
             "enum" => "Domain",
+            "api" => "Presentation",
             _ => "Unknown"
         };
     }

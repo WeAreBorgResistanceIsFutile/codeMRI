@@ -129,7 +129,7 @@ public class WikiGenerationService : IWikiGenerationService
                         if (!string.IsNullOrWhiteSpace(sequenceDiagram) && sequenceDiagram.Contains("sequenceDiagram"))
                         {
                             content += "\n\n## Sequence Diagram\n\n";
-                            content += sequenceDiagram + "\n";
+                            content += "```mermaid\n" + sequenceDiagram + "\n```\n";
                         }
                     }
 
@@ -154,8 +154,16 @@ public class WikiGenerationService : IWikiGenerationService
                         if (!string.IsNullOrWhiteSpace(componentDiagram) && componentDiagram.Contains("classDiagram"))
                         {
                             content += "\n## Component Diagram\n\n";
-                            content += componentDiagram + "\n";
+                            content += "```mermaid\n" + componentDiagram + "\n```\n";
                         }
+                    }
+
+                    // Generate Data Flow Diagram
+                    var dataFlowDiagram = await _diagramGenerator.GenerateDataFlowDiagramAsync(graph, entryPointId);
+                    if (!string.IsNullOrWhiteSpace(dataFlowDiagram) && dataFlowDiagram.Contains("graph"))
+                    {
+                        content += "\n\n## Data Flow Diagram\n\n";
+                        content += "```mermaid\n" + dataFlowDiagram + "\n```\n";
                     }
                 }
             }
@@ -199,10 +207,10 @@ public class WikiGenerationService : IWikiGenerationService
                 moduleTree.Nodes[module.Id] = module;
 
                 var architectureDiagram = await _diagramGenerator.GenerateArchitectureDiagramAsync(moduleTree, graph);
-                if (!string.IsNullOrWhiteSpace(architectureDiagram) && architectureDiagram.Contains("graph TD"))
+                if (!string.IsNullOrWhiteSpace(architectureDiagram) && architectureDiagram.Contains("graph T"))
                 {
                     content += "\n\n## Architecture Diagram\n\n";
-                    content += architectureDiagram + "\n";
+                    content += "```mermaid\n" + architectureDiagram + "\n```\n";
                 }
             }
         }
