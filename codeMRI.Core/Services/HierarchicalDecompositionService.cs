@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -38,10 +39,13 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         var components = await _graphService.GetComponentsAsync(repositoryPath, cancellationToken);
         var graph = await _graphService.BuildGraphAsync(components, cancellationToken);
 
+        // Identify Entry Points
+        IdentifyEntryPoints(graph);
+
         // Create initial module tree
         var moduleTree = new ModuleTree();
 
-        // Perform semantic clustering using Louvain and Architectural Layers
+        // Perform semantic clustering (Cycle -> Layer -> Directory -> Louvain)
         var semanticClusters = await PerformSemanticClusteringAsync(graph, cancellationToken);
 
         // Build hierarchical structure
@@ -59,6 +63,48 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         _logger.LogInformation("Completed hierarchical decomposition. Total modules: {Count}", moduleTree.Nodes.Count);
 
         return moduleTree;
+    }
+
+    private void IdentifyEntryPoints(EnhancedDependencyGraph graph)
+    {
+        foreach (var node in graph.GetNodes())
+        {
+            if (IsEntryPoint(node))
+            {
+                node.Metadata.Properties["Role"] = "EntryPoint";
+                _logger.LogDebug("Identified entry point: {Id}", node.ComponentId);
+            }
+        }
+    }
+
+    private bool IsEntryPoint(GraphNode node)
+    {
+        var content = node.Metadata.ContentSnippet;
+        var lang = node.Metadata.Language;
+
+        if (string.IsNullOrEmpty(content)) return false;
+
+        if (lang.Equals("C#", StringComparison.OrdinalIgnoreCase) || lang.Equals("Java", StringComparison.OrdinalIgnoreCase))
+        {
+            return Regex.IsMatch(content, @"public\s+static\s+void\s+Main\s*\(", RegexOptions.IgnoreCase);
+        }
+        if (lang.Equals("Python", StringComparison.OrdinalIgnoreCase))
+        {
+            return content.Contains("if __name__ == \"__main__\":") || content.Contains("if __name__ == '__main__':");
+        }
+        if (lang.Equals("JavaScript", StringComparison.OrdinalIgnoreCase) || lang.Equals("TypeScript", StringComparison.OrdinalIgnoreCase))
+        {
+            // Express, React, etc. common patterns
+            return Regex.IsMatch(content, @"app\.listen\s*\(") || 
+                   Regex.IsMatch(content, @"ReactDOM\.render") ||
+                   content.Contains("bootstrap()");
+        }
+        if (lang.Equals("C", StringComparison.OrdinalIgnoreCase) || lang.Equals("C++", StringComparison.OrdinalIgnoreCase))
+        {
+            return Regex.IsMatch(content, @"int\s+main\s*\(");
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -111,16 +157,56 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             foreach (var n in layer.Value) assignedNodes.Add(n);
         }
 
+        // 2. Feature/Directory Clustering for remaining nodes
+        var unassignedForDir = graph.GetNodes()
+             .Where(n => !assignedNodes.Contains(n.ComponentId))
+             .ToList();
+
+        var dirClusters = PerformDirectoryClustering(unassignedForDir);
+        foreach(var kvp in dirClusters)
+        {
+            clusters[kvp.Key] = kvp.Value;
+            foreach(var n in kvp.Value) assignedNodes.Add(n);
+        }
+
         var unassignedNodes = graph.GetNodes()
             .Select(n => n.ComponentId)
             .Where(id => !assignedNodes.Contains(id))
             .ToHashSet();
 
-        // 2. For unassigned nodes, use Multi-Pass Louvain Community Detection
+        // 3. For remaining unassigned nodes, use Multi-Pass Louvain Community Detection
         if (unassignedNodes.Any())
         {
             var communities = await PerformLouvainClusteringAsync(graph, unassignedNodes, cancellationToken);
             foreach (var community in communities) clusters[$"Component_{community.Key}"] = community.Value;
+        }
+
+        return clusters;
+    }
+
+    private Dictionary<string, List<string>> PerformDirectoryClustering(List<GraphNode> nodes)
+    {
+        var clusters = new Dictionary<string, List<string>>();
+        
+        // Group by directory
+        var groups = nodes
+            .GroupBy(n => {
+                var dir = Path.GetDirectoryName(n.Metadata.FilePath);
+                return string.IsNullOrEmpty(dir) ? "Root" : dir;
+            })
+            .ToList();
+
+        foreach(var group in groups)
+        {
+            // If a directory has significant content, make it a cluster.
+            // We can use a heuristic: at least 2 files or > 1000 tokens?
+            // For now, purely directory based is a strong signal for Feature grouping.
+            
+            // Clean up name
+            var name = group.Key.Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
+            if (string.IsNullOrEmpty(name) || name == ".") name = "Root";
+            
+            clusters[$"Dir_{name}"] = group.Select(n => n.ComponentId).ToList();
         }
 
         return clusters;
@@ -159,15 +245,13 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                 foreach (var neighborId in node.OutEdges)
                     if (nodeIds.Contains(neighborId))
                     {
-                        // Weight adjustment: Cross-boundary edges might have lower weight to encourage separation?
-                        // Or we treat all dependencies as 1.0 for now.
                         var w = 1.0;
                         m += w;
                         edgeWeights[(nodeId, neighborId)] = w;
                     }
         }
 
-        m = m > 0 ? m : 1.0; // Avoid division by zero
+        m = m > 0 ? m : 1.0;
 
         while (globalImprovement && globalIter < maxGlobalIterations)
         {
@@ -183,7 +267,6 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                 localImprovement = false;
                 localIter++;
 
-                // Randomize node order to avoid bias
                 var randomizedNodes = nodeIds.OrderBy(x => Guid.NewGuid()).ToList();
 
                 foreach (var nodeId in randomizedNodes)
@@ -194,12 +277,11 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                     var bestComm = currentComm;
                     double maxDeltaQ = 0;
 
-                    // Get neighboring communities
-                    var neighborCommunities = new Dictionary<int, double>(); // CommID -> Weight to that Comm
+                    var neighborCommunities = new Dictionary<int, double>(); 
                     var nodeObj = graph.GetNode(nodeId);
                     if (nodeObj == null) continue;
 
-                    double k_i = 0; // Sum of weights incident to node i
+                    double k_i = 0; 
 
                     // Outgoing
                     foreach (var target in nodeObj.OutEdges)
@@ -223,32 +305,21 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                             neighborCommunities[c] += w;
                         }
 
-                    // Evaluate moving
                     foreach (var kvp in neighborCommunities)
                     {
                         var targetComm = kvp.Key;
                         if (targetComm == currentComm) continue;
 
                         var k_i_in = kvp.Value;
-
-                        // Calculate Sigma_tot (Sum of weights incident to nodes in targetComm)
-                        // This is expensive to calc exactly, estimating based on node degrees in comm
                         double sigma_tot = 0;
                         foreach (var peerId in communityNodes[targetComm])
                         {
                             var peer = graph.GetNode(peerId);
-                            // Approximate degree
                             if (peer != null) sigma_tot += peer.InEdges.Count + peer.OutEdges.Count;
                         }
 
-                        // Simplified Newman modularity gain
-                        // Delta Q = [ k_i_in / 2m ] - [ (Sigma_tot * k_i) / (2m^2) ]
-
-                        var term1 = k_i_in /
-                                    m; // Using m instead of 2m because we summed weights once? Standard formula uses 2m for undirected.
-                        // For directed, it's complex. Let's use standard undirected approx.
+                        var term1 = k_i_in / m; 
                         var term2 = sigma_tot * k_i / (2 * m * m);
-
                         var deltaQ = term1 - term2;
 
                         if (deltaQ > maxDeltaQ)
@@ -258,9 +329,8 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                         }
                     }
 
-                    if (bestComm != currentComm && maxDeltaQ > 0.0001) // Threshold to prevent jitter
+                    if (bestComm != currentComm && maxDeltaQ > 0.0001)
                     {
-                        // Move node
                         communityNodes[currentComm].Remove(nodeId);
                         if (communityNodes[currentComm].Count == 0) communityNodes.Remove(currentComm);
 
@@ -273,9 +343,6 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                     }
                 }
             }
-
-            // If needed, we could aggregate nodes into super-nodes here and recurse.
-            // For now, iterative optimization on flat nodes is often sufficient for codebases.
         }
 
         return Task.FromResult(communityNodes);
@@ -292,7 +359,6 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     {
         _logger.LogInformation("Building module hierarchy from {ClusterCount} clusters", clusters.Count);
 
-        // Create top-level modules from clusters
         foreach (var (clusterName, componentIds) in clusters)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -305,7 +371,6 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                 IsLeaf = true
             };
 
-            // Add components to module
             foreach (var componentId in componentIds)
             {
                 var node = graph.GetNode(componentId);
@@ -314,10 +379,15 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                     module.Components.Add(componentId);
                     module.EstimatedTokens += node.Metadata.EstimatedTokens;
                     module.ComplexityScore += node.Metadata.CyclomaticComplexity;
+                    
+                    if (node.Metadata.Properties.ContainsKey("Role") && 
+                        node.Metadata.Properties["Role"].ToString() == "EntryPoint")
+                    {
+                        module.Metadata["HasEntryPoint"] = "true";
+                    }
                 }
             }
 
-            // Recognize Pattern
             var pattern = _patternService.RecognizePattern(module, graph);
             if (pattern.Type != ArchitecturalPatternType.Unknown)
             {
@@ -342,12 +412,10 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     {
         var modulesToSplit = new Queue<ModuleNode>();
 
-        // Collect all leaf modules that exceed token limit
         foreach (var module in moduleTree.Nodes.Values.Where(m => m.IsLeaf))
             if (module.EstimatedTokens > MaxTokensPerModule)
                 modulesToSplit.Enqueue(module);
 
-        // Process modules that need splitting
         while (modulesToSplit.Count > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -369,38 +437,55 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     {
         _logger.LogInformation("Splitting module {ModuleId} (Tokens: {Tokens})", module.Id, module.EstimatedTokens);
 
-        // Create subgraph for this module
         var subGraph = await CreateSubgraphAsync(graph, module.Components, cancellationToken);
+        
+        // Strategy: 
+        // 1. Try Directory Splitting first (refine directory grouping if they were grouped by top level)
+        // 2. If single directory, use Louvain.
+        
+        Dictionary<string, List<string>> subClusters = null;
+        
+        // Check if components are in different subdirectories relative to common root
+        var components = module.Components.Select(c => graph.GetNode(c)).Where(n => n != null).ToList();
+        var commonPath = GetCommonPath(components.Select(c => c.Metadata.FilePath));
+        
+        var bySubDir = components.GroupBy(c => {
+            var rel = Path.GetRelativePath(commonPath, c.Metadata.FilePath);
+            var parts = rel.Split(Path.DirectorySeparatorChar);
+            return parts.Length > 1 ? parts[0] : "Root";
+        }).ToList();
+        
+        if (bySubDir.Count > 1)
+        {
+            subClusters = bySubDir.ToDictionary(g => g.Key, g => g.Select(n => n.ComponentId).ToList());
+        }
+        else
+        {
+             // Fallback to Louvain
+             var louvainResults = await PerformLouvainClusteringAsync(subGraph, module.Components, cancellationToken);
+             subClusters = louvainResults.ToDictionary(k => k.Key.ToString(), v => v.Value);
+        }
 
-        // Recursively decompose the subgraph
-        // Using Louvain again on the subgraph
-        var subClusters = await PerformLouvainClusteringAsync(subGraph, module.Components, cancellationToken);
-
-        // Remove the original module (or mark as non-leaf)
-        // Strategy: Turn 'module' into a parent node, move components to children
-
-        var originalComponents = new HashSet<string>(module.Components);
+        // Logic to split logic...
         module.Components.Clear();
         module.IsLeaf = false;
-        module.EstimatedTokens = 0; // Will be sum of children
+        module.EstimatedTokens = 0; 
 
-        // Add new child modules
-        foreach (var (clusterId, componentIds) in subClusters)
+        foreach (var (clusterKey, componentIds) in subClusters)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var clusterName = $"Part_{clusterId}";
+            var clusterName = $"Part_{clusterKey}";
 
             var childModule = new ModuleNode
             {
-                Id = $"{module.Id}_{clusterName}",
-                Name = $"{module.Name} - {clusterName}",
+                Id = $"{module.Id}_{clusterKey}",
+                Name = $"{module.Name} - {clusterKey}",
                 Level = module.Level + 1,
                 IsLeaf = true
             };
 
             double childTokens = 0;
 
-            // Add components to child module
             foreach (var componentId in componentIds)
             {
                 var node = graph.GetNode(componentId);
@@ -417,20 +502,27 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             module.AddChild(childModule);
             moduleTree.AddNode(childModule);
 
-            // Update parent stats
             module.EstimatedTokens += childTokens;
 
-            // Check if new module needs further splitting
             if (childModule.EstimatedTokens > MaxTokensPerModule) modulesToSplit.Enqueue(childModule);
         }
+    }
+    
+    private string GetCommonPath(IEnumerable<string> paths)
+    {
+        var list = paths.Where(p => !string.IsNullOrEmpty(p)).ToList();
+        if (!list.Any()) return string.Empty;
+        
+        var common = Path.GetDirectoryName(list[0]);
+        while (!string.IsNullOrEmpty(common) && list.Any(p => !p.StartsWith(common)))
+        {
+            common = Path.GetDirectoryName(common);
+        }
+        return common ?? string.Empty;
     }
 
     private async Task OptimizeTreeStructureAsync(ModuleTree tree, CancellationToken cancellationToken)
     {
-        // Balance the tree: Merge small siblings if they are strongly related and sum < MaxTokens
-        // Iterate bottom-up? 
-        // For simplicity, iterate through parents and check children.
-
         foreach (var parent in tree.Nodes.Values.Where(n => !n.IsLeaf).ToList())
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -438,10 +530,6 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             var smallChildren = parent.Children.Where(c => c.EstimatedTokens < MinTokensPerModule).ToList();
             if (smallChildren.Count >= 2)
             {
-                // Try to merge small children
-                // Ideally verify coupling between them before merging
-                // For now, simple merge if size permits
-
                 var merged = new HashSet<ModuleNode>();
 
                 for (var i = 0; i < smallChildren.Count; i++)
@@ -456,7 +544,6 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
 
                         if (c1.EstimatedTokens + c2.EstimatedTokens < MaxTokensPerModule)
                         {
-                            // Merge c2 into c1
                             MergeModules(tree, c1, c2);
                             merged.Add(c2);
                         }
@@ -490,14 +577,12 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     {
         var subGraph = new EnhancedDependencyGraph();
 
-        // Add nodes
         foreach (var componentId in componentIds)
         {
             var node = fullGraph.GetNode(componentId);
             if (node != null) subGraph.AddNode(componentId, node.Metadata);
         }
 
-        // Add edges between included nodes
         foreach (var componentId in componentIds)
         {
             var node = fullGraph.GetNode(componentId);
@@ -519,8 +604,8 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     private void CalculateModuleMetrics(ModuleNode module, EnhancedDependencyGraph graph)
     {
         var internalEdges = 0;
-        var efferentCoupling = 0; // Ce: Outgoing to other modules
-        var afferentCoupling = 0; // Ca: Incoming from other modules
+        var efferentCoupling = 0; 
+        var afferentCoupling = 0; 
 
         var componentCount = module.Components.Count;
         var abstractComponents = 0;
@@ -530,23 +615,19 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             var node = graph.GetNode(componentId);
             if (node == null) continue;
 
-            // Abstractness Check
             if (IsAbstract(node)) abstractComponents++;
 
-            // Outgoing edges (Internal vs Efferent)
             foreach (var neighbor in node.OutEdges)
                 if (module.Components.Contains(neighbor))
                     internalEdges++;
                 else
                     efferentCoupling++;
 
-            // Incoming edges (Afferent)
             foreach (var neighbor in node.InEdges)
                 if (!module.Components.Contains(neighbor))
                     afferentCoupling++;
         }
 
-        // Cohesion (Relational Cohesion)
         double cohesion = 0;
         if (componentCount > 1)
         {
@@ -555,24 +636,20 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         }
         else
         {
-            cohesion = 1.0; // Single component is cohesive
+            cohesion = 1.0;
         }
 
-        // Coupling (Total external connections relative to total)
         double totalEdges = internalEdges + efferentCoupling + afferentCoupling;
         double coupling = 0;
         if (totalEdges > 0) coupling = (efferentCoupling + afferentCoupling) / totalEdges;
 
-        // Instability (I = Ce / (Ca + Ce))
         double instability = 0;
         if (efferentCoupling + afferentCoupling > 0)
             instability = (double)efferentCoupling / (efferentCoupling + afferentCoupling);
 
-        // Abstractness (A = Na / Nc)
         double abstractness = 0;
         if (componentCount > 0) abstractness = (double)abstractComponents / componentCount;
 
-        // Distance from Main Sequence (D = |A + I - 1|)
         var distance = Math.Abs(abstractness + instability - 1);
 
         module.QualityMetrics.Cohesion = cohesion;
@@ -582,7 +659,6 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         module.QualityMetrics.Abstractness = abstractness;
         module.QualityMetrics.DistanceFromMainSequence = distance;
 
-        // Maintainability Index (Simplified)
         module.QualityMetrics.MaintainabilityIndex = Math.Max(0, 100 - coupling * 20 - module.ComplexityScore / 10.0);
     }
 

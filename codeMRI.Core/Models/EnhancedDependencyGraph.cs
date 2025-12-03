@@ -116,6 +116,7 @@ public class NodeMetadata
     public bool IsPublic { get; set; }
     public bool HasDocumentation { get; set; }
     public string FilePath { get; set; } = string.Empty;
+    public string ContentSnippet { get; set; } = string.Empty;
     public double EstimatedTokens { get; set; }
 
     // Enhanced properties for filtering and visualization
