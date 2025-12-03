@@ -63,25 +63,34 @@ public class WikiGenerationServiceTests
             .ReturnsAsync("# TestController\n\nThis is a test controller.");
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
+
+        // Setup Interactive Diagrams
         _mockDiagramGenerator.Setup(x =>
-                x.GenerateSequenceDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>()))
-            .ReturnsAsync("```mermaid\nsequenceDiagram\n    TestController->>TestService: Call\n```");
+                x.GenerateInteractiveSequenceDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>(), It.IsAny<DiagramOptions>()))
+            .ReturnsAsync(new InteractiveDiagram 
+            { 
+                MermaidContent = "sequenceDiagram\n    TestController->>TestService: Call",
+                Type = DiagramType.Sequence 
+            });
         _mockDiagramGenerator.Setup(x =>
-                x.GenerateComponentDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>()))
-            .ReturnsAsync(
-                "```mermaid\nclassDiagram\n    class TestController {\n        +Class\n    }\n    TestController --> TestService\n```");
+                x.GenerateInteractiveComponentDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>(), It.IsAny<DiagramOptions>()))
+            .ReturnsAsync(new InteractiveDiagram 
+            { 
+                MermaidContent = "classDiagram\n    class TestController {\n        +Class\n    }\n    TestController --> TestService",
+                Type = DiagramType.Component
+            });
 
         // Act
         var result = await _service.GeneratePageAsync(pageTitle, filePaths, fileContents);
 
         // Assert
-        Assert.That(result.Content, Does.Contain("## Sequence Diagram"));
+        Assert.That(result.Content, Does.Contain("## Interactive Sequence Diagram"));
         Assert.That(result.Content, Does.Contain("sequenceDiagram"));
-        Assert.That(result.Content, Does.Contain("## Component Diagram"));
+        Assert.That(result.Content, Does.Contain("## Interactive Component Diagram"));
         Assert.That(result.Content, Does.Contain("TestController->>TestService: Call"));
 
-        _mockDiagramGenerator.Verify(x => x.GenerateSequenceDiagramAsync(graph, It.IsAny<string>()), Times.Once);
-        _mockDiagramGenerator.Verify(x => x.GenerateComponentDiagramAsync(graph, It.IsAny<string>()), Times.Once);
+        _mockDiagramGenerator.Verify(x => x.GenerateInteractiveSequenceDiagramAsync(graph, It.IsAny<string>(), It.IsAny<DiagramOptions>()), Times.Once);
+        _mockDiagramGenerator.Verify(x => x.GenerateInteractiveComponentDiagramAsync(graph, It.IsAny<string>(), It.IsAny<DiagramOptions>()), Times.Once);
     }
 
     [Test]
@@ -177,7 +186,7 @@ public class WikiGenerationServiceTests
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _mockDiagramGenerator.Setup(x =>
-                x.GenerateSequenceDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>()))
+                x.GenerateInteractiveSequenceDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>(), It.IsAny<DiagramOptions>()))
             .ThrowsAsync(new Exception("Diagram generation failed"));
 
         // Act
@@ -185,8 +194,8 @@ public class WikiGenerationServiceTests
 
         // Assert
         Assert.That(result.Content, Does.Contain("# TestController"));
-        Assert.That(result.Content, Does.Not.Contain("## Sequence Diagram"));
+        Assert.That(result.Content, Does.Not.Contain("## Interactive Sequence Diagram"));
 
-        _mockDiagramGenerator.Verify(x => x.GenerateSequenceDiagramAsync(graph, It.IsAny<string>()), Times.Once);
+        _mockDiagramGenerator.Verify(x => x.GenerateInteractiveSequenceDiagramAsync(graph, It.IsAny<string>(), It.IsAny<DiagramOptions>()), Times.Once);
     }
 }
