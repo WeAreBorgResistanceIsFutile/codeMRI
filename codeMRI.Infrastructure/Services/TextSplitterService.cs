@@ -1,5 +1,5 @@
 using codeMRI.Core.Interfaces;
-using codeMRI.Shared.Models;
+using codeMRI.Core.Models;
 
 namespace codeMRI.Infrastructure.Services;
 

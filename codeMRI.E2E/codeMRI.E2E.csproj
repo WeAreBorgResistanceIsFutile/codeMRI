@@ -17,8 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\codeMRI.Api\codeMRI.Api.csproj"/>
-        <ProjectReference Include="..\codeMRI.Shared\codeMRI.Shared.csproj"/>
+        <ProjectReference Include="..\codeMRI.Server\codeMRI.Server.csproj" />
     </ItemGroup>
 
 </Project>

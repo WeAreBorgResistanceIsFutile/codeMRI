@@ -1,6 +1,5 @@
-using codeMRI.Shared.Models;
-using codeMRI.Visualization.Interfaces;
-using codeMRI.Visualization.Models;
+using codeMRI.Core.Interfaces;
+using codeMRI.Core.Models;
 
 namespace codeMRI.Visualization.Services;
 

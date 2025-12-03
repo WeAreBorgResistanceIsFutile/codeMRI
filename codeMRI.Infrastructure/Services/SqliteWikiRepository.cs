@@ -1,7 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using codeMRI.Core.Interfaces;
-using codeMRI.Shared.Models;
+using codeMRI.Core.Models;
 using Dapper;
 using Microsoft.Data.Sqlite;
 

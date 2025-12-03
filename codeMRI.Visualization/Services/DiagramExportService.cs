@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.Json;
-using codeMRI.Visualization.Models;
+using codeMRI.Core.Models;
 
 namespace codeMRI.Visualization.Services;
 

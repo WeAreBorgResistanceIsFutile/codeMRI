@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
-using codeMRI.Shared.Models;
+using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
@@ -152,7 +152,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         Dictionary<string, RequirementScore> breakdown,
         Dictionary<string, List<double>> scoresByCategory)
     {
-            if (node is RubricRequirement requirement)
+        if (node is RubricRequirement requirement)
         {
             var score = await _judgeAgent.EvaluateRequirementAsync(page, requirement);
             breakdown[requirement.Title] = score;

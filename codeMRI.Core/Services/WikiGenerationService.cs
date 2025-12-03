@@ -2,10 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 using codeMRI.Core.Interfaces;
-using codeMRI.Shared.Models;
-using codeMRI.Visualization.Interfaces;
-using codeMRI.Visualization.Models;
-using codeMRI.Visualization.Services;
+using codeMRI.Core.Models;
 
 namespace codeMRI.Core.Services;
 
@@ -108,7 +105,7 @@ public class WikiGenerationService : IWikiGenerationService
                 if (!string.IsNullOrEmpty(entryPointId))
                 {
                     // Generate interactive sequence diagram
-                    if (_diagramGenerator is DiagramGeneratorService enhancedGenerator)
+                    if (_diagramGenerator is IDiagramGenerator enhancedGenerator)
                     {
                         var interactiveSequenceDiagram =
                             await enhancedGenerator.GenerateInteractiveSequenceDiagramAsync(graph, entryPointId);
@@ -131,7 +128,7 @@ public class WikiGenerationService : IWikiGenerationService
                     }
 
                     // Generate interactive component diagram
-                    if (_diagramGenerator is DiagramGeneratorService enhancedComponentGenerator)
+                    if (_diagramGenerator is IDiagramGenerator enhancedComponentGenerator)
                     {
                         var interactiveComponentDiagram =
                             await enhancedComponentGenerator.GenerateInteractiveComponentDiagramAsync(graph,

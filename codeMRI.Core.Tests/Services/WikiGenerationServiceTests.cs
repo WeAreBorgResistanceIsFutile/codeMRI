@@ -1,7 +1,6 @@
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Models;
 using codeMRI.Core.Services;
-using codeMRI.Shared.Models;
-using codeMRI.Visualization.Interfaces;
 using Microsoft.Extensions.Logging;
 using Moq;
 

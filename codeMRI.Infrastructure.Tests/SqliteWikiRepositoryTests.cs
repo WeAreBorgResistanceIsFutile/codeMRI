@@ -1,5 +1,5 @@
+using codeMRI.Core.Models;
 using codeMRI.Infrastructure.Services;
-using codeMRI.Shared.Models;
 using FluentAssertions;
 
 namespace codeMRI.Infrastructure.Tests;

@@ -1,9 +1,7 @@
 using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Models;
 using codeMRI.Core.Interfaces;
-using codeMRI.Shared.Models;
-using codeMRI.Visualization.Interfaces;
-using codeMRI.Visualization.Models;
+using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Agents.Services;

@@ -1,7 +1,7 @@
 /.idea/
-/codeMRI.Api/bin/
-/codeMRI.Api/obj/
-/codeMRI.Api/data/
+/codeMRI.Server/bin/
+/codeMRI.Server/obj/
+/codeMRI.Server/data/
 /codeMRI.Shared/bin/
 /codeMRI.Shared/obj/
 /codeMRI.Core/bin/
@@ -12,8 +12,8 @@
 /codeMRI.Infrastructure/obj/
 /codeMRI.Infrastructure.Tests/bin/
 /codeMRI.Infrastructure.Tests/obj/
-/codeMRI.Web/bin/
-/codeMRI.Web/obj/
+/codeMRI.Frontend/bin/
+/codeMRI.Frontend/obj/
 /codeMRI.E2E/bin/
 /codeMRI.E2E/obj/
 /codeMRI.ASTService/build/
@@ -26,5 +26,7 @@
 /codeMRI.Visualization/obj/
 /codeMRI.Visualization.Tests/bin/
 /codeMRI.Visualization.Tests/obj/
+/codeMRI.Server.Api/bin/
+/codeMRI.Server.Api/obj/
 /data/
 /TestResults/

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Qdrant.Client;
 using Testcontainers.Qdrant;
-using Document = codeMRI.Shared.Models.Document;
+using Document = codeMRI.Core.Models.Document;
 
 namespace codeMRI.Infrastructure.Tests;
 

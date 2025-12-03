@@ -1,6 +1,5 @@
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
-using codeMRI.Shared.Models;
 
 namespace codeMRI.Core.Tests.Services;
 

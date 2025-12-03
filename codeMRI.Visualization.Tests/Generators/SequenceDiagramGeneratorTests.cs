@@ -1,4 +1,4 @@
-using codeMRI.Shared.Models;
+using codeMRI.Core.Models;
 using codeMRI.Visualization.Services;
 
 namespace codeMRI.Visualization.Tests.Generators;

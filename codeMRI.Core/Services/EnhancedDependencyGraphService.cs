@@ -1,9 +1,8 @@
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
-using codeMRI.Shared.Models;
 using Microsoft.Extensions.Logging;
-using ModuleTree = codeMRI.Shared.Models.ModuleTree;
-using ModuleNode = codeMRI.Shared.Models.ModuleNode;
+using ModuleTree = codeMRI.Core.Models.ModuleTree;
+using ModuleNode = codeMRI.Core.Models.ModuleNode;
 
 namespace codeMRI.Core.Services;
 

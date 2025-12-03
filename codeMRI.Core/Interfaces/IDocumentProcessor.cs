@@ -1,6 +1,6 @@
-using codeMRI.Shared.Models;
-
 namespace codeMRI.Core.Interfaces;
+
+using Models;
 
 public interface IDocumentProcessor
 {

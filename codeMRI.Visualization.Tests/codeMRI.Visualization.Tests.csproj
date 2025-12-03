@@ -24,7 +24,6 @@
     <ItemGroup>
         <ProjectReference Include="..\codeMRI.Visualization\codeMRI.Visualization.csproj"/>
         <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj"/>
-        <ProjectReference Include="..\codeMRI.Shared\codeMRI.Shared.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

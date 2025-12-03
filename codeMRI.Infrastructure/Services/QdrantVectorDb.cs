@@ -3,7 +3,7 @@ using codeMRI.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
-using Document = codeMRI.Shared.Models.Document;
+using Document = codeMRI.Core.Models.Document;
 
 namespace codeMRI.Infrastructure.Services;
 

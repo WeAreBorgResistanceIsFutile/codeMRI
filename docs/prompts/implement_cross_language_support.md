@@ -1,4 +1,4 @@
-You are an expert software architect and developer practicing **Test-Driven Development (TDD)**. Your task is to implement **Cross-Language Support** for all 7 programming languages in `codeMRI`.
+~~You are an expert software architect and developer practicing **Test-Driven Development (TDD)**. Your task is to implement **Cross-Language Support** for all 7 programming languages in `codeMRI`.
 
 ## Context
 The current system has AST parsers for all 7 languages, but lacks unified cross-language processing and consistency. We need to implement the complete multilingual support described in CodeWiki, including unified dependency graph construction.
@@ -53,4 +53,4 @@ The current system has AST parsers for all 7 languages, but lacks unified cross-
 - **Consistency Tests**: Test documentation quality consistency across languages
 - **Benchmark Tests**: Test against CodeWiki repository benchmark set
 
-Generate the code for test files first, then the implementation files, following TDD principles. Include comprehensive test coverage for all language-specific scenarios and cross-language integration.
+Generate the code for test files first, then the implementation files, following TDD principles. Include comprehensive test coverage for all language-specific scenarios and cross-language integration.~~

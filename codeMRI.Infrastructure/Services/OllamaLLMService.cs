@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using codeMRI.Core.Interfaces;
 using codeMRI.Infrastructure.Configuration;
-using codeMRI.Shared.Models;
 using Microsoft.Extensions.Options;
 
 namespace codeMRI.Infrastructure.Services;
