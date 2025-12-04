@@ -123,7 +123,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         if (page == null) throw new ArgumentNullException(nameof(page));
         if (rubric == null) throw new ArgumentNullException(nameof(rubric));
 
-        _logger.LogInformation("Starting judge-based evaluation for page: {PageTitle}", page.Title);
+        _logger.LogInformation("Starting single judge-based evaluation for page: {PageTitle}", page.Title);
 
         var breakdown = new Dictionary<string, RequirementScore>();
         var scoresByCategory = new Dictionary<string, List<double>>();
@@ -140,10 +140,276 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             StandardDeviation = stdDeviation
         };
 
-        _logger.LogInformation("Judge-based evaluation completed with score: {Score} and reliability: {Reliability}",
+        _logger.LogInformation("Single judge-based evaluation completed with score: {Score} and reliability: {Reliability}",
             overallScore, reliability);
 
         return qualityScore;
+    }
+
+    public async Task<ConsensusQualityScore> EvaluateWithMultipleJudgesAsync(WikiPage page, EvaluationRubric rubric, List<IJudgeAgent> judges)
+    {
+        if (page == null) throw new ArgumentNullException(nameof(page));
+        if (rubric == null) throw new ArgumentNullException(nameof(rubric));
+        if (judges == null || !judges.Any())
+            throw new ArgumentException("At least one judge agent must be provided", nameof(judges));
+
+        _logger.LogInformation("Starting multi-judge consensus evaluation for page: {PageTitle} with {JudgeCount} judges", 
+            page.Title, judges.Count);
+
+        const int MINIMUM_JUDGES_REQUIRED = 3;
+        var meetsMinimumRequirement = judges.Count >= MINIMUM_JUDGES_REQUIRED;
+
+        var individualScores = new List<IndividualJudgeScore>();
+        var allJudgeScores = new List<double>();
+        var judgeReliabilities = new Dictionary<string, double>();
+
+        // Evaluate with each judge
+        for (int i = 0; i < judges.Count; i++)
+        {
+            var judge = judges[i];
+            var judgeId = $"Judge_{i + 1}";
+            
+            try
+            {
+                _logger.LogInformation("Evaluating with {JudgeId}", judgeId);
+                
+                var score = await EvaluateWithSpecificJudgeAsync(page, rubric, judge);
+                
+                var individualScore = new IndividualJudgeScore
+                {
+                    JudgeId = judgeId,
+                    OverallScore = score.OverallScore,
+                    Breakdown = score.Breakdown ?? new Dictionary<string, RequirementScore>(),
+                    Reliability = score.Reliability,
+                    StandardDeviation = score.StandardDeviation ?? new Dictionary<string, double>()
+                };
+                
+                individualScores.Add(individualScore);
+                allJudgeScores.Add(score.OverallScore);
+                judgeReliabilities[judgeId] = score.Reliability;
+                
+                _logger.LogInformation("{JudgeId} completed evaluation with score: {Score}, reliability: {Reliability}", 
+                    judgeId, score.OverallScore, score.Reliability);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error evaluating with {JudgeId}", judgeId);
+                // Continue with other judges even if one fails
+                continue;
+            }
+        }
+
+        if (!individualScores.Any())
+        {
+            throw new InvalidOperationException("All judge evaluations failed");
+        }
+
+        // Calculate consensus metrics
+        var consensusScore = CalculateConsensusScore(individualScores);
+        var consensusStatus = DetermineConsensusStatus(individualScores, meetsMinimumRequirement);
+
+        var consensusQualityScore = new ConsensusQualityScore
+        {
+            OverallScore = consensusScore.WeightedAverageScore,
+            JudgeCount = individualScores.Count,
+            JudgeReliabilities = judgeReliabilities,
+            ConsensusScore = consensusScore.ConsensusValue,
+            IndividualScores = individualScores,
+            MeetsMinimumJudgeRequirement = meetsMinimumRequirement,
+            ConsensusStatus = consensusStatus,
+            Reliability = consensusScore.OverallReliability,
+            StandardDeviation = consensusScore.CategoryStandardDeviations
+        };
+
+        // Aggregate breakdown scores across all judges
+        consensusQualityScore.Breakdown = AggregateJudgeBreakdowns(individualScores);
+
+        _logger.LogInformation("Multi-judge consensus evaluation completed. Overall: {OverallScore}, Consensus: {ConsensusScore}, Status: {Status}",
+            consensusQualityScore.OverallScore, consensusQualityScore.ConsensusScore, consensusQualityScore.ConsensusStatus);
+
+        return consensusQualityScore;
+    }
+
+    private async Task<QualityScore> EvaluateWithSpecificJudgeAsync(WikiPage page, EvaluationRubric rubric, IJudgeAgent judge)
+    {
+        var breakdown = new Dictionary<string, RequirementScore>();
+        var scoresByCategory = new Dictionary<string, List<double>>();
+
+        var overallScore = await EvaluateRubricNodeWithJudgeAsync(page, rubric, breakdown, scoresByCategory, judge);
+
+        var (reliability, stdDeviation) = CalculateReliabilityMetrics(scoresByCategory);
+
+        return new QualityScore
+        {
+            OverallScore = overallScore,
+            Breakdown = breakdown,
+            Reliability = reliability,
+            StandardDeviation = stdDeviation
+        };
+    }
+
+    private async Task<double> EvaluateRubricNodeWithJudgeAsync(
+        WikiPage page,
+        RubricNode node,
+        Dictionary<string, RequirementScore> breakdown,
+        Dictionary<string, List<double>> scoresByCategory,
+        IJudgeAgent judge)
+    {
+        if (node is RubricRequirement requirement)
+        {
+            var score = await judge.EvaluateRequirementAsync(page, requirement);
+            breakdown[requirement.Title] = score;
+
+            var category = GetParentCategory(node);
+            if (!scoresByCategory.ContainsKey(category))
+                scoresByCategory[category] = new List<double>();
+            scoresByCategory[category].Add(score.Score);
+
+            return score.Score;
+        }
+
+        if (node.Children != null && node.Children.Any())
+        {
+            var childScores = new List<double>();
+            var childWeights = new List<double>();
+
+            foreach (var child in node.Children)
+            {
+                var childScore = await EvaluateRubricNodeWithJudgeAsync(page, child, breakdown, scoresByCategory, judge);
+                childScores.Add(childScore);
+                childWeights.Add(child.Weight);
+            }
+
+            return CalculateWeightedAverage(childScores, childWeights);
+        }
+
+        return 0.0;
+    }
+
+    private (double WeightedAverageScore, double ConsensusValue, double OverallReliability, Dictionary<string, double> CategoryStandardDeviations) 
+        CalculateConsensusScore(List<IndividualJudgeScore> individualScores)
+    {
+        if (!individualScores.Any())
+            return (0.0, 0.0, 0.0, new Dictionary<string, double>());
+
+        var scores = individualScores.Select(s => s.OverallScore).ToList();
+        var reliabilities = individualScores.Select(s => s.Reliability).ToList();
+
+        // Calculate reliability-weighted average score
+        var totalReliabilityWeight = reliabilities.Sum();
+        var weightedAverageScore = totalReliabilityWeight > 0 
+            ? scores.Zip(reliabilities, (score, reliability) => score * reliability).Sum() / totalReliabilityWeight
+            : scores.Average();
+
+        // Calculate consensus value based on score agreement
+        var meanScore = scores.Average();
+        var scoreVariance = scores.Select(s => Math.Pow(s - meanScore, 2)).Average();
+        var scoreStandardDeviation = Math.Sqrt(scoreVariance);
+        var scoreRange = scores.Max() - scores.Min();
+        
+        // Consensus value: 1.0 = perfect agreement, 0.0 = no agreement
+        var consensusValue = scoreRange > 0 ? Math.Max(0, 1.0 - (scoreStandardDeviation / scoreRange)) : 1.0;
+
+        // Overall reliability combines individual reliabilities with consensus
+        var averageIndividualReliability = reliabilities.Average();
+        var overallReliability = averageIndividualReliability * consensusValue;
+
+        // Calculate category-level standard deviations
+        var categoryStandardDeviations = CalculateCategoryStandardDeviations(individualScores);
+
+        return (weightedAverageScore, consensusValue, overallReliability, categoryStandardDeviations);
+    }
+
+    private Dictionary<string, double> CalculateCategoryStandardDeviations(List<IndividualJudgeScore> individualScores)
+    {
+        var categoryStandardDeviations = new Dictionary<string, double>();
+        
+        if (!individualScores.Any())
+            return categoryStandardDeviations;
+
+        // Collect all requirement categories across all judges
+        var allCategories = individualScores
+            .SelectMany(score => score.Breakdown.Keys)
+            .Distinct()
+            .ToList();
+
+        foreach (var category in allCategories)
+        {
+            var categoryScores = individualScores
+                .Where(score => score.Breakdown.ContainsKey(category))
+                .Select(score => score.Breakdown[category].Score)
+                .ToList();
+
+            if (categoryScores.Count > 1)
+            {
+                var mean = categoryScores.Average();
+                var variance = categoryScores.Select(s => Math.Pow(s - mean, 2)).Average();
+                var stdDev = Math.Sqrt(variance);
+                categoryStandardDeviations[category] = stdDev;
+            }
+            else
+            {
+                categoryStandardDeviations[category] = 0.0;
+            }
+        }
+
+        return categoryStandardDeviations;
+    }
+
+    private string DetermineConsensusStatus(List<IndividualJudgeScore> individualScores, bool meetsMinimumRequirement)
+    {
+        if (!meetsMinimumRequirement)
+            return "Insufficient Judges (Minimum 3 Required)";
+
+        if (!individualScores.Any())
+            return "No Valid Evaluations";
+
+        var scores = individualScores.Select(s => s.OverallScore).ToList();
+        var scoreRange = scores.Max() - scores.Min();
+
+        if (scoreRange <= 10.0) // High agreement
+            return "Strong Consensus";
+        else if (scoreRange <= 25.0) // Moderate agreement
+            return "Moderate Consensus";
+        else // Low agreement
+            return "Low Consensus";
+    }
+
+    private Dictionary<string, RequirementScore> AggregateJudgeBreakdowns(List<IndividualJudgeScore> individualScores)
+    {
+        var aggregatedBreakdown = new Dictionary<string, RequirementScore>();
+
+        if (!individualScores.Any())
+            return aggregatedBreakdown;
+
+        // Get all unique requirement titles across all judges
+        var allRequirementTitles = individualScores
+            .SelectMany(score => score.Breakdown.Keys)
+            .Distinct()
+            .ToList();
+
+        foreach (var requirementTitle in allRequirementTitles)
+        {
+            var requirementScores = individualScores
+                .Where(score => score.Breakdown.ContainsKey(requirementTitle))
+                .Select(score => score.Breakdown[requirementTitle])
+                .ToList();
+
+            if (requirementScores.Any())
+            {
+                var averageScore = requirementScores.Average(rs => rs.Score);
+                var combinedReasoning = string.Join(" | ", requirementScores.Select(rs => rs.Reasoning).Where(r => !string.IsNullOrWhiteSpace(r)));
+
+                aggregatedBreakdown[requirementTitle] = new RequirementScore
+                {
+                    RequirementId = requirementTitle,
+                    Score = averageScore,
+                    Reasoning = $"Aggregated from {requirementScores.Count} judges: {combinedReasoning}"
+                };
+            }
+        }
+
+        return aggregatedBreakdown;
     }
 
     private async Task<double> EvaluateRubricNodeAsync(
@@ -186,11 +452,15 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
     private static double CalculateWeightedAverage(List<double> scores, List<double> weights)
     {
         if (!scores.Any() || !weights.Any() || scores.Count != weights.Count)
+        {
             return 0.0;
+        }
 
         var totalWeight = weights.Sum();
         if (totalWeight <= 0.0)
+        {
             return 0.0;
+        }
 
         var weightedSum = scores.Select((score, index) => score * weights[index]).Sum();
         return weightedSum / totalWeight;

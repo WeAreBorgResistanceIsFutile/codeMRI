@@ -10,6 +10,10 @@ public interface IEvaluationMetricsSystem
     Task<CoverageMetrics> CalculateCoverageMetricsAsync(List<WikiPage> pages, List<CodeComponent> components);
     Task<ReadabilityMetrics> AnalyzeReadabilityAsync(List<WikiPage> pages);
     Task<BenchmarkReport> GenerateBenchmarkReportAsync(string repositoryPath, DocumentationQualityMetrics metrics);
+    
+    // Multi-judge consensus evaluation methods
+    Task<ConsensusQualityScore> EvaluateWithMultipleJudgesAsync(WikiPage page, EvaluationRubric rubric, List<IJudgeAgent> judges);
+    Task<QualityScore> EvaluateWithJudgesAsync(WikiPage page, EvaluationRubric rubric);
 }
 
 public class DocumentationQualityMetrics
@@ -83,4 +87,23 @@ public class BenchmarkComparison
     public double IndustryAverage { get; set; }
     public double Percentile { get; set; }
     public string Status { get; set; } = string.Empty; // Excellent, Good, Average, Poor
+}
+
+public class ConsensusQualityScore : QualityScore
+{
+    public int JudgeCount { get; set; }
+    public Dictionary<string, double> JudgeReliabilities { get; set; } = new();
+    public double ConsensusScore { get; set; }
+    public List<IndividualJudgeScore> IndividualScores { get; set; } = new();
+    public bool MeetsMinimumJudgeRequirement { get; set; }
+    public string ConsensusStatus { get; set; } = string.Empty;
+}
+
+public class IndividualJudgeScore
+{
+    public string JudgeId { get; set; } = string.Empty;
+    public double OverallScore { get; set; }
+    public Dictionary<string, RequirementScore> Breakdown { get; set; } = new();
+    public double Reliability { get; set; }
+    public Dictionary<string, double> StandardDeviation { get; set; } = new();
 }

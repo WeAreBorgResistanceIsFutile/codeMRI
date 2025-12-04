@@ -27,9 +27,7 @@ public class RepositoryInfo
 
 public class EvaluationRubric : RubricNode
 {
-    public new string Title { get; set; } = string.Empty;
-    public new double Weight { get; set; }
-    public new List<RubricNode>? Children { get; set; }
+    // No need to hide base properties - use them directly
 }
 
 public abstract class RubricNode
@@ -42,11 +40,11 @@ public abstract class RubricNode
 
 public class RubricCategory : RubricNode
 {
-    public new List<RubricNode>? Children { get; set; }
+    // No need to hide base properties - use them directly
 }
 
 public class RubricRequirement : RubricNode
 {
     public string Description { get; set; } = string.Empty;
-    public new List<RubricNode>? Children { get; set; }
+    // No need to hide base properties - use them directly
 }
