@@ -405,13 +405,13 @@ public class EvaluationMetricsSystemWithJudgesTests
     public async Task EvaluateWithMultipleJudgesAsync_NullPage_ThrowsArgumentNullException()
     {
         // Arrange
-        WikiPage page = null;
+        WikiPage? page = null;
         var rubric = CreateTestEvaluationRubric();
         var judges = new List<IJudgeAgent> { CreateMockJudge("Judge1", 85.0) };
 
         // Act & Assert
         await ThrowsAsync<ArgumentNullException>(
-            () => _service.EvaluateWithMultipleJudgesAsync(page, rubric, judges));
+            () => _service.EvaluateWithMultipleJudgesAsync(page!, rubric, judges));
     }
 
     [Test]
@@ -419,12 +419,12 @@ public class EvaluationMetricsSystemWithJudgesTests
     {
         // Arrange
         var page = CreateTestWikiPage();
-        EvaluationRubric rubric = null;
+        EvaluationRubric? rubric = null;
         var judges = new List<IJudgeAgent> { CreateMockJudge("Judge1", 85.0) };
 
         // Act & Assert
         await ThrowsAsync<ArgumentNullException>(
-            () => _service.EvaluateWithMultipleJudgesAsync(page, rubric, judges));
+            () => _service.EvaluateWithMultipleJudgesAsync(page, rubric!, judges));
     }
 
     [Test]
@@ -649,7 +649,7 @@ public class EvaluationMetricsSystemWithJudgesTests
         try
         {
             await action();
-            return null;
+            return null!;
         }
         catch (T ex)
         {

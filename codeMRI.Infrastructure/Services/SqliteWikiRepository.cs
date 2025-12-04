@@ -24,7 +24,7 @@ public class SqliteWikiRepository : IWikiRepository
         var json = JsonSerializer.Serialize(structure);
 
         await connection.ExecuteAsync(@"
-            INSERT INTO WikiStructures (RepoId, JsonContent) 
+            INSERT INTO WikiStructures (RepoId, JsonContent)
             VALUES (@RepoId, @Json)
             ON CONFLICT(RepoId) DO UPDATE SET JsonContent = @Json",
             new { RepoId = repoId, Json = json });
@@ -57,9 +57,9 @@ public class SqliteWikiRepository : IWikiRepository
         var json = JsonSerializer.Serialize(page);
 
         await connection.ExecuteAsync(@"
-            INSERT INTO WikiPages (RepoId, PageId, Title, JsonContent) 
+            INSERT INTO WikiPages (RepoId, PageId, Title, JsonContent)
             VALUES (@RepoId, @PageId, @Title, @Json)
-            ON CONFLICT(RepoId, PageId) DO UPDATE SET 
+            ON CONFLICT(RepoId, PageId) DO UPDATE SET
                 Title = @Title,
                 JsonContent = @Json",
             new { RepoId = repoId, PageId = page.Id, page.Title, Json = json });
@@ -109,7 +109,7 @@ public class SqliteWikiRepository : IWikiRepository
         var json = JsonSerializer.Serialize(manifest);
 
         await connection.ExecuteAsync(@"
-            INSERT INTO IngestionManifests (RepoId, JsonContent) 
+            INSERT INTO IngestionManifests (RepoId, JsonContent)
             VALUES (@RepoId, @Json)
             ON CONFLICT(RepoId) DO UPDATE SET JsonContent = @Json",
             new { RepoId = repoId, Json = json });
@@ -135,6 +135,42 @@ public class SqliteWikiRepository : IWikiRepository
         var repoId = await GetRepoIdAsync(connection, repoPath);
         if (repoId != null)
             await connection.ExecuteAsync("DELETE FROM IngestionManifests WHERE RepoId = @RepoId",
+                new { RepoId = repoId });
+    }
+
+    public async Task SaveIngestionProcessingStateAsync(string repoPath, IngestionProcessingState state)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetOrCreateRepoIdAsync(connection, repoPath);
+        var json = JsonSerializer.Serialize(state);
+
+        await connection.ExecuteAsync(@"
+            INSERT INTO IngestionProcessingStates (RepoId, JsonContent)
+            VALUES (@RepoId, @Json)
+            ON CONFLICT(RepoId) DO UPDATE SET JsonContent = @Json",
+            new { RepoId = repoId, Json = json });
+    }
+
+    public async Task<IngestionProcessingState> GetIngestionProcessingStateAsync(string repoPath)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId == null) return new IngestionProcessingState();
+
+        var json = await connection.QuerySingleOrDefaultAsync<string>(
+            "SELECT JsonContent FROM IngestionProcessingStates WHERE RepoId = @RepoId", new { RepoId = repoId });
+
+        return json == null
+            ? new IngestionProcessingState()
+            : JsonSerializer.Deserialize<IngestionProcessingState>(json) ?? new IngestionProcessingState();
+    }
+
+    public async Task DeleteIngestionProcessingStateAsync(string repoPath)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId != null)
+            await connection.ExecuteAsync("DELETE FROM IngestionProcessingStates WHERE RepoId = @RepoId",
                 new { RepoId = repoId });
     }
 
@@ -169,6 +205,12 @@ public class SqliteWikiRepository : IWikiRepository
             );
 
             CREATE TABLE IF NOT EXISTS IngestionManifests (
+                RepoId INTEGER PRIMARY KEY,
+                JsonContent TEXT NOT NULL,
+                FOREIGN KEY(RepoId) REFERENCES Repositories(Id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS IngestionProcessingStates (
                 RepoId INTEGER PRIMARY KEY,
                 JsonContent TEXT NOT NULL,
                 FOREIGN KEY(RepoId) REFERENCES Repositories(Id) ON DELETE CASCADE

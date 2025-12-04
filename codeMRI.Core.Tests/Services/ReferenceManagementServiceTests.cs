@@ -48,8 +48,8 @@ public class ReferenceManagementServiceTests
 
         // Assert
         var component = _service.GetComponent(id);
-        Assert.That(component.Name, Is.EqualTo("NewName"));
-        Assert.That(component.DocPath, Is.EqualTo("newdoc"));
+        Assert.That(component!.Name, Is.EqualTo("NewName"));
+        Assert.That(component!.DocPath, Is.EqualTo("newdoc"));
     }
 
     [Test]
@@ -157,7 +157,7 @@ public class ReferenceManagementServiceTests
 
         // Assert
         var source = _service.GetComponent(sourceId);
-        Assert.That(source.RelatedComponentIds, Contains.Item(targetId));
+        Assert.That(source!.RelatedComponentIds, Contains.Item(targetId));
     }
     
     [Test]

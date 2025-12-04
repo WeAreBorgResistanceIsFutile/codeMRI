@@ -16,4 +16,19 @@ public interface IWikiRepository
     Task SaveIngestionManifestAsync(string repoPath, Dictionary<string, string> manifest);
     Task<Dictionary<string, string>> GetIngestionManifestAsync(string repoPath);
     Task DeleteIngestionManifestAsync(string repoPath);
+
+    /// <summary>
+    /// Saves the processing state for a repository ingestion
+    /// </summary>
+    Task SaveIngestionProcessingStateAsync(string repoPath, IngestionProcessingState state);
+
+    /// <summary>
+    /// Gets the processing state for a repository ingestion
+    /// </summary>
+    Task<IngestionProcessingState> GetIngestionProcessingStateAsync(string repoPath);
+
+    /// <summary>
+    /// Deletes the processing state for a repository ingestion
+    /// </summary>
+    Task DeleteIngestionProcessingStateAsync(string repoPath);
 }
