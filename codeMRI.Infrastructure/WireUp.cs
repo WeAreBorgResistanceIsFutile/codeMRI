@@ -30,5 +30,7 @@ public class WireUp
         services.AddScoped<RAGService>();
         services.AddScoped<IWikiGenerationService, WikiGenerationService>();
         services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
+        services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();
+        services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();
     }
 }

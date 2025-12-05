@@ -1,0 +1,91 @@
+@using codeMRI.Frontend.Services
+@using codeMRI.Server.Api
+@inject AppState AppState
+@inject WikiApiClient WikiApi
+
+<div class="wiki-tree h-100 d-flex flex-column">
+    <div class="p-2 border-bottom">
+        <input @bind="searchTerm" @bind:event="oninput" class="form-control form-control-sm" placeholder="Filter..." />
+    </div>
+    
+    <div class="flex-grow-1 overflow-auto p-2">
+        @if (AppState.Structure == null)
+        {
+            <div class="text-muted small text-center mt-4">No structure generated.</div>
+        }
+        else
+        {
+            <ul class="list-unstyled">
+                @foreach (var wikiSection in FilteredSections)
+                {
+                    <li class="mb-3">
+                        <div class="section-title">@wikiSection.Title</div>
+                        <ul class="ps-2 border-start ms-1">
+                            @foreach (var pageRef in wikiSection.PageRefs.Where(p => string.IsNullOrEmpty(searchTerm) || p.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                <li class="@(AppState.CurrentPage?.Title == pageRef ? "active" : "")" 
+                                    @onclick="() => LoadPage(pageRef)">
+                                    @pageRef
+                                </li>
+                            }
+                        </ul>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+</div>
+
+@code {
+    private string searchTerm = "";
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+    
+    private IEnumerable<WikiSection> FilteredSections
+    {
+        get
+        {
+            if (AppState.Structure == null) return Enumerable.Empty<WikiSection>();
+            
+            if (string.IsNullOrWhiteSpace(searchTerm))
+                return AppState.Structure.Sections;
+
+            // Simple filter: Show section if title matches OR if it contains matching pages
+            return AppState.Structure.Sections.Where(s => 
+                s.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                s.PageRefs.Any(p => p.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+            );
+        }
+    }
+
+    private async Task LoadPage(string pageTitle)
+    {
+        if (AppState.IsBusy) return;
+
+        AppState.SetBusy(true, $"Loading '{pageTitle}'...");
+        
+        try
+        {
+            // Pass the repo path so the backend can resolve files
+            var page = await WikiApi.GeneratePageAsync(AppState.RepoPath, pageTitle, new List<string>());
+            AppState.SetCurrentPage(page);
+        }
+        catch (Exception ex)
+        {
+            // In a real app, we'd show a toast or error state
+            Console.WriteLine($"Error loading page: {ex.Message}");
+        }
+        finally
+        {
+            AppState.SetBusy(false);
+        }
+    }
+}

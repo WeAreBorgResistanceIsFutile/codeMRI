@@ -102,7 +102,9 @@ public class WikiGenerationService : IWikiGenerationService
         // Generate enhanced interactive diagrams if we have a dependency graph
         try
         {
-            var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), CancellationToken.None);
+            // Optimization: Set a strict timeout for graph generation to avoid hanging page loads
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), cts.Token);
             if (graph.NodeCount > 0)
             {
                 // Try to find a component that matches the page title or file paths

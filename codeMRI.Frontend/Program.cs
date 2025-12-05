@@ -12,5 +12,6 @@ var apiUrl = "http://localhost:5247";
 
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(apiUrl) });
 builder.Services.AddScoped<WikiApiClient>();
+builder.Services.AddScoped<AppState>();
 
 await builder.Build().RunAsync();

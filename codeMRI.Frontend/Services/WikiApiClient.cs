@@ -35,24 +35,11 @@ public class WikiApiClient
         return await response.Content.ReadFromJsonAsync<WikiStructure>() ?? new WikiStructure();
     }
 
-    public async Task<WikiPage> GeneratePageAsync(string title, List<string> filePaths)
+    public async Task<WikiPage> GeneratePageAsync(string repoPath, string title, List<string> filePaths)
     {
-        // For MVP, we assume the backend or ingest process handles content retrieval if not passed
-        // But our API expects FileContents. Since we ingested them, we might need an API to fetch file content 
-        // OR let the backend handle it.
-        // The current WikiController expects FileContents in the request. 
-        // This means the Client needs to provide them. 
-        // BUT, the client (Blazor) doesn't have access to the files directly if they are on the server (for IngestController).
-        // Wait, IngestController runs on Server. Blazor runs in Browser. 
-        // If the user enters a local path on the server machine, the Browser cannot read those files.
-        // So the Backend must use the stored files in VectorDB or read from disk.
-
-        // Refactoring thought: The WikiGenerationService should probably fetch content from the VectorDB/Disk 
-        // if not provided. 
-        // However, keeping it simple: I will modify WikiController to load content if missing. 
-
         var response = await _httpClient.PostAsJsonAsync("api/wiki/page", new PageGenerationRequest
         {
+            RepoPath = repoPath,
             Title = title,
             FilePaths = filePaths
         });
@@ -65,21 +52,18 @@ public class WikiApiClient
         var request = new ChatRequest { Query = query, History = history };
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/chat");
         httpRequest.Content = JsonContent.Create(request);
-        httpRequest.SetBrowserResponseStreamingEnabled(true); // Enable streaming in WASM
+        httpRequest.SetBrowserResponseStreamingEnabled(true);
 
         using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
 
         using var stream = await response.Content.ReadAsStreamAsync();
-        using var reader = new StreamReader(stream);
-
-        while (!reader.EndOfStream)
+        var buffer = new byte[1024];
+        int bytesRead;
+        while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
         {
-            var line = await reader.ReadLineAsync(); // This might buffer line by line
-            // If the server sends raw text chunks, ReadLine might block until newline.
-            // ChatController writes chunks. Ideally we read char buffer.
-            // But for simplicity let's assume chunks come with newlines or we read block.
-            if (!string.IsNullOrEmpty(line)) yield return line + "\n";
+            var chunk = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
+            yield return chunk;
         }
     }
 }

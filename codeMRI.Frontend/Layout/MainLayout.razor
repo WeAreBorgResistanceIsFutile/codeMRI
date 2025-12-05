@@ -1,7 +1,37 @@
 @inherits LayoutComponentBase
+@using codeMRI.Frontend.Services
+@inject AppState AppState
+@implements IDisposable
 
-<div class="page">
-    <main>
-        @Body
-    </main>
+<div class="top-bar">
+    <div class="brand">codeMRI</div>
+    <div class="context" title="Current Repository">
+        @AppState.RepoPath
+    </div>
+    
+    <div class="actions">
+        <div class="d-flex align-items-center me-3">
+             <span class="status-indicator @(AppState.IsBusy ? "busy" : "")" title="@AppState.BusyMessage"></span>
+             @if (AppState.IsBusy)
+             {
+                 <span class="small ms-2 text-light">@AppState.BusyMessage</span>
+             }
+        </div>
+    </div>
 </div>
+
+<div class="workspace-container" style="height: calc(100vh - 48px); overflow: hidden;">
+    @Body
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+}

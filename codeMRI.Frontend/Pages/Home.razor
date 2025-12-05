@@ -1,267 +1,119 @@
 @page "/"
 @using codeMRI.Frontend.Services
-@using codeMRI.Server.Api
+@using codeMRI.Frontend.Components
 @using Markdig
-@inject WikiApiClient WikiApi
+@inject AppState AppState
 @inject IJSRuntime JS
+@implements IDisposable
 
-<PageTitle>codeMRI</PageTitle>
+<div class="workspace-grid">
+    <!-- Left Sidebar: Navigation -->
+    <div class="pane">
+        <div class="pane-header">Explorer</div>
+        <div class="pane-content p-0">
+            <WikiTree />
+        </div>
+    </div>
 
-<div class="container-fluid">
-    <div class="row">
-        <!-- Sidebar -->
-        <div class="col-md-3 bg-light sidebar p-3" style="min-height: 100vh;">
-            <h3>codeMRI</h3>
-
-            <div class="mb-3">
-                <label>Repository Path (Local)</label>
-                <input @bind="repoPath" class="form-control" placeholder="/path/to/repo"/>
-            </div>
-
-            <div class="d-grid gap-2 mb-2">
-                <button class="btn btn-primary" @onclick="() => IngestRepo()" disabled="@isBusy">
-                    @(isBusy ? "Processing..." : "1. Smart Ingest")
-                </button>
-                <div class="btn-group" role="group">
-                    <button class="btn btn-warning" @onclick="() => IngestRepo(true)" disabled="@isBusy">
-                        Force Re-ingest
-                    </button>
-                    <button class="btn btn-danger" @onclick="() => IngestRepo(false, true)" disabled="@isBusy">
-                        Delete Data
-                    </button>
-                </div>
-            </div>
-
-            <div class="form-check mb-2">
-                <input class="form-check-input" type="checkbox" @bind="forceStructureRegen" id="forceRegenCheck">
-                <label class="form-check-label" for="forceRegenCheck">
-                    Force Regenerate
-                </label>
-            </div>
-
-            <button class="btn btn-secondary w-100 mb-4" @onclick="GenerateStructure"
-                    disabled="@(isBusy || string.IsNullOrEmpty(repoPath))">
-                2. Generate Structure
-            </button>
-
-            @if (structure != null)
+    <!-- Center Stage: Document / Dashboard -->
+    <div class="pane">
+        <div class="pane-header">
+            <span>@(AppState.CurrentPage?.Title ?? "Dashboard")</span>
+            @if (AppState.CurrentPage != null)
             {
-                <h5>Structure</h5>
-                <ul class="list-unstyled">
-                    @foreach (var wikiSection in structure.Sections)
-                    {
-                        <li class="mb-2">
-                            <strong>@wikiSection.Title</strong>
-                            <ul class="ps-3">
-                                @foreach (var pageRef in wikiSection.PageRefs)
-                                {
-                                    <li>
-                                        <a href="javascript:void(0)" @onclick="() => LoadPage(pageRef)">
-                                            @pageRef
-                                        </a>
-                                    </li>
-                                }
-                            </ul>
-                        </li>
-                    }
-                </ul>
+                <button class="btn btn-sm btn-light border" @onclick="ClosePage">Close</button>
             }
         </div>
-
-        <!-- Main Content -->
-        <div class="col-md-9 p-4">
-            @if (!string.IsNullOrEmpty(message))
+        <div class="pane-content scroll-y">
+            @if (AppState.CurrentPage == null)
             {
-                <div class="alert alert-info">@message</div>
-            }
-
-            @if (currentPage != null)
-            {
-                <h1>@currentPage.Title</h1>
-                <div class="wiki-content">
-                    @((MarkupString)RenderMarkdown(currentPage.Content))
+                <div class="d-flex align-items-center justify-content-center h-100">
+                    <IngestionControl />
                 </div>
-
-                <hr/>
-                <details>
-                    <summary>Source Files</summary>
-                    <ul>
-                        @foreach (var file in currentPage.RelevantFiles)
-                        {
-                            <li>@file</li>
-                        }
-                    </ul>
-                </details>
             }
             else
             {
-                <div class="text-center mt-5">
-                    <h2>Welcome to codeMRI</h2>
-                    <p>Select a page from the structure or start by ingesting a repository.</p>
+                <div class="document-view">
+                    <div class="markdown-content">
+                        @((MarkupString)RenderMarkdown(AppState.CurrentPage.Content))
+                    </div>
+                    
+                    <hr class="my-5"/>
+                    
+                    <div class="card bg-light mb-5">
+                        <div class="card-header cursor-pointer" @onclick="ToggleSource">
+                            <strong>Source Files</strong>
+                            <span class="float-end">@sourceFilesIcon</span>
+                        </div>
+                        @if (showSourceFiles)
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var file in AppState.CurrentPage.RelevantFiles)
+                                {
+                                    <li class="list-group-item font-monospace small">@file</li>
+                                }
+                                @if (!AppState.CurrentPage.RelevantFiles.Any())
+                                {
+                                    <li class="list-group-item text-muted small">No specific files linked.</li>
+                                }
+                            </ul>
+                        }
+                    </div>
                 </div>
             }
-
-            <!-- Chat Interface -->
-            <div class="chat-box mt-5 border-top pt-3">
-                <h4>RAG Chat</h4>
-                <div class="history mb-3" style="max-height: 300px; overflow-y: auto;">
-                    @foreach (var msg in chatHistory)
-                    {
-                        <div class="@(msg.Role == "user" ? "text-end" : "text-start") mb-2">
-                            <span class="badge @(msg.Role == "user" ? "bg-primary" : "bg-secondary")">@msg.Role</span>
-                            <div class="p-2 bg-light d-inline-block rounded">@msg.Content</div>
-                        </div>
-                    }
-                </div>
-                <div class="input-group">
-                    <input @bind="chatQuery" class="form-control" placeholder="Ask about the code..."
-                           @onkeyup="HandleChatKeyUp"/>
-                    <button class="btn btn-info" @onclick="SendChat">Send</button>
-                </div>
-            </div>
         </div>
+    </div>
+
+    <!-- Right Sidebar: Chat -->
+    <div class="pane">
+        <ChatPanel />
     </div>
 </div>
 
 @code {
-    private string repoPath = "/Users/levente/AI/nhibernate-core"; // Default for convenience
-    private bool isBusy;
-    private bool forceStructureRegen;
-    private string message = "";
-
-    private WikiStructure? structure;
-    private WikiPage? currentPage;
-
-    // Chat
-    private string chatQuery = "";
-    private readonly List<ChatMessage> chatHistory = new();
-
-    private async Task IngestRepo(bool force = false, bool delete = false)
+    private bool showSourceFiles = false;
+    private string sourceFilesIcon => showSourceFiles ? "▼" : "▶";
+    
+    protected override void OnInitialized()
     {
-        if (string.IsNullOrEmpty(repoPath)) return;
-        isBusy = true;
-
-        if (delete) message = "Deleting repository data...";
-        else if (force) message = "Force re-ingesting repository... This might take a while.";
-        else message = "Smart ingesting repository... Checking for changes.";
-
-        StateHasChanged();
-
-        try
-        {
-            var msg = await WikiApi.IngestRepoAsync(repoPath, force, delete);
-            message = msg;
-        }
-        catch (Exception ex)
-        {
-            message = $"Error: {ex.Message}";
-        }
-        finally
-        {
-            isBusy = false;
-        }
+        AppState.OnChange += StateHasChanged;
     }
 
-    private async Task GenerateStructure()
+    public void Dispose()
     {
-        if (string.IsNullOrEmpty(repoPath)) return;
-        isBusy = true;
-        message = "Generating wiki structure...";
-        StateHasChanged();
-
-        try
-        {
-            structure = await WikiApi.GenerateStructureAsync(repoPath);
-            message = "Structure generated!";
-        }
-        catch (Exception ex)
-        {
-            message = $"Error: {ex.Message}";
-        }
-        finally
-        {
-            isBusy = false;
-        }
+        AppState.OnChange -= StateHasChanged;
     }
 
-    private async Task LoadPage(string pageTitle)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        isBusy = true;
-        message = $"Generating page '{pageTitle}'...";
-        StateHasChanged();
-
-        try
+        if (AppState.CurrentPage != null)
         {
-            // We assume relevant files are found by the backend or we pass empty list and backend finds them via RAG?
-            // The current WikiController needs file paths. 
-            // For MVP, I'll just pass the Title and let the Backend figure out files (Wait, I implemented logic to read files if paths provided, but NOT to Find them).
-            // To fix this, I'll pass the Title as a "FilePath" or hope the backend uses RAG to find context if no files provided.
-            // Actually, the Structure generation logic returned 'page_ref' which are titles. It did NOT return file mappings in the simplified XML parsing I wrote.
-            // I should probably update WikiGenerationService to include relevant files in the structure, but for now, I'll send an empty list.
-            // AND I will update `WikiGenerationService.GeneratePageAsync` to perform a Search if no files are provided!
-
-            // Temporary Fix: Send title as title, empty files. 
-            // I need to update Backend to handle this case (Auto-Search).
-
-            currentPage = await WikiApi.GeneratePageAsync(pageTitle, new List<string>());
-
-            // Fix: The backend currently needs files. I'll update the backend in a moment to use RAG if files are missing.
-
-            message = $"Page '{pageTitle}' generated.";
-
-            // Give the DOM a moment to render the markdown before invoking Mermaid
-            StateHasChanged();
-            await JS.InvokeVoidAsync("renderMermaid");
-        }
-        catch (Exception ex)
-        {
-            message = $"Error: {ex.Message}";
-        }
-        finally
-        {
-            isBusy = false;
-        }
-    }
-
-    private async Task SendChat()
-    {
-        if (string.IsNullOrWhiteSpace(chatQuery)) return;
-
-        var userMsg = new ChatMessage { Role = "user", Content = chatQuery };
-        chatHistory.Add(userMsg);
-        var currentQuery = chatQuery;
-        chatQuery = "";
-
-        var assistantMsg = new ChatMessage { Role = "assistant", Content = "" };
-        chatHistory.Add(assistantMsg);
-        StateHasChanged();
-
-        try
-        {
-            await foreach (var chunk in WikiApi.ChatAsync(currentQuery, chatHistory.Take(chatHistory.Count - 1).ToList()))
+            // Attempt to render mermaid diagrams if any exist in the markdown
+            try
             {
-                assistantMsg.Content += chunk;
-                StateHasChanged();
+                await JS.InvokeVoidAsync("renderMermaid");
+            }
+            catch
+            {
+                // Ignore if mermaid is not loaded or fails
             }
         }
-        catch (Exception ex)
-        {
-            assistantMsg.Content += $"\n[Error: {ex.Message}]";
-        }
     }
 
-    private async Task HandleChatKeyUp(KeyboardEventArgs e)
+    private void ClosePage()
     {
-        if (e.Key == "Enter")
-        {
-            await SendChat();
-        }
+        AppState.SetCurrentPage(null!);
+    }
+
+    private void ToggleSource()
+    {
+        showSourceFiles = !showSourceFiles;
     }
 
     private string RenderMarkdown(string markdown)
     {
-        // Fallback to simple ToHtml if extensions are not found or problematic
+        // Use Markdig to convert to HTML
+        // Ensure the pipeline includes necessary extensions if configured in Program.cs (not currently configured, so basic)
         return Markdown.ToHtml(markdown ?? "");
     }
-
 }

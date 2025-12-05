@@ -1,4 +1,5 @@
 using codeMRI.Core.Interfaces;
+using codeMRI.Infrastructure;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
 using Microsoft.Extensions.Options;
@@ -22,6 +23,9 @@ builder.Services.AddSingleton<IEmbedder, OllamaEmbedderService>();
 builder.Services.AddSingleton<ILLMClient, OllamaLLMService>();
 builder.Services.AddSingleton<IDocumentProcessor, TextSplitterService>();
 builder.Services.AddSingleton<IASTServiceClient, ASTServiceClient>();
+
+// Wire up core application services
+WireUp.Registered(builder.Services);
 
 // Register QdrantClient
 builder.Services.AddSingleton<IQdrantClient>(sp =>

@@ -14,6 +14,8 @@
 /codeMRI.Infrastructure.Tests/obj/
 /codeMRI.Frontend/bin/
 /codeMRI.Frontend/obj/
+/codeMRI.Frontend.Tests/bin/
+/codeMRI.Frontend.Tests/obj/
 /codeMRI.E2E/bin/
 /codeMRI.E2E/obj/
 /codeMRI.ASTService/build/

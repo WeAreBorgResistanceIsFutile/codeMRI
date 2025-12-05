@@ -4,12 +4,12 @@
 <head>
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-    <title>codeMRI.Web</title>
+    <title>codeMRI</title>
     <base href="/"/>
     <link href="lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet"/>
     <link href="css/app.css" rel="stylesheet"/>
     <link href="favicon.png" rel="icon" type="image/png"/>
-    <link href="codeMRI.Web.styles.css" rel="stylesheet"/>
+    <link href="codeMRI.Frontend.styles.css" rel="stylesheet"/>
 </head>
 
 <body>
@@ -30,6 +30,13 @@
 <!-- Mermaid.js for diagram rendering -->
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <script>
+    window.scrollToBottom = (selector) => {
+        var el = document.querySelector(selector);
+        if (el) {
+            el.scrollTop = el.scrollHeight;
+        }
+    };
+
     window.renderMermaid = async () => {
         console.log("Starting Mermaid render process...");
         // Wait for the DOM to update

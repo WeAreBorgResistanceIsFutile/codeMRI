@@ -1,0 +1,113 @@
+@using codeMRI.Frontend.Services
+@using codeMRI.Server.Api
+@inject AppState AppState
+@inject WikiApiClient WikiApi
+@inject IJSRuntime JS
+
+<div class="h-100 d-flex flex-column">
+    <div class="pane-header">
+        <span>Agent</span>
+        <button class="btn btn-sm btn-link text-muted" @onclick="() => AppState.ClearChat()">Clear</button>
+    </div>
+
+    <div class="chat-history p-3" @ref="chatHistoryRef">
+        @if (AppState.ChatHistory.Count == 0)
+        {
+            <div class="text-center text-muted mt-5">
+                <small>Ask me anything about the codebase.</small>
+            </div>
+        }
+        
+        @foreach (var msg in AppState.ChatHistory)
+        {
+            <div class="chat-message @msg.Role mb-2">
+                @msg.Content
+            </div>
+        }
+    </div>
+
+    <div class="chat-input-area">
+        <textarea class="form-control mb-2" rows="3" 
+                  placeholder="Type your question... (Ctrl+Enter to send)"
+                  @bind="chatQuery" 
+                  @bind:event="oninput"
+                  @onkeydown="HandleKeyDown"
+                  disabled="@isStreaming"></textarea>
+        <div class="d-flex justify-content-end">
+            <button class="btn btn-sm btn-primary" @onclick="SendChat" disabled="@(string.IsNullOrWhiteSpace(chatQuery) || isStreaming)">
+                @(isStreaming ? "Thinking..." : "Send")
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string chatQuery = "";
+    private bool isStreaming;
+    private ElementReference chatHistoryRef;
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += StateHasChanged;
+        AppState.OnChange += ScrollToBottom;
+    }
+    
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+        AppState.OnChange -= ScrollToBottom;
+    }
+
+    private async void ScrollToBottom()
+    {
+        try {
+            await JS.InvokeVoidAsync("scrollToBottom", ".chat-history");
+        } catch {} 
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && e.CtrlKey)
+        {
+            await SendChat();
+        }
+    }
+
+    private async Task SendChat()
+    {
+        if (string.IsNullOrWhiteSpace(chatQuery) || isStreaming) return;
+
+        var query = chatQuery;
+        chatQuery = "";
+        isStreaming = true;
+
+        // 1. Add User Message
+        AppState.AddChatMessage(new ChatMessage { Role = "user", Content = query });
+
+        // 2. Add Placeholder Assistant Message
+        AppState.AddChatMessage(new ChatMessage { Role = "assistant", Content = "" });
+
+        // 3. Stream Response
+        try
+        {
+            var fullResponse = "";
+            // We include history in the request
+            var history = AppState.ChatHistory.Take(AppState.ChatHistory.Count - 1).ToList(); // Exclude the empty one we just added
+            
+            await foreach (var chunk in WikiApi.ChatAsync(query, history))
+            {
+                fullResponse += chunk;
+                AppState.UpdateLastChatMessage(fullResponse);
+                // Scroll handled by OnChange event
+            }
+        }
+        catch (Exception ex)
+        {
+            AppState.UpdateLastChatMessage($"[Error: {ex.Message}]");
+        }
+        finally
+        {
+            isStreaming = false;
+        }
+    }
+}
