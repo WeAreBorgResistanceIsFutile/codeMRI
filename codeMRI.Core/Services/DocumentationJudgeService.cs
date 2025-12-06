@@ -182,6 +182,16 @@ Respond with JSON format:
     {
         try
         {
+            // Clean up response if wrapped in markdown code blocks
+            if (response.Contains("```"))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(response, @"```(?:json)?\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
+                if (match.Success)
+                {
+                    response = match.Groups[1].Value;
+                }
+            }
+
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,

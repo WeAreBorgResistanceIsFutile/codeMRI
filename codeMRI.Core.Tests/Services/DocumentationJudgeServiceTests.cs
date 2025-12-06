@@ -56,4 +56,27 @@ public class DocumentationJudgeServiceTests
             It.IsAny<List<ChatMessage>>(),
             "model-b"), Times.Once, "Should call ChatAsync with model-b");
     }
+    [Test]
+    public async Task EvaluateRequirementAsync_ShouldParseJsonWithMarkdownFences()
+    {
+        // Arrange
+        var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
+        var structure = new WikiStructure();
+        var jsonContent = "{\"score\": 0.9, \"reasoning\": \"Excellent\", \"evidence\": []}";
+        var markdownResponse = $"```json\n{jsonContent}\n```";
+
+        _mockLlmClient.Setup(x => x.ChatAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<ChatMessage>>(),
+                It.IsAny<string?>()))
+            .ReturnsAsync(markdownResponse);
+
+        // Act
+        var result = await _service.EvaluateRequirementAsync(requirement, structure);
+
+        // Assert
+        Assert.That(result.MeanScore, Is.EqualTo(0.9));
+        Assert.That(result.Reasoning, Does.Contain("Excellent"));
+    }
 }

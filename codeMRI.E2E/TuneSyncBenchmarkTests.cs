@@ -15,37 +15,52 @@ namespace codeMRI.E2E;
 public class TuneSyncBenchmarkTests
 {
     private WebApplicationFactory<Program> _factory;
-    private string _tempRepoPath;
+    private string _cacheDirectory;
+    private string _repoPath;
+    private string _referenceCachePath;
     private const string RepoUrl = "https://github.com/WilliamNT/tunesynctool";
     private const string ReferenceUrl = "https://deepwiki.com/WilliamNT/tunesynctool";
 
     [OneTimeSetUp]
     public void OneTimeSetup()
     {
-        // 1. Clone the repository
-        _tempRepoPath = Path.Combine(Path.GetTempPath(), "tunesynctool_bench_" + Guid.NewGuid());
-        Directory.CreateDirectory(_tempRepoPath);
-        
-        TestContext.WriteLine($"Cloning {RepoUrl} to {_tempRepoPath}...");
-        
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "git",
-            Arguments = $"clone {RepoUrl} .",
-            WorkingDirectory = _tempRepoPath,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        // Stable cache directory
+        _cacheDirectory = Path.Combine(Path.GetTempPath(), "codeMRI_Benchmark_Cache");
+        Directory.CreateDirectory(_cacheDirectory);
 
-        using var process = Process.Start(startInfo);
-        process!.WaitForExit();
+        _repoPath = Path.Combine(_cacheDirectory, "tunesynctool");
+        _referenceCachePath = Path.Combine(_cacheDirectory, "reference_corpus.txt");
 
-        if (process.ExitCode != 0)
+        // 1. Clone the repository (Cached)
+        if (Directory.Exists(_repoPath) && Directory.GetFiles(_repoPath).Length > 0)
         {
-            var error = process.StandardError.ReadToEnd();
-            throw new Exception($"Git clone failed: {error}");
+            TestContext.WriteLine($"Repository cache found at {_repoPath}. Skipping clone.");
+        }
+        else
+        {
+            TestContext.WriteLine($"Cloning {RepoUrl} to {_repoPath}...");
+            if (Directory.Exists(_repoPath)) Directory.Delete(_repoPath, true);
+            Directory.CreateDirectory(_repoPath);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = $"clone {RepoUrl} .",
+                WorkingDirectory = _repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(startInfo);
+            process!.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                var error = process.StandardError.ReadToEnd();
+                throw new Exception($"Git clone failed: {error}");
+            }
         }
 
         // 2. Setup Factory
@@ -60,30 +75,7 @@ public class TuneSyncBenchmarkTests
     public void OneTimeTearDown()
     {
         _factory?.Dispose();
-        
-        // Clean up repo
-        if (Directory.Exists(_tempRepoPath))
-        {
-            try
-            {
-                // Force delete including read-only files (like .git objects)
-                DeleteDirectory(_tempRepoPath);
-            }
-            catch (Exception ex)
-            {
-                TestContext.WriteLine($"Warning: Failed to cleanup temp repo: {ex.Message}");
-            }
-        }
-    }
-
-    private void DeleteDirectory(string path)
-    {
-        foreach (var file in Directory.GetFiles(path, "*", SearchOption.AllDirectories))
-        {
-            File.SetAttributes(file, FileAttributes.Normal);
-            File.Delete(file);
-        }
-        Directory.Delete(path, true);
+        // Do NOT delete the cache directory to enable persistence across runs
     }
 
     [Test]
@@ -94,8 +86,8 @@ public class TuneSyncBenchmarkTests
         client.Timeout = TimeSpan.FromMinutes(5);
 
         // 1. Ingest
-        TestContext.WriteLine("Starting Ingestion..."); // Modified to use TestContext.WriteLine
-        var ingestResponse = await client.PostAsJsonAsync("/api/ingest", new IngestRequest { RepoPath = _tempRepoPath });
+        TestContext.WriteLine("Starting Ingestion..."); 
+        var ingestResponse = await client.PostAsJsonAsync("/api/ingest", new IngestRequest { RepoPath = _repoPath });
         ingestResponse.EnsureSuccessStatusCode();
         TestContext.WriteLine("Ingestion Complete.");
 
@@ -103,7 +95,7 @@ public class TuneSyncBenchmarkTests
         TestContext.WriteLine("Generating Structure...");
         var structureResponse = await client.PostAsJsonAsync("/api/wiki/structure", new StructureRequest 
         { 
-            RepoPath = _tempRepoPath,
+            RepoPath = _repoPath,
             ForceRegenerate = true 
         });
         structureResponse.EnsureSuccessStatusCode();
@@ -111,10 +103,9 @@ public class TuneSyncBenchmarkTests
         Assert.That(structure, Is.Not.Null);
         
         // 3. Find relevant page (Overview/Readme)
-        // TuneSync structure usually has a root or main page. We'll try to target the overview.
         var targetPageRequest = new PageGenerationRequest 
         { 
-            RepoPath = _tempRepoPath,
+            RepoPath = _repoPath,
             Title = "Overview", // Usually the main entry point
             ForceRegenerate = true,
             FilePaths = new List<string> { "README.md" } // Hint to focus on README if possible
@@ -126,21 +117,20 @@ public class TuneSyncBenchmarkTests
         var generatedPageApi = await pageResponse.Content.ReadFromJsonAsync<codeMRI.Server.Api.WikiPage>();
         Assert.That(generatedPageApi, Is.Not.Null);
 
-        // 4. Fetch Reference Content
-        TestContext.WriteLine("Fetching Reference from DeepWiki...");
-        using var httpClient = new HttpClient();
-        // Ignoring HTML fetch for safety in this specific run if unstable, but keeping logic
-        var referenceHtml = ""; 
-        try 
+        // 4. Fetch Reference Content (Cached Recursive Scraping)
+        string referenceText;
+        if (File.Exists(_referenceCachePath))
         {
-            referenceHtml = await httpClient.GetStringAsync(ReferenceUrl); 
+            TestContext.WriteLine($"Loading reference corpus from cache: {_referenceCachePath}");
+            referenceText = await File.ReadAllTextAsync(_referenceCachePath);
         }
-        catch
+        else
         {
-            TestContext.WriteLine("Warning: Could not fetch DeepWiki, using fallback text.");
-            referenceHtml = "TuneSyncTool is a utility for synchronizing music libraries.";
+            TestContext.WriteLine("Fetching Reference Corpus from DeepWiki (Recursive)...");
+            referenceText = await CrawlDeepWikiRecursively(ReferenceUrl);
+            await File.WriteAllTextAsync(_referenceCachePath, referenceText);
+            TestContext.WriteLine($"Fetched and cached {referenceText.Length} chars of reference content.");
         }
-        var referenceText = System.Text.RegularExpressions.Regex.Replace(referenceHtml, "<.*?>", " "); 
         
         // 5. Evaluate
         TestContext.WriteLine("Starting Evaluation...");
@@ -150,12 +140,10 @@ public class TuneSyncBenchmarkTests
         var requirement = new RubricRequirement
         {
             Title = "Accuracy against Reference",
-            Description = $"The generated documentation must match the purpose described: {referenceText.Substring(0, Math.Min(referenceText.Length, 500))}..." 
+            Description = $"The generated documentation must match the purpose and details described in the reference corpus (first 4k chars): {referenceText.Substring(0, Math.Min(referenceText.Length, 4000))}..." 
         };
 
-        // Map API model to Core model for the Judge (Manual mapping)
-        // Since DocumentationJudgeService serializes the structure to prompt, 
-        // we can inject the content into the Description to ensure the LLM sees it.
+        // Map API model to Core model for the Judge
         var evalStructure = new codeMRI.Core.Models.WikiStructure 
         { 
             Title = generatedPageApi.Title,
@@ -172,5 +160,82 @@ public class TuneSyncBenchmarkTests
 
         // Assert
         Assert.That(assessment.MeanScore, Is.GreaterThanOrEqualTo(0.5), "Documentation quality score was too low.");
+    }
+
+    private async Task<string> CrawlDeepWikiRecursively(string startUrl)
+    {
+        var visited = new HashSet<string>();
+        var queue = new Queue<string>();
+        var aggregatedContent = new System.Text.StringBuilder();
+        using var httpClient = new HttpClient();
+        
+        // Base domain scope for crawling
+        var baseDomain = new Uri(startUrl).Host;
+        // Path restriction to stay within the repo docs
+        var basePath = new Uri(startUrl).AbsolutePath;
+
+        queue.Enqueue(startUrl);
+        visited.Add(startUrl);
+
+        int maxPages = 10; // Safety limit
+        int pagesFetched = 0;
+
+        while (queue.Count > 0 && pagesFetched < maxPages)
+        {
+            var currentUrl = queue.Dequeue();
+            TestContext.WriteLine($"Crawling: {currentUrl}");
+
+            try
+            {
+                var html = await httpClient.GetStringAsync(currentUrl);
+                pagesFetched++;
+
+                // 1. Extract Text
+                var text = ExtractTextFromHtml(html);
+                aggregatedContent.AppendLine($"--- PAGE: {currentUrl} ---");
+                aggregatedContent.AppendLine(text);
+                aggregatedContent.AppendLine();
+
+                // 2. Extract Links
+                var matches = System.Text.RegularExpressions.Regex.Matches(html, "href=\"([^\"]+)\"");
+                foreach (System.Text.RegularExpressions.Match match in matches)
+                {
+                    var href = match.Groups[1].Value;
+                    
+                    Uri nextUri;
+                    try 
+                    {
+                        nextUri = new Uri(new Uri(currentUrl), href);
+                    }
+                    catch { continue; }
+
+                    if (nextUri.Host != baseDomain) continue;
+                    if (!nextUri.AbsolutePath.StartsWith(basePath)) continue;
+                    
+                    var cleanUrl = nextUri.GetLeftPart(UriPartial.Path);
+
+                    if (!visited.Contains(cleanUrl))
+                    {
+                        visited.Add(cleanUrl);
+                        queue.Enqueue(cleanUrl);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                TestContext.WriteLine($"Failed to crawl {currentUrl}: {ex.Message}");
+            }
+        }
+
+        return aggregatedContent.ToString();
+    }
+
+    private string ExtractTextFromHtml(string html)
+    {
+        var text = System.Text.RegularExpressions.Regex.Replace(html, "<style.*?>.*?</style>", "", System.Text.RegularExpressions.RegexOptions.Singleline);
+        text = System.Text.RegularExpressions.Regex.Replace(text, "<script.*?>.*?</script>", "", System.Text.RegularExpressions.RegexOptions.Singleline);
+        text = System.Text.RegularExpressions.Regex.Replace(text, "<.*?>", " ");
+        text = System.Net.WebUtility.HtmlDecode(text);
+        return System.Text.RegularExpressions.Regex.Replace(text, "\\s+", " ").Trim();
     }
 }
