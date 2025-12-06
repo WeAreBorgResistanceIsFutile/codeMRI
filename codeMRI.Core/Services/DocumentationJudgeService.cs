@@ -21,16 +21,18 @@ public class DocumentationJudgeService : IDocumentationJudgeService
     public async Task<RequirementAssessment> EvaluateRequirementAsync(
         RubricRequirement requirement,
         WikiStructure documentationStructure,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? model = null)
     {
-        _logger.LogInformation("Evaluating requirement: {RequirementTitle}", requirement.Title);
+        _logger.LogInformation("Evaluating requirement: {RequirementTitle} (Model: {Model})", requirement.Title, model ?? "Default");
 
         var prompt = BuildEvaluationPrompt(requirement, documentationStructure);
 
         var response = await _llmClient.ChatAsync(
             "You are a technical documentation evaluator.",
             prompt,
-            new List<ChatMessage>());
+            new List<ChatMessage>(),
+            model);
 
         var assessment = ParseAssessmentFromResponse(response, requirement);
 
@@ -91,8 +93,7 @@ public class DocumentationJudgeService : IDocumentationJudgeService
         string modelName,
         CancellationToken cancellationToken)
     {
-        // For now, use default client - in real implementation would switch based on model name
-        return await EvaluateRequirementAsync(requirement, documentationStructure, cancellationToken);
+        return await EvaluateRequirementAsync(requirement, documentationStructure, cancellationToken, modelName);
     }
 
     private RequirementAssessment AggregateAssessments(
@@ -233,7 +234,8 @@ public interface IDocumentationJudgeService
     Task<RequirementAssessment> EvaluateRequirementAsync(
         RubricRequirement requirement,
         WikiStructure documentationStructure,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? model = null);
 
     Task<List<RequirementAssessment>> EvaluateRequirementsAsync(
         List<RubricRequirement> requirements,

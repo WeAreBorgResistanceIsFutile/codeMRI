@@ -44,5 +44,6 @@ public class WireUp
         services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
         services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();
         services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();
+        services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
     }
 }
