@@ -1,15 +1,7 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Invocation;
-using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
-using codeMRI.Infrastructure;
-using codeMRI.Infrastructure.Configuration;
-using codeMRI.Infrastructure.Services;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Qdrant.Client;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace codeMRI.CLI;
 
@@ -17,161 +9,129 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
-        var rootCommand = new RootCommand("codeMRI CLI tool for automated documentation generation");
+        var rootCommand = new RootCommand("codeMRI CLI (Thin Client)");
 
         var inputOption = new Option<string>(
             aliases: new[] { "--input", "-i" },
             description: "Path to local repository or Git URL")
         { IsRequired = true };
 
+        var serverOption = new Option<string>(
+            aliases: new[] { "--server", "-s" },
+            description: "URL of the codeMRI Server",
+            getDefaultValue: () => "http://localhost:5247");
+
         var verboseOption = new Option<bool>(
             aliases: new[] { "--verbose", "-v" },
             description: "Enable verbose logging");
 
         rootCommand.AddOption(inputOption);
+        rootCommand.AddOption(serverOption);
         rootCommand.AddOption(verboseOption);
 
-        rootCommand.SetHandler(async (string input, bool verbose) =>
+        rootCommand.SetHandler(async (string input, string serverUrl, bool verbose) =>
         {
-            await RunAsync(input, verbose);
-        }, inputOption, verboseOption);
+            await RunAsync(input, serverUrl, verbose);
+        }, inputOption, serverOption, verboseOption);
 
         return await rootCommand.InvokeAsync(args);
     }
 
-    static async Task RunAsync(string input, bool verbose)
+    static async Task RunAsync(string input, string serverUrl, bool verbose)
     {
-        // 1. Setup Configuration
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddEnvironmentVariables()
-            .Build();
+        using var client = new HttpClient();
+        client.BaseAddress = new Uri(serverUrl);
+        client.Timeout = TimeSpan.FromMinutes(30); // Long timeout for generation
 
-        // 2. Setup Services
-        var services = new ServiceCollection();
-        services.AddSingleton<IConfiguration>(configuration);
-        
-        // Logging
-        services.AddLogging(builder =>
-        {
-            builder.AddConsole();
-            builder.SetMinimumLevel(verbose ? LogLevel.Debug : LogLevel.Information);
-        });
-
-        // Config
-        services.Configure<OllamaSettings>(configuration.GetSection("Ollama"));
-        services.Configure<QdrantSettings>(configuration.GetSection("Qdrant"));
-        services.Configure<ASTServiceSettings>(configuration.GetSection("ASTService"));
-
-        // Infrastructure
-        services.AddHttpClient();
-        services.AddSingleton<IEmbedder, OllamaEmbedderService>();
-        services.AddSingleton<ILLMClient, OllamaLLMService>();
-        services.AddSingleton<IDocumentProcessor, TextSplitterService>();
-        services.AddSingleton<IASTServiceClient, ASTServiceClient>();
-
-        // Wire up core
-        WireUp.Registered(services);
-
-        // Database & Vector DB
-        services.AddSingleton<IQdrantClient>(sp =>
-        {
-            var settings = sp.GetRequiredService<IOptions<QdrantSettings>>().Value;
-            // Default to localhost if not configured
-            var host = string.IsNullOrEmpty(settings.Host) ? "localhost" : settings.Host;
-            return new QdrantClient(host, settings.Port, apiKey: string.IsNullOrEmpty(settings.ApiKey) ? null : settings.ApiKey);
-        });
-        services.AddSingleton<IVectorDatabase, QdrantVectorDb>();
-        
-        services.AddSingleton<IWikiRepository>(sp =>
-        {
-            var config = sp.GetRequiredService<IConfiguration>();
-            var connectionString = config.GetConnectionString("WikiDb") 
-                                   ?? "Data Source=data/sqlite/codemri.db";
-            
-            // Ensure directory exists if using default relative path
-            if (connectionString.Contains("Data Source=data/sqlite/"))
-            {
-                 var dir = Path.GetDirectoryName("data/sqlite/codemri.db");
-                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            }
-            
-            return new SqliteWikiRepository(connectionString);
-        });
-
-        var serviceProvider = services.BuildServiceProvider();
-
-        // 3. Initialize & Execute
-        var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-        var vectorDb = serviceProvider.GetRequiredService<IVectorDatabase>();
-        
-        try 
-        {
-            await vectorDb.InitializeAsync("default_repo");
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning($"Failed to initialize VectorDB: {ex.Message}. Make sure Qdrant is running.");
-        }
+        if (verbose) Console.WriteLine($"Connecting to {serverUrl}...");
 
         string targetPath = input;
         bool isTemp = false;
 
-        // Clone if Git URL
+        // 1. Handle Git Cloning (Client-side preparation)
         if (GitHelper.IsGitUrl(input))
         {
             try 
             {
+                if (verbose) Console.WriteLine($"Cloning {input}...");
                 targetPath = await GitHelper.CloneRepositoryAsync(input);
                 isTemp = true;
-                logger.LogInformation($"Cloned repository to {targetPath}");
+                if (verbose) Console.WriteLine($"Cloned to {targetPath}");
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to clone repository");
+                Console.WriteLine($"Error cloning repository: {ex.Message}");
                 return;
             }
         }
         else
         {
+            targetPath = Path.GetFullPath(input);
             if (!Directory.Exists(targetPath))
             {
-                logger.LogError($"Directory not found: {targetPath}");
+                Console.WriteLine($"Error: Directory not found: {targetPath}");
                 return;
             }
-            targetPath = Path.GetFullPath(targetPath);
         }
 
-        logger.LogInformation($"Processing repository at: {targetPath}");
-
-        var orchestrator = serviceProvider.GetRequiredService<ICodeWikiOrchestrator>();
-        
-        // Infer explicit info for now
-        var repoInfo = new RepositoryInfo 
-        { 
-            Name = Path.GetFileName(targetPath.TrimEnd(Path.DirectorySeparatorChar)),
-            Language = "Detected automatically during analysis", 
-            Description = $"Documentation for {input}"
+        // 2. Call Server
+        var request = new
+        {
+            RepoPath = targetPath,
+            Language = "Detected automatically",
+            ForceRegenerate = false
         };
 
         try
         {
-            var structure = await orchestrator.GenerateAdvancedWikiAsync(targetPath, repoInfo);
-            logger.LogInformation("Documentation generated successfully!");
-            logger.LogInformation($"Pages: {structure.Pages.Count}");
-            logger.LogInformation($"Sections: {structure.Sections.Count}");
+            if (verbose) Console.WriteLine($"Sending request to server for {targetPath}...");
+
+            var response = await client.PostAsJsonAsync("api/Wiki/generate-advanced", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Console.WriteLine("Success! Documentation generated.");
+                if (verbose)
+                {
+                    // Optionally try to parse response to show stats
+                     var json = await response.Content.ReadAsStringAsync();
+                     Console.WriteLine("Server Response: " + json);
+                }
+                else
+                {
+                     Console.WriteLine("You can view it now in the Web UI.");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Server Error: {response.StatusCode}");
+                var error = await response.Content.ReadAsStringAsync();
+                Console.WriteLine(error);
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+             Console.WriteLine($"Error connecting to server: {ex.Message}");
+             Console.WriteLine("Is codeMRI.Server running?");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to generate documentation");
+             Console.WriteLine($"Unexpected error: {ex.Message}");
         }
         finally
         {
+            // We do NOT delete the temp dir here immediately if the server needs to read it?
+            // Wait, if the server is local, it reads `targetPath`.
+            // If we delete `targetPath` now, the server checks might fail if it does lazy loading?
+            // But `generate-advanced` waits until completion. So it should be safe to delete IF the server has persisted everything.
+            // However, the Server stores `RepoPath` in the DB. If future requests need to read files from disk (e.g. valid links), the files must exist.
+            // If `isTemp`, we probably want to keep it or warn the user.
+            // For a system tool context, usually the repo exists.
+            
             if (isTemp)
             {
-                logger.LogInformation("Cleaning up temporary files...(Keeping them for now for inspection)");
-                // Directory.Delete(targetPath, true); 
+                 Console.WriteLine($"Note: Repository was cloned to temporary path: {targetPath}");
+                 Console.WriteLine("It is required for viewing file contents in the UI. Do not delete it manually if you plan to browse source code.");
             }
         }
     }
