@@ -10,10 +10,10 @@ namespace codeMRI.Agents.Tests.Unit;
 
 public class DelegationLogicTests
 {
-    private TestAgent _agent;
-    private Mock<IASTServiceClient> _astServiceMock;
-    private Mock<ILogger<TestAgent>> _loggerMock;
-    private Mock<AgentMessageBus> _messageBusMock;
+    private TestAgent _agent = null!;
+    private Mock<IASTServiceClient> _astServiceMock = null!;
+    private Mock<ILogger<TestAgent>> _loggerMock = null!;
+    private Mock<AgentMessageBus> _messageBusMock = null!;
 
     [SetUp]
     public void Setup()
@@ -65,7 +65,7 @@ public class DelegationLogicTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.That(result.Reason, Does.StartWith("Delegation required due to high complexity (TokenCount"));
+        Assert.That(result!.Reason, Does.StartWith("Delegation required due to high complexity (TokenCount"));
     }
 
     public class TestAgent : BaseAgent
@@ -73,7 +73,7 @@ public class DelegationLogicTests
         public TestAgent(
             AgentMessageBus messageBus,
             ILogger logger,
-            IASTServiceClient astService = null)
+            IASTServiceClient? astService = null)
             : base(messageBus, logger, astService)
         {
         }

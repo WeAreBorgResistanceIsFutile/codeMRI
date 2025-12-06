@@ -443,10 +443,10 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         // 1. Try Directory Splitting first (refine directory grouping if they were grouped by top level)
         // 2. If single directory, use Louvain.
         
-        Dictionary<string, List<string>> subClusters = null;
+        Dictionary<string, List<string>> subClusters = new();
         
         // Check if components are in different subdirectories relative to common root
-        var components = module.Components.Select(c => graph.GetNode(c)).Where(n => n != null).ToList();
+        var components = module.Components.Select(c => graph.GetNode(c)).OfType<GraphNode>().ToList();
         var commonPath = GetCommonPath(components.Select(c => c.Metadata.FilePath));
         
         var bySubDir = components.GroupBy(c => {

@@ -50,7 +50,7 @@ public class QdrantVectorDb : IVectorDatabase
             var point = new PointStruct
             {
                 Id = id,
-                Vectors = new Vectors { Vector = new Vector { Data = { doc.Embedding } } }
+                Vectors = doc.Embedding
             };
 
             foreach (var kvp in payload) point.Payload.Add(kvp.Key, ConvertToValue(kvp.Value));

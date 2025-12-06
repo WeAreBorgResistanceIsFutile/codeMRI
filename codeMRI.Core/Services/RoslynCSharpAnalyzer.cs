@@ -66,7 +66,7 @@ public class RoslynCSharpAnalyzer
         string componentType)
     {
         var symbol = semanticModel.GetDeclaredSymbol(declaration);
-        if (symbol == null) return null;
+        if (symbol == null) return Task.FromResult<CodeComponent?>(null);
 
         var component = new CodeComponent
         {

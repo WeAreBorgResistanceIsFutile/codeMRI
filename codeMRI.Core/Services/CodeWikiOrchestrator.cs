@@ -13,6 +13,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private readonly IDocumentationSynthesisService _synthesisService;
     private readonly IWikiGenerationService _wikiGenerationService;
     private readonly IWikiRepository _wikiRepo;
+    private readonly List<string> _judgeModels;
 
     public CodeWikiOrchestrator(
         IHierarchicalDecompositionService decompositionService,
@@ -21,7 +22,8 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IWikiGenerationService wikiGenerationService,
         IDocumentationSynthesisService synthesisService,
         IWikiRepository wikiRepo,
-        ILogger<CodeWikiOrchestrator> logger)
+        ILogger<CodeWikiOrchestrator> logger,
+        List<string>? judgeModels = null)
     {
         _decompositionService = decompositionService;
         _rubricService = rubricService;
@@ -29,9 +31,9 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _wikiGenerationService = wikiGenerationService;
         _rubricService = rubricService;
         _judgeService = judgeService;
-        _wikiGenerationService = wikiGenerationService;
         _synthesisService = synthesisService;
         _wikiRepo = wikiRepo;
+        _judgeModels = judgeModels ?? new List<string> { "default" };
         _logger = logger;
     }
 
@@ -63,13 +65,12 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // 4. Evaluation (The Judge)
         _logger.LogInformation("Phase 4: Evaluation");
         var requirements = ExtractRequirements(rubric);
-        // We use a simplified model list or just default for now.
-        var judgeModels = new List<string> { "default" }; 
+        // Use configured judge models
         
         var assessments = await _judgeService.EvaluateRequirementsAsync(
             requirements, 
             structure, 
-            judgeModels, 
+            _judgeModels, 
             cancellationToken);
 
         // Log results

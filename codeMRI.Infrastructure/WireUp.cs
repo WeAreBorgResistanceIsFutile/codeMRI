@@ -46,6 +46,18 @@ public class WireUp
         services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();
         services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
         services.AddScoped<IRubricGenerationService, RubricGenerationService>();
-        services.AddScoped<ICodeWikiOrchestrator, CodeWikiOrchestrator>();
+        services.AddScoped<ICodeWikiOrchestrator, CodeWikiOrchestrator>(sp =>
+        {
+            var settings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<codeMRI.Infrastructure.Configuration.OllamaSettings>>().Value;
+            return new CodeWikiOrchestrator(
+                sp.GetRequiredService<IHierarchicalDecompositionService>(),
+                sp.GetRequiredService<IRubricGenerationService>(),
+                sp.GetRequiredService<IDocumentationJudgeService>(),
+                sp.GetRequiredService<IWikiGenerationService>(),
+                sp.GetRequiredService<IDocumentationSynthesisService>(),
+                sp.GetRequiredService<IWikiRepository>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CodeWikiOrchestrator>>(),
+                settings.JudgeModels);
+        });
     }
 }

@@ -35,13 +35,13 @@ public class DocumentationGenerationPipelineTests
         );
     }
 
-    private Mock<IAgentCoordinator> _mockCoordinator;
-    private Mock<IVisualSynthesisService> _mockVisualSynthesis;
-    private Mock<IEnhancedDependencyGraphService> _mockGraphService;
-    private Mock<IHierarchicalDecompositionService> _mockDecompositionService;
-    private Mock<IWikiGenerationService> _mockWikiGenService;
-    private Mock<ILogger<DocumentationGenerationPipeline>> _mockLogger;
-    private DocumentationGenerationPipeline _pipeline;
+    private Mock<IAgentCoordinator> _mockCoordinator = null!;
+    private Mock<IVisualSynthesisService> _mockVisualSynthesis = null!;
+    private Mock<IEnhancedDependencyGraphService> _mockGraphService = null!;
+    private Mock<IHierarchicalDecompositionService> _mockDecompositionService = null!;
+    private Mock<IWikiGenerationService> _mockWikiGenService = null!;
+    private Mock<ILogger<DocumentationGenerationPipeline>> _mockLogger = null!;
+    private DocumentationGenerationPipeline _pipeline = null!;
 
     [Test]
     public async Task GenerateDocumentationAsync_ShouldUsePostOrderTraversal_AndSynthesizeParentPages()
@@ -82,7 +82,7 @@ public class DocumentationGenerationPipelineTests
         var childWikiPage = new WikiPage { Title = "ChildDoc", Content = "Summary of Child" };
         _mockCoordinator.Setup(x =>
                 x.CoordinateTaskAsync(
-                    It.Is<AgentTask>(t => t.Type == "Documenter" && ((CodeComponent)t.Payload).Name == "ComponentA"),
+                    It.Is<AgentTask>(t => t.Type == "Documenter" && t.Payload != null && ((CodeComponent)t.Payload).Name == "ComponentA"),
                     It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AgentResult { Success = true, Output = childWikiPage });
 
