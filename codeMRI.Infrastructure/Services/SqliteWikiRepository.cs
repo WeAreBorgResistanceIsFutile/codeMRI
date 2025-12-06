@@ -85,7 +85,7 @@ public class SqliteWikiRepository : IWikiRepository
         if (repoId == null) return null;
 
         // Case-insensitive search for title
-        var json = await connection.QuerySingleOrDefaultAsync<string>(
+        var json = await connection.QueryFirstOrDefaultAsync<string>(
             "SELECT JsonContent FROM WikiPages WHERE RepoId = @RepoId AND Title COLLATE NOCASE = @Title",
             new { RepoId = repoId, Title = pageTitle });
 

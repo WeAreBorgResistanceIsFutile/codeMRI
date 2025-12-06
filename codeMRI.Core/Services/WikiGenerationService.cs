@@ -9,18 +9,14 @@ namespace codeMRI.Core.Services;
 public class WikiGenerationService : IWikiGenerationService
 {
     private readonly IDiagramGenerator _diagramGenerator;
-    private readonly IEmbedder _embedder;
     private readonly IEnhancedDependencyGraphService _graphService; // Needed to fetch graph for diagrams
     private readonly ILLMClient _llmClient;
-    private readonly IVectorDatabase _vectorDb;
     private readonly IDocumentationSynthesisService _synthesisService;
     private readonly IReferenceManagementService _referenceManagementService;
     private readonly string _documentationModel;
 
     public WikiGenerationService(
         ILLMClient llmClient,
-        IEmbedder embedder,
-        IVectorDatabase vectorDb,
         IDiagramGenerator diagramGenerator,
         IEnhancedDependencyGraphService graphService,
         IDocumentationSynthesisService synthesisService,
@@ -28,11 +24,8 @@ public class WikiGenerationService : IWikiGenerationService
         string documentationModel = "llama3")
     {
         _llmClient = llmClient;
-        _embedder = embedder;
-        _vectorDb = vectorDb;
         _diagramGenerator = diagramGenerator;
         _graphService = graphService;
-        _synthesisService = synthesisService;
         _synthesisService = synthesisService;
         _referenceManagementService = referenceManagementService;
         _documentationModel = documentationModel;
@@ -74,17 +67,66 @@ public class WikiGenerationService : IWikiGenerationService
     }
 
     public async Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths,
-        Dictionary<string, string> fileContents, string language = "English")
+        Dictionary<string, string> fileContents, string language = "English", string? repoPath = null)
     {
+        // If no files provided, try to find them using the dependency graph (CodeWiki structural approach)
         if (filePaths == null || filePaths.Count == 0)
         {
-            var queryEmbedding = await _embedder.EmbedAsync(pageTitle);
-            var docs = await _vectorDb.SearchAsync(queryEmbedding, 5);
-            filePaths = docs.Select(d => d.FilePath).Distinct().ToList();
+            try 
+            {
+                // Optimization: Set a strict timeout for graph generation
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                
+                EnhancedDependencyGraph graph;
+                if (!string.IsNullOrEmpty(repoPath))
+                {
+                    // 1. Get components from repository
+                    var components = await _graphService.GetComponentsAsync(repoPath, cts.Token);
+                    // 2. Build graph to understand relationships
+                    graph = await _graphService.BuildGraphAsync(components, cts.Token);
+                }
+                else
+                {
+                    // Fallback (mostly for tests without repo access)
+                    graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), cts.Token);
+                }
 
-            foreach (var doc in docs)
-                if (!fileContents.ContainsKey(doc.FilePath))
-                    fileContents[doc.FilePath] = doc.Content;
+                // 3. Find likely entry point matching the page title
+                var entryPointId = FindEntryPointForPage(pageTitle, new List<string>(), graph);
+
+                if (!string.IsNullOrEmpty(entryPointId))
+                {
+                    var node = graph.GetNode(entryPointId);
+                    if (node != null && !string.IsNullOrEmpty(node.Metadata?.FilePath))
+                    {
+                        var path = node.Metadata.FilePath;
+                        filePaths = new List<string> { path };
+
+                        // 4. Load content if accessible
+                        if (!fileContents.ContainsKey(path))
+                        {
+                            if (File.Exists(path))
+                            {
+                                fileContents[path] = await File.ReadAllTextAsync(path, cts.Token);
+                            }
+                            else if (!string.IsNullOrEmpty(repoPath))
+                            {
+                                var fullPath = Path.Combine(repoPath, path);
+                                if (File.Exists(fullPath))
+                                {
+                                    fileContents[path] = await File.ReadAllTextAsync(fullPath, cts.Token);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error resolving file for page '{pageTitle}': {ex.Message}");
+                // Fail gracefully, generation will likely be generic
+                filePaths = new List<string>();
+            }
         }
 
         var contextBuilder = new StringBuilder();

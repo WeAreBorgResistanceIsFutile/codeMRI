@@ -134,26 +134,14 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         WikiPage page;
         if (module.IsLeaf)
         {
-             // It's a leaf node with actual code components
-             // Use WikiGenerationService.GeneratePageAsync
-             // We need to map components to file paths
-             // Assumption: module.Components contains Component IDs which might be file paths or class names
-             // We'll pass them as "RelevantFiles" simply for context
              
-             // In a real scenario, we need the file contents. 
-             // WikiGenerationService.GeneratePageAsync expects filePaths and fileContents.
-             // We would need to fetch file contents here. 
-             // For this implementation, we will assume WikiGenerationService handles retrieval if we pass empty contents but valid paths?
-             // Actually GeneratePageAsync tries to fallback to VectorDB if paths are empty.
-             // But if we have paths, we need contents. 
-             
-             // Simplification: We will pass component IDs as file paths and hope they resolve or let the service handle it.
-             // Ideally we'd have a ICodeProvider service.
              
              page = await _wikiGenerationService.GeneratePageAsync(
                  module.Name, 
                  module.Components.ToList(), 
-                 new Dictionary<string, string>() /* empty contents */
+                 new Dictionary<string, string>(), /* empty contents */
+                 "English",
+                 repoPath
              );
         }
         else

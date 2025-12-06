@@ -71,7 +71,7 @@ public class WikiController : ControllerBase
             }
 
         var page = await _wikiService.GeneratePageAsync(request.Title, request.FilePaths, request.FileContents,
-            request.Language);
+            request.Language, request.RepoPath);
 
         await _wikiRepo.SavePageAsync(request.RepoPath, page);
 

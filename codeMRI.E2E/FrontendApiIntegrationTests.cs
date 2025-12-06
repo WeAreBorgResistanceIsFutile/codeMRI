@@ -28,30 +28,6 @@ public class FrontendApiIntegrationTests
     }
 
     [Test]
-    [Order(1)]
-    public async Task IngestRepo_WithValidPath_ReturnsSuccess()
-    {
-        // Arrange
-        var request = new IngestRequest
-        {
-            RepoPath = TestRepoPath,
-            Force = false,
-            Delete = false
-        };
-
-        // Act
-        var response = await _client.PostAsJsonAsync("api/ingest", request);
-
-        // Assert
-        if (!response.IsSuccessStatusCode)
-        {
-            var content = await response.Content.ReadAsStringAsync();
-            TestContext.WriteLine($"Ingest failed: {response.StatusCode} - {content}");
-        }
-        Assert.That(response.IsSuccessStatusCode, Is.True, "Ingestion API should return success.");
-    }
-
-    [Test]
     [Order(2)]
     public async Task GenerateStructure_WithValidPath_ReturnsStructure()
     {

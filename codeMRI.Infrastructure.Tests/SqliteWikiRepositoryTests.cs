@@ -101,6 +101,29 @@ public class SqliteWikiRepositoryTests
     }
 
     [Test]
+    public async Task GetPageByTitle_ShouldNotCrash_WhenMultiplePagesHaveSameTitle()
+    {
+        // Arrange
+        var sut = new SqliteWikiRepository(_connectionString);
+        var repoPath = "/test/repo";
+        var page1 = new WikiPage { Id = "p1", Title = "Duplicate", Content = "First" };
+        var page2 = new WikiPage { Id = "p2", Title = "Duplicate", Content = "Second" };
+
+        await sut.SavePageAsync(repoPath, page1);
+        await sut.SavePageAsync(repoPath, page2);
+
+        // Act & Assert
+        // This currently throws InvalidOperationException: Sequence contains more than one element
+        // We want to fix it so it returns one of them (likely first found)
+        WikiPage? result = null;
+        Func<Task> act = async () => result = await sut.GetPageByTitleAsync(repoPath, "Duplicate");
+        
+        await act.Should().NotThrowAsync();
+        result.Should().NotBeNull();
+        result!.Title.Should().Be("Duplicate");
+    }
+
+    [Test]
     public async Task SaveAndGetManifest_ShouldPersistData()
     {
         // Arrange

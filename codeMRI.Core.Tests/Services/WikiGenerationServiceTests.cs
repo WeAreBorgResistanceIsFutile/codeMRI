@@ -15,8 +15,6 @@ public class WikiGenerationServiceTests
     public void Setup()
     {
         _mockLlmClient = new Mock<ILLMClient>();
-        _mockEmbedder = new Mock<IEmbedder>();
-        _mockVectorDb = new Mock<IVectorDatabase>();
         _mockDiagramGenerator = new Mock<IDiagramGenerator>();
         _mockGraphService = new Mock<IEnhancedDependencyGraphService>();
         _mockLogger = new Mock<ILogger<WikiGenerationService>> ();
@@ -25,8 +23,6 @@ public class WikiGenerationServiceTests
 
         _service = new WikiGenerationService(
             _mockLlmClient!.Object,
-            _mockEmbedder!.Object,
-            _mockVectorDb!.Object,
             _mockDiagramGenerator!.Object,
             _mockGraphService!.Object,
             _mockSynthesisService!.Object,
@@ -34,8 +30,6 @@ public class WikiGenerationServiceTests
     }
 
     private Mock<ILLMClient>? _mockLlmClient;
-    private Mock<IEmbedder>? _mockEmbedder;
-    private Mock<IVectorDatabase>? _mockVectorDb;
     private Mock<IDiagramGenerator>? _mockDiagramGenerator;
     private Mock<IEnhancedDependencyGraphService>? _mockGraphService;
     private Mock<IDocumentationSynthesisService>? _mockSynthesisService;
@@ -54,19 +48,11 @@ public class WikiGenerationServiceTests
             { "Controllers/TestController.cs", "public class TestController { }" }
         };
 
-        var mockEmbedding = new[] { 1.0f, 2.0f, 3.0f };
-        var mockDocs = new List<Document>
-        {
-            new() { FilePath = "Controllers/TestController.cs", Content = "public class TestController { }" }
-        };
-
         var graph = new EnhancedDependencyGraph();
         graph.AddNode("TestController", new NodeMetadata { Type = "Class" });
         graph.AddNode("TestService", new NodeMetadata { Type = "Class" });
         graph.AddEdge("TestController", "TestService", EdgeType.Call, 1.0);
 
-        _mockEmbedder.Setup(x => x.EmbedAsync(It.IsAny<string>())).ReturnsAsync(mockEmbedding!);
-        _mockVectorDb.Setup(x => x.SearchAsync(It.IsAny<float[]>(), It.IsAny<int>())).ReturnsAsync(mockDocs!);
         _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
             .ReturnsAsync("# TestController\n\nThis is a test controller.");
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
@@ -248,5 +234,34 @@ public class WikiGenerationServiceTests
         // Assert
         Assert.That(result.Content, Is.EqualTo(enrichedContent));
         _mockRefService.Verify(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+    [Test]
+    public async Task GeneratePageAsync_ShouldFindFileViaGraph_WhenPathsEmpty()
+    {
+        // Arrange
+        var pageTitle = "TestService";
+        var repoPath = "/src/repo";
+        var expectedPath = "Services/TestService.cs";
+        
+        var graph = new EnhancedDependencyGraph();
+        graph.AddNode(pageTitle, new NodeMetadata { FilePath = expectedPath });
+
+        _mockGraphService.Setup(x => x.GetComponentsAsync(repoPath, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CodeComponent>());
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(graph);
+            
+        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
+            .ReturnsAsync("# Wiki Page");
+            
+        _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns<string, string>((c, id) => c);
+
+        // Act
+        var result = await _service.GeneratePageAsync(pageTitle, new List<string>(), new Dictionary<string, string>(), "English", repoPath);
+
+        // Assert
+        Assert.That(result.RelevantFiles, Contains.Item(expectedPath));
+        _mockGraphService.Verify(x => x.GetComponentsAsync(repoPath, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

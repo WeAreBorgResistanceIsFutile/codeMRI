@@ -6,8 +6,7 @@ public interface IWikiGenerationService
 {
     Task<WikiStructure> GenerateStructureAsync(string fileTree, string readme, string language = "English");
 
-    Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths, Dictionary<string, string> fileContents,
-        string language = "English");
+    Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths, Dictionary<string, string> fileContents, string language = "English", string? repoPath = null);
 
     Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages, string language = "English");
 }

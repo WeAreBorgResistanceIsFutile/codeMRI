@@ -53,7 +53,7 @@ public class WikiControllerTests
         Assert.That(page!.Content, Is.EqualTo("Cached Content"));
 
         // Verify service was NOT called
-        _mockWikiService.Verify(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>()), Times.Never);
+        _mockWikiService.Verify(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
     }
 
     [Test]
@@ -69,7 +69,7 @@ public class WikiControllerTests
 
         var newPage = new codeMRI.Core.Models.WikiPage { Title = "Existing Page", Content = "New Content" };
 
-        _mockWikiService.Setup(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>()))
+        _mockWikiService.Setup(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>()))
                         .ReturnsAsync(newPage);
 
         // Act
@@ -83,7 +83,7 @@ public class WikiControllerTests
         Assert.That(page!.Content, Is.EqualTo("New Content"));
 
         // Verify service WAS called
-        _mockWikiService.Verify(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>()), Times.Once);
+        _mockWikiService.Verify(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
         
         // Verify save was called
         _mockWikiRepo.Verify(x => x.SavePageAsync(request.RepoPath, newPage), Times.Once);
@@ -118,7 +118,7 @@ public class WikiControllerTests
         Assert.That(page!.Content, Is.EqualTo("Old Content based on Old Code"));
 
         // Verify service was NOT called
-        _mockWikiService.Verify(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>()), Times.Never);
+        _mockWikiService.Verify(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
     }
 
     [Test]
