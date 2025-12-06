@@ -110,6 +110,26 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
             await GenerateContentForModulesAsync(child, structure, repoPath, cancellationToken);
         }
 
+        // Check cache first
+        // If a page with this title already exists in the repo, skip generation
+        var existingPage = await _wikiRepo.GetPageByTitleAsync(repoPath, module.Name);
+        if (existingPage != null)
+        {
+            _logger.LogInformation("Skipping generation for page '{PageTitle}' (cached)", module.Name);
+            structure.Pages.Add(existingPage);
+            
+            // Add to sections structure
+            var cachedSection = new WikiSection
+            {
+                Id = $"section_{module.Id}",
+                Title = module.Name,
+                PageRefs = new List<string> { existingPage.Id }
+            };
+            structure.Sections.Add(cachedSection);
+            
+            return;
+        }
+
         // Generate content for this module
         WikiPage page;
         if (module.IsLeaf)
