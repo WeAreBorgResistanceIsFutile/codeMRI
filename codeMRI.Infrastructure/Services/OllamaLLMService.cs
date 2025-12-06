@@ -21,13 +21,13 @@ public class OllamaLLMService : ILLMClient
         _httpClient.Timeout = TimeSpan.FromMinutes(10); // Generation can be slow
     }
 
-    public async Task<string> ChatAsync(string systemPrompt, string userPrompt, List<ChatMessage> history)
+    public async Task<string> ChatAsync(string systemPrompt, string userPrompt, List<ChatMessage> history, string? model = null)
     {
         var messages = BuildMessages(systemPrompt, userPrompt, history);
 
         var request = new
         {
-            model = _settings.ChatModel,
+            model = model ?? _settings.ChatModel,
             messages,
             stream = false
         };
@@ -40,13 +40,13 @@ public class OllamaLLMService : ILLMClient
     }
 
     public async IAsyncEnumerable<string> ChatStreamAsync(string systemPrompt, string userPrompt,
-        List<ChatMessage> history)
+        List<ChatMessage> history, string? model = null)
     {
         var messages = BuildMessages(systemPrompt, userPrompt, history);
 
         var request = new
         {
-            model = _settings.ChatModel,
+            model = model ?? _settings.ChatModel,
             messages,
             stream = true
         };

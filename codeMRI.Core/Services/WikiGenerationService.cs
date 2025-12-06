@@ -15,6 +15,7 @@ public class WikiGenerationService : IWikiGenerationService
     private readonly IVectorDatabase _vectorDb;
     private readonly IDocumentationSynthesisService _synthesisService;
     private readonly IReferenceManagementService _referenceManagementService;
+    private readonly string _documentationModel;
 
     public WikiGenerationService(
         ILLMClient llmClient,
@@ -23,7 +24,8 @@ public class WikiGenerationService : IWikiGenerationService
         IDiagramGenerator diagramGenerator,
         IEnhancedDependencyGraphService graphService,
         IDocumentationSynthesisService synthesisService,
-        IReferenceManagementService referenceManagementService)
+        IReferenceManagementService referenceManagementService,
+        string documentationModel = "llama3")
     {
         _llmClient = llmClient;
         _embedder = embedder;
@@ -31,13 +33,15 @@ public class WikiGenerationService : IWikiGenerationService
         _diagramGenerator = diagramGenerator;
         _graphService = graphService;
         _synthesisService = synthesisService;
+        _synthesisService = synthesisService;
         _referenceManagementService = referenceManagementService;
+        _documentationModel = documentationModel;
     }
 
     public async Task<WikiStructure> GenerateStructureAsync(string fileTree, string readme, string language = "English")
     {
         var prompt = PromptTemplates.StructurePrompt(fileTree, readme, language);
-        var response = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>());
+        var response = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>(), _documentationModel);
 
         var cleanXml = response.Replace("```xml", "").Replace("```", "").Trim();
         try
@@ -97,7 +101,7 @@ public class WikiGenerationService : IWikiGenerationService
         var prompt = PromptTemplates.PagePrompt(pageTitle, filePaths, language);
         var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + contextBuilder;
 
-        var content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>());
+        var content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
 
         // Generate enhanced interactive diagrams if we have a dependency graph
         try

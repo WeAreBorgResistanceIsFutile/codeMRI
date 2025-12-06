@@ -23,7 +23,7 @@
                         <ul class="ps-2 border-start ms-1">
                             @foreach (var pageRef in wikiSection.PageRefs.Where(p => string.IsNullOrEmpty(searchTerm) || p.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
                             {
-                                <li class="@(AppState.CurrentPage?.Title == pageRef ? "active" : "")" 
+                                <li class="wiki-item @(AppState.CurrentPage?.Title == pageRef ? "active" : "")" 
                                     @onclick="() => LoadPage(pageRef)">
                                     @pageRef
                                 </li>

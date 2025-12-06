@@ -470,12 +470,30 @@ public class IngestController : ControllerBase
     {
         var normalized = path.Replace('\\', '/');
         // Robust check
-        return normalized.Contains("/.git/") ||
-               normalized.Contains("/node_modules/") ||
-               normalized.Contains("/bin/") ||
-               normalized.Contains("/obj/") ||
-               normalized.Contains("/.vs/") ||
-               normalized.Contains("/.idea/") ||
-               normalized.Contains("/.vscode/");
+        if (normalized.Contains("/.git/") ||
+            normalized.Contains("/node_modules/") ||
+            normalized.Contains("/bin/") ||
+            normalized.Contains("/obj/") ||
+            normalized.Contains("/.vs/") ||
+            normalized.Contains("/.idea/") ||
+            normalized.Contains("/.vscode/") ||
+            normalized.Contains("/wwwroot/lib/") || // Ignore client-side libraries
+            normalized.Contains("/dist/"))          // Ignore build artifacts
+        {
+            return true;
+        }
+
+        // Check file size (skip > 1MB)
+        try
+        {
+            var info = new FileInfo(path);
+            if (info.Length > 1024 * 1024) return true;
+        }
+        catch
+        {
+            // If we can't check size, assume it's fine or let it fail later
+        }
+
+        return false;
     }
 }

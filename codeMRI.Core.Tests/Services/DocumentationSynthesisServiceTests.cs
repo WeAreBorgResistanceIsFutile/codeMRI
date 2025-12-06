@@ -42,14 +42,14 @@ public class DocumentationSynthesisServiceTests
         _mockLlmClient.Setup(x => x.ChatAsync(
                 It.Is<string>(s => s.Contains("architect")), // system prompt
                 It.Is<string>(s => s.Contains("theme") && s.Contains("pattern")), // user prompt asking for themes
-                It.IsAny<List<ChatMessage>>()))
+                It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
             .ReturnsAsync("Theme: Secure Transactions\nPattern: Repository Pattern");
 
         // Mock Overview Synthesis response
         _mockLlmClient.Setup(x => x.ChatAsync(
                 It.Is<string>(s => s.Contains("expert")),
                 It.Is<string>(s => s.Contains("PaymentSystem") && s.Contains("Secure Transactions")), // prompt using module name and identified themes
-                It.IsAny<List<ChatMessage>>()))
+                It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
             .ReturnsAsync("# PaymentSystem\n\nHigh level overview...");
 
         // Act
@@ -65,12 +65,12 @@ public class DocumentationSynthesisServiceTests
         _mockLlmClient.Verify(x => x.ChatAsync(
             It.IsAny<string>(),
             It.Is<string>(s => s.Contains("theme") || s.Contains("pattern")),
-            It.IsAny<List<ChatMessage>>()), Times.AtLeastOnce, "Should request theme analysis");
+            It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()), Times.AtLeastOnce, "Should request theme analysis");
 
         _mockLlmClient.Verify(x => x.ChatAsync(
             It.IsAny<string>(),
             It.Is<string>(s => s.Contains("overview") || s.Contains("synthesis")),
-            It.IsAny<List<ChatMessage>>()), Times.AtLeastOnce, "Should request overview synthesis");
+            It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()), Times.AtLeastOnce, "Should request overview synthesis");
     }
 
     [Test]
@@ -80,7 +80,7 @@ public class DocumentationSynthesisServiceTests
         var module = new ModuleNode { Id = "mod-empty", Name = "EmptyModule" };
         var childPages = new List<WikiPage>();
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>()))
+        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
             .ReturnsAsync("# EmptyModule\n\nNo children.");
 
         // Act
@@ -100,13 +100,13 @@ public class DocumentationSynthesisServiceTests
         _mockLlmClient.Setup(x => x.ChatAsync(
                 It.IsAny<string>(),
                 It.Is<string>(p => p.Contains("pattern")),
-                It.IsAny<List<ChatMessage>>()))
+                It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
             .ReturnsAsync("- MVC Pattern\n- Singleton");
 
          _mockLlmClient.Setup(x => x.ChatAsync(
                 It.IsAny<string>(),
                 It.Is<string>(p => !p.Contains("pattern")), // The synthesis prompt
-                It.IsAny<List<ChatMessage>>()))
+                It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
             .ReturnsAsync("# Core\n\nUses MVC Pattern.");
 
         // Act

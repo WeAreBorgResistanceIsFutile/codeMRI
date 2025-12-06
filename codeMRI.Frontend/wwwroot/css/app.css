@@ -100,7 +100,7 @@ html, body {
     letter-spacing: 0.5px;
 }
 
-.wiki-tree li {
+.wiki-tree .wiki-item {
     padding: 4px 8px;
     cursor: pointer;
     border-radius: 4px;
@@ -108,11 +108,11 @@ html, body {
     color: #212529;
 }
 
-.wiki-tree li:hover {
+.wiki-tree .wiki-item:hover {
     background-color: #e9ecef;
 }
 
-.wiki-tree li.active {
+.wiki-tree .wiki-item.active {
     background-color: #e7f5ff;
     color: #1971c2;
     font-weight: 500;

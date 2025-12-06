@@ -28,7 +28,19 @@ public class WireUp
         services.AddScoped<IArchitecturalPatternService, ArchitecturalPatternService>();
         services.AddScoped<IEnhancedDependencyGraphService, EnhancedDependencyGraphService>();
         services.AddScoped<RAGService>();
-        services.AddScoped<IWikiGenerationService, WikiGenerationService>();
+        services.AddScoped<IWikiGenerationService, WikiGenerationService>(sp =>
+        {
+            var settings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<codeMRI.Infrastructure.Configuration.OllamaSettings>>().Value;
+            return new WikiGenerationService(
+                sp.GetRequiredService<ILLMClient>(),
+                sp.GetRequiredService<IEmbedder>(),
+                sp.GetRequiredService<IVectorDatabase>(),
+                sp.GetRequiredService<IDiagramGenerator>(),
+                sp.GetRequiredService<IEnhancedDependencyGraphService>(),
+                sp.GetRequiredService<IDocumentationSynthesisService>(),
+                sp.GetRequiredService<IReferenceManagementService>(),
+                settings.DocumentationModel);
+        });
         services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
         services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();
         services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();

@@ -1,5 +1,5 @@
 ARG TARGETPLATFORM
-FROM --platform=$TARGETPLATFORM node:20-slim-bullseye
+FROM --platform=$TARGETPLATFORM node:20-slim
 
 WORKDIR /app
 

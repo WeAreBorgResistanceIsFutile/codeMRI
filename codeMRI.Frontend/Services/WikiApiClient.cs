@@ -27,6 +27,13 @@ public class WikiApiClient
         return result.GetProperty("message").GetString() ?? "Ingestion complete";
     }
 
+    public async Task<IngestionStatusResponse> GetIngestionStatusAsync(string repoPath)
+    {
+        var response = await _httpClient.GetAsync($"api/ingest/status?repoPath={Uri.EscapeDataString(repoPath)}");
+        if (!response.IsSuccessStatusCode) return new IngestionStatusResponse { Status = "unknown" };
+        return await response.Content.ReadFromJsonAsync<IngestionStatusResponse>() ?? new IngestionStatusResponse();
+    }
+
     public async Task<WikiStructure> GenerateStructureAsync(string repoPath)
     {
         var response =
