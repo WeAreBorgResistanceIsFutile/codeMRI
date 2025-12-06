@@ -45,5 +45,7 @@ public class WireUp
         services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();
         services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();
         services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
+        services.AddScoped<IRubricGenerationService, RubricGenerationService>();
+        services.AddScoped<ICodeWikiOrchestrator, CodeWikiOrchestrator>();
     }
 }

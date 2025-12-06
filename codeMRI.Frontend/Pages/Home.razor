@@ -9,23 +9,60 @@
 <div class="workspace-grid">
     <!-- Left Sidebar: Navigation -->
     <div class="pane">
-        <div class="pane-header">Explorer</div>
+        <div class="pane-header d-flex justify-content-between align-items-center">
+            <span>Explorer</span>
+            @if (!string.IsNullOrEmpty(AppState.RepoPath))
+            {
+                <button class="btn btn-sm btn-outline-secondary" @onclick="GoHome" title="Back to Repositories">
+                    <span class="oi oi-home"></span> Home
+                </button>
+            }
+        </div>
         <div class="pane-content p-0">
-            <WikiTree />
+            @if (!string.IsNullOrEmpty(AppState.RepoPath))
+            {
+                <WikiTree />
+            }
+            else
+            {
+                <div class="p-3 text-muted small">
+                    Select a repository to view its structure.
+                </div>
+            }
         </div>
     </div>
 
     <!-- Center Stage: Document / Dashboard -->
     <div class="pane">
         <div class="pane-header">
-            <span>@(AppState.CurrentPage?.Title ?? "Dashboard")</span>
+            <span>@(AppState.CurrentPage?.Title ?? (string.IsNullOrEmpty(AppState.RepoPath) ? "Repositories" : "Dashboard"))</span>
             @if (AppState.CurrentPage != null)
             {
                 <button class="btn btn-sm btn-light border" @onclick="ClosePage">Close</button>
             }
         </div>
         <div class="pane-content scroll-y">
-            @if (AppState.CurrentPage == null)
+            @if (string.IsNullOrEmpty(AppState.RepoPath))
+            {
+                if (isAddingNew)
+                {
+                     <div class="d-flex flex-column h-100">
+                        <div class="p-3">
+                            <button class="btn btn-link text-decoration-none" @onclick="CancelAddNew">
+                                ← Back to list
+                            </button>
+                        </div>
+                        <div class="d-flex align-items-center justify-content-center flex-grow-1">
+                            <IngestionControl />
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <Repositories OnAddNew="StartAddNew" />
+                }
+            }
+            else if (AppState.CurrentPage == null)
             {
                 <div class="d-flex align-items-center justify-content-center h-100">
                     <IngestionControl />
@@ -72,6 +109,7 @@
 
 @code {
     private bool showSourceFiles = false;
+    private bool isAddingNew = false;
     private string sourceFilesIcon => showSourceFiles ? "▼" : "▶";
     
     protected override void OnInitialized()
@@ -88,7 +126,6 @@
     {
         if (AppState.CurrentPage != null)
         {
-            // Attempt to render mermaid diagrams if any exist in the markdown
             try
             {
                 await JS.InvokeVoidAsync("renderMermaid");
@@ -98,6 +135,24 @@
                 // Ignore if mermaid is not loaded or fails
             }
         }
+    }
+
+    private void StartAddNew()
+    {
+        isAddingNew = true;
+    }
+
+    private void CancelAddNew()
+    {
+        isAddingNew = false;
+    }
+
+    private void GoHome()
+    {
+        AppState.SetRepoPath("");
+        AppState.SetCurrentPage(null!);
+        AppState.SetStructure(null!);
+        isAddingNew = false;
     }
 
     private void ClosePage()
@@ -112,8 +167,6 @@
 
     private string RenderMarkdown(string markdown)
     {
-        // Use Markdig to convert to HTML
-        // Ensure the pipeline includes necessary extensions if configured in Program.cs (not currently configured, so basic)
         return Markdown.ToHtml(markdown ?? "");
     }
 }

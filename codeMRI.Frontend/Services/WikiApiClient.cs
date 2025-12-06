@@ -42,6 +42,14 @@ public class WikiApiClient
         return await response.Content.ReadFromJsonAsync<WikiStructure>() ?? new WikiStructure();
     }
 
+    public async Task<WikiStructure> GenerateAdvancedWikiAsync(string repoPath)
+    {
+        var response =
+            await _httpClient.PostAsJsonAsync("api/wiki/generate-advanced", new StructureRequest { RepoPath = repoPath });
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<WikiStructure>() ?? new WikiStructure();
+    }
+
     public async Task<WikiPage> GeneratePageAsync(string repoPath, string title, List<string> filePaths)
     {
         var response = await _httpClient.PostAsJsonAsync("api/wiki/page", new PageGenerationRequest

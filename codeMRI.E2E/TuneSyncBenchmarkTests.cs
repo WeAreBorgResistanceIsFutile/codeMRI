@@ -162,6 +162,106 @@ public class TuneSyncBenchmarkTests
         Assert.That(assessment.MeanScore, Is.GreaterThanOrEqualTo(0.5), "Documentation quality score was too low.");
     }
 
+    [Test]
+    [Timeout(1200000)] // 20 minutes (Advanced flow is slower)
+    public async Task Benchmark_Advanced_TuneSyncTool_DocumentationQuality()
+    {
+        var client = _factory.CreateClient();
+        client.Timeout = TimeSpan.FromMinutes(20);
+
+        // 1. Trigger Advanced Generation
+        TestContext.WriteLine("Starting Advanced CodeWiki Generation...");
+        var structureResponse = await client.PostAsJsonAsync("/api/wiki/generate-advanced", new StructureRequest 
+        { 
+            RepoPath = _repoPath,
+            ForceRegenerate = true,
+            Language = "English"
+        });
+        structureResponse.EnsureSuccessStatusCode();
+        var structure = await structureResponse.Content.ReadFromJsonAsync<codeMRI.Server.Api.WikiStructure>();
+        Assert.That(structure, Is.Not.Null);
+        
+        // 2. Fetch Reference Content (Cached)
+        string referenceText;
+        if (File.Exists(_referenceCachePath))
+        {
+            TestContext.WriteLine($"Loading reference corpus from cache: {_referenceCachePath}");
+            referenceText = await File.ReadAllTextAsync(_referenceCachePath);
+        }
+        else
+        {
+            TestContext.WriteLine("Fetching Reference Corpus from DeepWiki (Recursive)...");
+            referenceText = await CrawlDeepWikiRecursively(ReferenceUrl);
+            await File.WriteAllTextAsync(_referenceCachePath, referenceText);
+        }
+
+        // 3. Select a target page for benchmarking (e.g., Root/ReadMe or similar)
+        // In advanced flow, pages are in structure.Pages (but Server.Api.WikiStructure might not have Pages property if it wasn't updated?)
+        // Let's check if Server.Api.WikiStructure maps correctly.
+        // If Server.Api.WikiStructure doesn't have Pages, we might need to fetch it via API or check local DB.
+        
+        // We know we updated Core.Models.WikiStructure, but did we update Server.Api.WikiStructure?
+        // Let's assume we need to fetch the page content separately if it's not in the response structure.
+        // But wait, the standard structure response usually doesn't strictly contain full page content unless we designed it to.
+        // CodeWikiOrchestrator returns Core.Models.WikiStructure which has Pages.
+        // We should check Server.Api.WikiStructure.
+        
+        // For now, let's assume we can fetch the "Overview" or "Index" page if it exists, or just pick the first page.
+        // Typically the orchestrator creates a page for the root module.
+        // Let's try to fetch a likely page.
+        
+        var targetPageTitle = structure.Title; // Often the repo name or "Root"
+        if (string.IsNullOrEmpty(targetPageTitle)) targetPageTitle = "tunesynctool";
+
+        // Attempt to get page by title "Overview" or repository name
+        var pagesToCheck = new[] { "Overview", "Readme", targetPageTitle };
+        codeMRI.Server.Api.WikiPage targetPage = null;
+
+        foreach (var title in pagesToCheck)
+        {
+            var pageReq = new PageGenerationRequest { RepoPath = _repoPath, Title = title };
+            var pageRes = await client.PostAsJsonAsync("/api/wiki/page", pageReq);
+            if (pageRes.IsSuccessStatusCode)
+            {
+                targetPage = await pageRes.Content.ReadFromJsonAsync<codeMRI.Server.Api.WikiPage>();
+                if (targetPage != null && !string.IsNullOrEmpty(targetPage.Content)) 
+                {
+                     TestContext.WriteLine($"Found benchmark target page: {title}");
+                     break;
+                }
+            }
+        }
+
+        if (targetPage == null) Assert.Inconclusive("Could not find a generated page to benchmark against.");
+
+        // 4. Evaluate using Internal Judge (Verification of External Truth)
+        TestContext.WriteLine("Starting Evaluation against Reference...");
+        using var scope = _factory.Services.CreateScope();
+        var judgeService = scope.ServiceProvider.GetRequiredService<IDocumentationJudgeService>();
+
+        var requirement = new RubricRequirement
+        {
+            Title = "Accuracy against Reference",
+            Description = $"The generated documentation must match the purpose and details described in the reference corpus (first 4k chars): {referenceText.Substring(0, Math.Min(referenceText.Length, 4000))}..." 
+        };
+
+        var evalStructure = new codeMRI.Core.Models.WikiStructure 
+        { 
+            Title = targetPage.Title,
+            Description = $"Content of {targetPage.Title}:\n\n{targetPage.Content}",
+            Sections = new List<codeMRI.Core.Models.WikiSection>()
+        };
+
+        var assessment = await judgeService.EvaluateRequirementAsync(requirement, evalStructure);
+
+        TestContext.WriteLine($"\n--- ADVANCED EVALUATION RESULT ---");
+        TestContext.WriteLine($"Score: {assessment.MeanScore}");
+        TestContext.WriteLine($"Reasoning: {string.Join(" ", assessment.Reasoning)}");
+        TestContext.WriteLine($"----------------------------------\n");
+
+        Assert.That(assessment.MeanScore, Is.GreaterThanOrEqualTo(0.6), "Advanced documentation quality score was too low.");
+    }
+
     private async Task<string> CrawlDeepWikiRecursively(string startUrl)
     {
         var visited = new HashSet<string>();

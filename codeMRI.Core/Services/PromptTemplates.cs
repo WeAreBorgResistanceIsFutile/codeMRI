@@ -5,7 +5,7 @@ public static class PromptTemplates
     public static string StructurePrompt(string fileTree, string readme, string language)
     {
         return $"""
-                Analyze this GitHub repository and create a wiki structure for it.
+                Analyze this git repository and create a wiki structure for it.
 
                 1. The complete file tree of project:
                 <file_tree>

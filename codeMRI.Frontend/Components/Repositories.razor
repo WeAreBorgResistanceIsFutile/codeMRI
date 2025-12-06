@@ -1,0 +1,82 @@
+@using codeMRI.Frontend.Services
+@inject HttpClient Http
+@inject AppState AppState
+
+<div class="h-100 d-flex flex-column p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Repositories</h1>
+        <button class="btn btn-primary" @onclick="OnAddNew">
+            <span class="oi oi-plus me-2"></span>Add New Repository
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="d-flex justify-content-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else if (repositories == null || !repositories.Any())
+    {
+        <div class="alert alert-info">
+            No repositories found. Click "Add New Repository" to get started.
+        </div>
+    }
+    else
+    {
+        <div class="list-group">
+            @foreach (var repo in repositories)
+            {
+                <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                        @onclick="() => SelectRepo(repo)">
+                    <div>
+                        <h5 class="mb-1">@GetRepoName(repo)</h5>
+                        <small class="text-muted">@repo</small>
+                    </div>
+                    <span class="badge bg-secondary rounded-pill">Open</span>
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback OnAddNew { get; set; }
+    
+    private List<string>? repositories;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRepositories();
+    }
+
+    private async Task LoadRepositories()
+    {
+        try
+        {
+            isLoading = true;
+            repositories = await Http.GetFromJsonAsync<List<string>>("api/wiki/repositories");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading repositories: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void SelectRepo(string repoPath)
+    {
+        AppState.SetRepoPath(repoPath);
+    }
+
+    private string GetRepoName(string path)
+    {
+        return System.IO.Path.GetFileName(path) ?? path;
+    }
+}

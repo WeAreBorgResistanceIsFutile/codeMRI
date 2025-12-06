@@ -13,6 +13,7 @@ public class WikiControllerTests
 {
     private Mock<IWikiGenerationService> _mockWikiService;
     private Mock<IWikiRepository> _mockWikiRepo;
+    private Mock<ICodeWikiOrchestrator> _mockOrchestrator;
     private WikiController _controller;
 
     [SetUp]
@@ -20,7 +21,8 @@ public class WikiControllerTests
     {
         _mockWikiService = new Mock<IWikiGenerationService>();
         _mockWikiRepo = new Mock<IWikiRepository>();
-        _controller = new WikiController(_mockWikiService.Object, _mockWikiRepo.Object);
+        _mockOrchestrator = new Mock<ICodeWikiOrchestrator>();
+        _controller = new WikiController(_mockWikiService.Object, _mockWikiRepo.Object, _mockOrchestrator.Object);
     }
 
     [Test]
@@ -117,5 +119,33 @@ public class WikiControllerTests
 
         // Verify service was NOT called
         _mockWikiService.Verify(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
+    public async Task GenerateAdvancedWiki_DelegatesToOrchestrator()
+    {
+        // Arrange
+        var request = new StructureRequest { RepoPath = "/test/repo", Language = "C#" };
+        var expectedStructure = new codeMRI.Core.Models.WikiStructure { Title = "Advanced Wiki" };
+
+        _mockOrchestrator.Setup(x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(), It.IsAny<CancellationToken>()))
+                         .ReturnsAsync(expectedStructure);
+
+        // Act
+        var result = await _controller.GenerateAdvancedWiki(request);
+
+        // Assert
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = result as OkObjectResult;
+        var structure = okResult!.Value as codeMRI.Core.Models.WikiStructure;
+
+        Assert.That(structure, Is.Not.Null);
+        Assert.That(structure.Title, Is.EqualTo("Advanced Wiki"));
+
+        // Verify Orchestrator was called
+        _mockOrchestrator.Verify(x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(), It.IsAny<CancellationToken>()), Times.Once);
+        
+        // Verify Save was called
+        _mockWikiRepo.Verify(x => x.SaveStructureAsync(request.RepoPath, expectedStructure), Times.Once);
     }
 }

@@ -240,4 +240,11 @@ public class SqliteWikiRepository : IWikiRepository
         return await connection.QuerySingleOrDefaultAsync<int?>(
             "SELECT Id FROM Repositories WHERE RepoPath = @RepoPath", new { RepoPath = repoPath });
     }
+
+    public async Task<List<string>> GetAllRepositoriesAsync()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repos = await connection.QueryAsync<string>("SELECT RepoPath FROM Repositories ORDER BY id DESC");
+        return repos.ToList();
+    }
 }

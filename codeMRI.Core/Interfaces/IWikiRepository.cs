@@ -31,4 +31,9 @@ public interface IWikiRepository
     /// Deletes the processing state for a repository ingestion
     /// </summary>
     Task DeleteIngestionProcessingStateAsync(string repoPath);
+
+    /// <summary>
+    /// Gets a list of all repositories that have been processed/stored.
+    /// </summary>
+    Task<List<string>> GetAllRepositoriesAsync();
 }

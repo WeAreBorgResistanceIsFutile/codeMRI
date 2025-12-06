@@ -10,11 +10,16 @@ public class WikiController : ControllerBase
 {
     private readonly IWikiRepository _wikiRepo;
     private readonly IWikiGenerationService _wikiService;
+    private readonly ICodeWikiOrchestrator _orchestrator;
 
-    public WikiController(IWikiGenerationService wikiService, IWikiRepository wikiRepo)
+    public WikiController(
+        IWikiGenerationService wikiService, 
+        IWikiRepository wikiRepo, 
+        ICodeWikiOrchestrator orchestrator)
     {
         _wikiService = wikiService;
         _wikiRepo = wikiRepo;
+        _orchestrator = orchestrator;
     }
 
     [HttpPost("structure")]
@@ -71,5 +76,34 @@ public class WikiController : ControllerBase
         await _wikiRepo.SavePageAsync(request.RepoPath, page);
 
         return Ok(page);
+    }
+
+
+    [HttpGet("repositories")]
+    public async Task<IActionResult> GetRepositories()
+    {
+        var repos = await _wikiRepo.GetAllRepositoriesAsync();
+        return Ok(repos);
+    }
+
+    [HttpPost("generate-advanced")]
+    public async Task<IActionResult> GenerateAdvancedWiki([FromBody] StructureRequest request)
+    {
+        // Construct RepositoryInfo from request and filesystem
+        var repoInfo = new RepositoryInfo
+        {
+            Name = Path.GetFileName(request.RepoPath),
+            Language = request.Language,
+            // Estimation
+            LinesOfCode = 0, 
+            ComponentCount = 0
+        };
+
+        var structure = await _orchestrator.GenerateAdvancedWikiAsync(
+            request.RepoPath, 
+            repoInfo);
+
+        await _wikiRepo.SaveStructureAsync(request.RepoPath, structure);
+        return Ok(structure);
     }
 }
