@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.SignalR.Client;
 
 namespace codeMRI.CLI;
 
@@ -84,13 +85,40 @@ class Program
             }
         }
 
-        // 2. Call Server
+        // 2. Connect to SignalR Hub for progress updates
+        await using var hubConnection = new HubConnectionBuilder()
+            .WithUrl($"{serverUrl}/wikiHub")
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<ProgressInfo>("ReceiveProgress", (info) =>
+        {
+            // Clear current line if possible to make it look like a progress bar, or just write lines
+            // Simple approach: [Phase] Message (Percentage%)
+            Console.WriteLine($"[{info.Phase}] {info.Message} ({info.Percentage}%)");
+        });
+
+        string? connectionId = null;
+        try
+        {
+            if (verbose) Console.WriteLine("Connecting to progress hub...");
+            await hubConnection.StartAsync();
+            connectionId = hubConnection.ConnectionId;
+            if (verbose) Console.WriteLine($"Connected to hub. ID: {connectionId}");
+        }
+        catch (Exception ex)
+        {
+             if (verbose) Console.WriteLine($"Warning: Could not connect to progress hub: {ex.Message}. functionality will be limited.");
+        }
+
+        // 3. Call Server
         var request = new
         {
             RepoPath = targetPath,
             Language = "Detected automatically",
             ForceRegenerate = force,
-            SkipPersistence = !string.IsNullOrEmpty(output)
+            SkipPersistence = !string.IsNullOrEmpty(output),
+            ConnectionId = connectionId
         };
 
         try

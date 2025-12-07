@@ -24,6 +24,19 @@ public class WikiApiClient
                ?? throw new Exception("Failed to deserialize structure");
     }
 
+    public async Task<WikiStructure> GenerateAdvancedStructureAsync(string repoPath, string? connectionId = null)
+    {
+        var response = await _http.PostAsJsonAsync("api/Wiki/generate-advanced", new StructureRequest 
+        { 
+            RepoPath = repoPath,
+            ForceRegenerate = true, 
+            ConnectionId = connectionId
+        });
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<WikiStructure>() 
+               ?? throw new Exception("Failed to deserialize structure");
+    }
+
     public async Task<WikiPage> GeneratePageAsync(string repoPath, string title, List<string> contextFiles, bool forceRegenerate = false)
     {
         var response = await _http.PostAsJsonAsync("api/Wiki/page", new PageGenerationRequest 

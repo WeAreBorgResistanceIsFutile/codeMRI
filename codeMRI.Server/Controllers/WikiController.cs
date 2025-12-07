@@ -1,6 +1,9 @@
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Models;
 using codeMRI.Server.Api;
+using codeMRI.Server.Hubs;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 
 namespace codeMRI.Server.Controllers;
 
@@ -11,15 +14,18 @@ public class WikiController : ControllerBase
     private readonly IWikiRepository _wikiRepo;
     private readonly IWikiGenerationService _wikiService;
     private readonly ICodeWikiOrchestrator _orchestrator;
+    private readonly IHubContext<WikiHub> _hubContext;
 
     public WikiController(
         IWikiGenerationService wikiService, 
         IWikiRepository wikiRepo, 
-        ICodeWikiOrchestrator orchestrator)
+        ICodeWikiOrchestrator orchestrator,
+        IHubContext<WikiHub> hubContext)
     {
         _wikiService = wikiService;
         _wikiRepo = wikiRepo;
         _orchestrator = orchestrator;
+        _hubContext = hubContext;
     }
 
     [HttpPost("structure")]
@@ -99,9 +105,19 @@ public class WikiController : ControllerBase
             ComponentCount = 0
         };
 
+        IProgress<codeMRI.Core.Models.ProgressInfo>? progress = null;
+        if (!string.IsNullOrEmpty(request.ConnectionId))
+        {
+            progress = new Progress<codeMRI.Core.Models.ProgressInfo>(info =>
+            {
+                _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveProgress", info);
+            });
+        }
+
         var structure = await _orchestrator.GenerateAdvancedWikiAsync(
             request.RepoPath, 
-            repoInfo);
+            repoInfo,
+            progress);
 
         if (!request.SkipPersistence)
         {

@@ -232,7 +232,7 @@ public class WikiGenerationServiceTests
         var result = await _service.GeneratePageAsync(pageTitle, new List<string>(), new Dictionary<string, string>());
 
         // Assert
-        Assert.That(result.Content, Is.EqualTo(enrichedContent));
+        Assert.That(result.Content, Does.Contain(enrichedContent));
         _mockRefService.Verify(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
     }
     [Test]

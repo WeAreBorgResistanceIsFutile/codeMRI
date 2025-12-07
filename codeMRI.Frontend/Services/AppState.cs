@@ -38,6 +38,14 @@ public class AppState
         NotifyStateChanged();
     }
 
+    public ProgressInfo? CurrentProgress { get; private set; }
+
+    public void SetProgress(ProgressInfo? info)
+    {
+        CurrentProgress = info;
+        NotifyStateChanged();
+    }
+
     public List<ChatMessage> ChatHistory { get; private set; } = new();
 
     public void AddChatMessage(ChatMessage msg)

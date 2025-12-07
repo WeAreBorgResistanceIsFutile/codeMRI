@@ -6,6 +6,9 @@ using Microsoft.AspNetCore.Mvc;
 using Moq;
 using NUnit.Framework;
 
+using codeMRI.Server.Hubs;
+using Microsoft.AspNetCore.SignalR;
+
 namespace codeMRI.Core.Tests.Controllers;
 
 [TestFixture]
@@ -14,6 +17,7 @@ public class WikiControllerTests
     private Mock<IWikiGenerationService> _mockWikiService;
     private Mock<IWikiRepository> _mockWikiRepo;
     private Mock<ICodeWikiOrchestrator> _mockOrchestrator;
+    private Mock<IHubContext<WikiHub>> _mockHubContext;
     private WikiController _controller;
 
     [SetUp]
@@ -22,7 +26,8 @@ public class WikiControllerTests
         _mockWikiService = new Mock<IWikiGenerationService>();
         _mockWikiRepo = new Mock<IWikiRepository>();
         _mockOrchestrator = new Mock<ICodeWikiOrchestrator>();
-        _controller = new WikiController(_mockWikiService.Object, _mockWikiRepo.Object, _mockOrchestrator.Object);
+        _mockHubContext = new Mock<IHubContext<WikiHub>>();
+        _controller = new WikiController(_mockWikiService.Object, _mockWikiRepo.Object, _mockOrchestrator.Object, _mockHubContext.Object);
     }
 
     [Test]
@@ -128,7 +133,7 @@ public class WikiControllerTests
         var request = new StructureRequest { RepoPath = "/test/repo", Language = "C#" };
         var expectedStructure = new codeMRI.Core.Models.WikiStructure { Title = "Advanced Wiki" };
 
-        _mockOrchestrator.Setup(x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(), It.IsAny<CancellationToken>()))
+        _mockOrchestrator.Setup(x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(), It.IsAny<IProgress<codeMRI.Core.Models.ProgressInfo>?>(), It.IsAny<CancellationToken>()))
                          .ReturnsAsync(expectedStructure);
 
         // Act
@@ -143,7 +148,7 @@ public class WikiControllerTests
         Assert.That(structure.Title, Is.EqualTo("Advanced Wiki"));
 
         // Verify Orchestrator was called
-        _mockOrchestrator.Verify(x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockOrchestrator.Verify(x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(), It.IsAny<IProgress<codeMRI.Core.Models.ProgressInfo>?>(), It.IsAny<CancellationToken>()), Times.Once);
         
         // Verify Save was called
         _mockWikiRepo.Verify(x => x.SaveStructureAsync(request.RepoPath, expectedStructure), Times.Once);

@@ -11,5 +11,6 @@ public interface ICodeWikiOrchestrator
     Task<WikiStructure> GenerateAdvancedWikiAsync(
         string repositoryPath, 
         RepositoryInfo repositoryInfo, 
+        IProgress<ProgressInfo>? progress = null,
         CancellationToken cancellationToken = default);
 }
