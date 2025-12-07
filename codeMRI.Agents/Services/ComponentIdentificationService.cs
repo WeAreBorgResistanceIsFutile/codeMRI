@@ -248,7 +248,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
                 Language = "Unknown",
                 LineCount = lines.Length,
                 ComplexityScore = CalculateComplexity(content),
-                Metadata = CreateComponentMetadata(filePath, content, componentName)
+                Metadata = CreateComponentMetadata(content, componentName)
             });
         }
 
@@ -265,7 +265,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
                 Language = "Unknown",
                 LineCount = lines.Length,
                 ComplexityScore = CalculateComplexity(content),
-                Metadata = CreateComponentMetadata(filePath, content, componentName)
+                Metadata = CreateComponentMetadata(content, componentName)
             });
         }
 
@@ -294,7 +294,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
                 Language = "Java",
                 LineCount = lines.Length,
                 ComplexityScore = CalculateComplexity(content),
-                Metadata = CreateComponentMetadata(filePath, content, componentName)
+                Metadata = CreateComponentMetadata(content, componentName)
             });
         }
 
@@ -310,7 +310,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
                 Language = "Java",
                 LineCount = lines.Length,
                 ComplexityScore = CalculateComplexity(content),
-                Metadata = CreateComponentMetadata(filePath, content, componentName)
+                Metadata = CreateComponentMetadata(content, componentName)
             });
         }
 
@@ -350,7 +350,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
                 Language = "Python",
                 LineCount = lines.Length,
                 ComplexityScore = CalculateComplexity(content),
-                Metadata = CreateComponentMetadata(filePath, content, componentName)
+                Metadata = CreateComponentMetadata(content, componentName)
             });
         }
 
@@ -438,7 +438,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
         return Math.Max(0, maxDepth);
     }
 
-    private ComponentMetadata CreateComponentMetadata(string filePath, string content, string componentName)
+    private ComponentMetadata CreateComponentMetadata(string content, string componentName)
     {
         var lines = content.Split('\n');
         var cyclomaticComplexity = ComputeCyclomaticComplexity(content);

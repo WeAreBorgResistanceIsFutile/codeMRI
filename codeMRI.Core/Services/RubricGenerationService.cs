@@ -1,4 +1,5 @@
 using System.Text.Json;
+using codeMRI.Core.Converters;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -267,13 +268,16 @@ Return only valid JSON.";
     {
         try
         {
+            var cleanResponse = CleanJsonString(response);
+            
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             };
+            options.Converters.Add(new RubricNodeConverter());
 
-            var rubric = JsonSerializer.Deserialize<EvaluationRubric>(response, options);
+            var rubric = JsonSerializer.Deserialize<EvaluationRubric>(cleanResponse, options);
 
             if (rubric == null)
             {
@@ -288,6 +292,34 @@ Return only valid JSON.";
             _logger.LogError(ex, "Error parsing rubric JSON from LLM response");
             return CreateDefaultRubric();
         }
+    }
+
+    private string CleanJsonString(string response)
+    {
+        if (string.IsNullOrWhiteSpace(response)) return response;
+
+        // Remove markdown code blocks
+        var cleaned = response.Trim();
+        
+        // Handle ```json or ``` blocks
+        if (cleaned.StartsWith("```"))
+        {
+            var firstLineBreak = cleaned.IndexOf('\n');
+            if (firstLineBreak > 0)
+            {
+                // Remove the first line (```json)
+                cleaned = cleaned.Substring(firstLineBreak + 1);
+            }
+            
+            // Remove the last line if it's ```
+            var lastBackticks = cleaned.LastIndexOf("```");
+            if (lastBackticks >= 0)
+            {
+                cleaned = cleaned.Substring(0, lastBackticks);
+            }
+        }
+        
+        return cleaned.Trim();
     }
 
     private EvaluationRubric CreateDefaultRubric()
