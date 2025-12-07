@@ -220,11 +220,101 @@ public class ASTServiceClient : IASTServiceClient
         var fileName = Path.GetFileNameWithoutExtension(astResult.FilePath);
         var componentCounter = 1;
 
-        // Use dynamic to access the object properties since we don't have concrete types
-        dynamic hierarchicalStructure = astResult.HierarchicalStructure;
-
         try
         {
+            // Handle JsonElement case (most common when deserialized via System.Text.Json)
+            if (astResult.HierarchicalStructure is JsonElement rootElement &&
+                rootElement.ValueKind == JsonValueKind.Object)
+            {
+                // Try to extract classes
+                if (TryGetPropertyCaseInsensitive(rootElement, "Classes", out var classesElement) &&
+                    classesElement.ValueKind == JsonValueKind.Array)
+                    foreach (var classInfo in classesElement.EnumerateArray())
+                    {
+                        var component = new CodeComponent
+                        {
+                            Id = $"{fileName}_{GetJsonString(classInfo, "Name")}_{componentCounter++}",
+                            Name = GetJsonString(classInfo, "Name"),
+                            Type = DetermineComponentTypeJson(classInfo, astResult.Language),
+                            FilePath = astResult.FilePath,
+                            Language = astResult.Language,
+                            LineCount = GetJsonMetrics(classInfo, "Lines"),
+                            ComplexityScore = GetJsonMetrics(classInfo, "Complexity"),
+                            Methods = GetJsonList(classInfo, "Methods"),
+                            Properties = GetJsonList(classInfo, "Properties"),
+                            Dependencies = ExtractDependenciesDynamic(astResult),
+                            Description = GenerateDescriptionJson(classInfo, astResult.Language)
+                        };
+
+                        components.Add(component);
+                    }
+
+                // Try to extract standalone functions
+                if (TryGetPropertyCaseInsensitive(rootElement, "Functions", out var functionsElement) &&
+                    functionsElement.ValueKind == JsonValueKind.Array)
+                    foreach (var functionInfo in functionsElement.EnumerateArray())
+                        // Only include standalone functions (Parent is null)
+                        if (!TryGetPropertyCaseInsensitive(functionInfo, "Parent", out var parent) ||
+                            parent.ValueKind == JsonValueKind.Null)
+                        {
+                            var component = new CodeComponent
+                            {
+                                Id = $"{fileName}_{GetJsonString(functionInfo, "Name")}_{componentCounter++}",
+                                Name = GetJsonString(functionInfo, "Name"),
+                                Type = "Function",
+                                FilePath = astResult.FilePath,
+                                Language = astResult.Language,
+                                LineCount = GetJsonMetrics(functionInfo, "Lines"),
+                                ComplexityScore = GetJsonMetrics(functionInfo, "Complexity"),
+                                Methods = new List<string>(),
+                                Properties = new List<string>(),
+                                Dependencies = ExtractDependenciesDynamic(astResult),
+                                Description = GenerateFunctionDescriptionJson(functionInfo, astResult.Language)
+                            };
+
+                            components.Add(component);
+                        }
+
+                // Fallback: If no components found but file has content, treat as Script/Module
+                if (components.Count == 0 && astResult.Metrics is JsonElement metricsElement)
+                {
+                    int lines = 0;
+                    if (TryGetPropertyCaseInsensitive(metricsElement, "linesOfCode", out var linesProp) && linesProp.ValueKind == JsonValueKind.Number)
+                         lines = linesProp.GetInt32();
+                    else if (TryGetPropertyCaseInsensitive(metricsElement, "lines", out var linesProp2) && linesProp2.ValueKind == JsonValueKind.Number)
+                         lines = linesProp2.GetInt32();
+
+                    if (lines > 0)
+                    {
+                        int complexity = 1;
+                        if (TryGetPropertyCaseInsensitive(metricsElement, "cyclomaticComplexity", out var compProp) && compProp.ValueKind == JsonValueKind.Number)
+                             complexity = compProp.GetInt32();
+                        else if (TryGetPropertyCaseInsensitive(metricsElement, "complexity", out var compProp2) && compProp2.ValueKind == JsonValueKind.Number)
+                             complexity = compProp2.GetInt32();
+
+                        components.Add(new CodeComponent
+                        {
+                            Id = $"{fileName}_script",
+                            Name = fileName,
+                            Type = "Script",
+                            FilePath = astResult.FilePath,
+                            Language = astResult.Language,
+                            LineCount = lines,
+                            ComplexityScore = complexity > 0 ? complexity : 1,
+                            Methods = new List<string>(),
+                            Properties = new List<string>(),
+                            Dependencies = ExtractDependenciesDynamic(astResult),
+                            Description = $"Script {fileName} in {astResult.Language} with {lines} lines of code"
+                        });
+                    }
+                }
+
+                return Task.FromResult(components);
+            }
+
+            // Legacy fallback for dynamic objects (e.g. tests)
+            dynamic hierarchicalStructure = astResult.HierarchicalStructure;
+
             // Try to extract classes
             if (hierarchicalStructure.Classes != null)
                 foreach (var classInfo in (IEnumerable<dynamic>)hierarchicalStructure.Classes)
@@ -269,6 +359,40 @@ public class ASTServiceClient : IASTServiceClient
 
                     components.Add(component);
                 }
+                
+            // Fallback for dynamic: If no components found
+            if (components.Count == 0)
+            {
+                 dynamic metrics = astResult.Metrics;
+                 if (metrics != null)
+                 {
+                     int lines = 0;
+                     try { lines = metrics.linesOfCode; } catch {}
+                     if (lines == 0) try { lines = metrics.Lines; } catch {}
+
+                     if (lines > 0)
+                     {
+                         int complexity = 1;
+                         try { complexity = metrics.cyclomaticComplexity; } catch {}
+                         if (complexity <= 0) try { complexity = metrics.Complexity; } catch {}
+
+                         components.Add(new CodeComponent
+                         {
+                             Id = $"{fileName}_script",
+                             Name = fileName,
+                             Type = "Script",
+                             FilePath = astResult.FilePath,
+                             Language = astResult.Language,
+                             LineCount = lines,
+                             ComplexityScore = complexity,
+                             Methods = new List<string>(),
+                             Properties = new List<string>(),
+                             Dependencies = ExtractDependenciesDynamic(astResult),
+                             Description = $"Script {fileName} in {astResult.Language} with {lines} lines of code"
+                         });
+                     }
+                 }
+            }
         }
         catch (Exception ex)
         {
@@ -276,6 +400,84 @@ public class ASTServiceClient : IASTServiceClient
         }
 
         return Task.FromResult(components);
+    }
+
+    private bool TryGetPropertyCaseInsensitive(JsonElement element, string propertyName, out JsonElement value)
+    {
+        // 1. Try exact match
+        if (element.TryGetProperty(propertyName, out value))
+            return true;
+
+        // 2. Try camelCase (e.g., "Lines" -> "lines")
+        var camelCase = char.ToLowerInvariant(propertyName[0]) + propertyName.Substring(1);
+        if (element.TryGetProperty(camelCase, out value))
+            return true;
+
+        // 3. Try lowercase (e.g., "Classes" -> "classes")
+        if (element.TryGetProperty(propertyName.ToLowerInvariant(), out value))
+            return true;
+
+        value = default;
+        return false;
+    }
+
+    private string GetJsonString(JsonElement element, string propertyName)
+    {
+        return TryGetPropertyCaseInsensitive(element, propertyName, out var prop) ? prop.ToString() : string.Empty;
+    }
+
+    private int GetJsonMetrics(JsonElement element, string metricName)
+    {
+        if (TryGetPropertyCaseInsensitive(element, "Metrics", out var metrics) &&
+            TryGetPropertyCaseInsensitive(metrics, metricName, out var val) &&
+            val.TryGetInt32(out var result))
+            return result;
+        return metricName == "Complexity" ? 1 : 0;
+    }
+
+    private List<string> GetJsonList(JsonElement element, string listName)
+    {
+        var result = new List<string>();
+        if (TryGetPropertyCaseInsensitive(element, listName, out var list) && list.ValueKind == JsonValueKind.Array)
+            foreach (var item in list.EnumerateArray())
+                result.Add(item.ToString());
+        return result;
+    }
+
+    private string DetermineComponentTypeJson(JsonElement classInfo, string language)
+    {
+        var name = GetJsonString(classInfo, "Name");
+        var type = GetJsonString(classInfo, "Type");
+
+        if (name.ToLowerInvariant().Contains("controller")) return "Controller";
+        if (name.ToLowerInvariant().Contains("service")) return "Service";
+        if (name.ToLowerInvariant().Contains("repository")) return "Repository";
+
+        return !string.IsNullOrEmpty(type) ? type : "Class";
+    }
+
+    private string GenerateDescriptionJson(JsonElement classInfo, string language)
+    {
+        var name = GetJsonString(classInfo, "Name");
+        if (string.IsNullOrEmpty(name)) name = "Unknown";
+
+        var lines = GetJsonMetrics(classInfo, "Lines");
+        var complexity = GetJsonMetrics(classInfo, "Complexity");
+        var type = GetJsonString(classInfo, "Type");
+        if (string.IsNullOrEmpty(type)) type = "Class";
+
+        return $"{type} {name} in {language} with {lines} lines of code and complexity score of {complexity}";
+    }
+
+    private string GenerateFunctionDescriptionJson(JsonElement functionInfo, string language)
+    {
+        var name = GetJsonString(functionInfo, "Name");
+        if (string.IsNullOrEmpty(name)) name = "Unknown";
+
+        var lines = GetJsonMetrics(functionInfo, "Lines");
+        var complexity = GetJsonMetrics(functionInfo, "Complexity");
+
+        return $"Function {name} in {language} with {lines} lines of code and complexity score of {complexity}";
     }
 
     private List<string> ExtractMethodsDynamic(dynamic classInfo)
