@@ -1096,4 +1096,4 @@ class ParserService {
 
 }
 
-module.exports = ParserService;
+module.exports = new ParserService();

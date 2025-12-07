@@ -103,4 +103,82 @@ public class ASTServiceClientTests
 
         Assert.That(result, Is.Null);
     }
+
+    [Test]
+    public async Task ParseCodeAsync_ShouldSendCorrectParameters_InRequestBody()
+    {
+        // Arrange
+        var code = "public class Foo { }";
+        var language = "java";
+        var filePath = "src/Foo.java";
+        
+        // We capture the request to inspect it later
+        HttpRequestMessage capturedRequest = null;
+
+        _httpMessageHandlerMock.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>()
+            )
+            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequest = req)
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent("{}") // Return empty JSON object to satisfy EnsureSuccessStatusCode and Deserialize
+            });
+
+        // Act
+        await _service.ParseCodeAsync(code, language, filePath);
+
+        // Assert
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Method, Is.EqualTo(HttpMethod.Post));
+        Assert.That(capturedRequest.RequestUri!.ToString(), Does.EndWith("/api/ast/parse"));
+
+        var content = await capturedRequest.Content!.ReadAsStringAsync();
+        Assert.That(content, Does.Contain($"\"code\":\"{code}\""));
+        Assert.That(content, Does.Contain($"\"language\":\"{language}\""));
+        Assert.That(content, Does.Contain($"\"filePath\":\"{filePath}\""));
+    }
+
+    [Test]
+    public async Task ParseCodeAsync_ShouldHandle500Error_ForSpecificPythonContent()
+    {
+        // Arrange
+        var code = @"from .models.configuration import Configuration
+from .drivers import SubsonicDriver, SpotifyDriver, DeezerDriver, YouTubeDriver
+from .models import Playlist, Track
+from .features import TrackMatcher, PlaylistSynchronizer, AsyncTrackMatcher
+import logging
+
+logger = logging.getLogger(__name__)
+
+if not logger.hasHandlers():
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)";
+        var language = "Python";
+        var filePath = "@/Users/levente/AI/tunesynctool/tunesynctool/__init__.py";
+
+        _httpMessageHandlerMock.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>()
+            )
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.InternalServerError,
+                Content = new StringContent("Server Error")
+            });
+
+        // Act
+        var result = await _service.ParseCodeAsync(code, language, filePath);
+
+        // Assert
+        Assert.That(result, Is.Null, "Expected null result when AST Service returns 500");
+    }
 }

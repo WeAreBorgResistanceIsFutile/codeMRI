@@ -1,4 +1,4 @@
-﻿using System.CommandLine;
+using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -25,19 +25,29 @@ class Program
             aliases: new[] { "--verbose", "-v" },
             description: "Enable verbose logging");
 
+        var forceOption = new Option<bool>(
+            aliases: new[] { "--force", "-f" },
+            description: "Force regeneration of documentation (ignore cache)");
+
+        var outputOption = new Option<string?>(
+            aliases: new[] { "--output", "-o" },
+            description: "Directory to save the generated Markdown files");
+
         rootCommand.AddOption(inputOption);
         rootCommand.AddOption(serverOption);
         rootCommand.AddOption(verboseOption);
+        rootCommand.AddOption(forceOption);
+        rootCommand.AddOption(outputOption);
 
-        rootCommand.SetHandler(async (string input, string serverUrl, bool verbose) =>
+        rootCommand.SetHandler(async (string input, string serverUrl, bool verbose, bool force, string? output) =>
         {
-            await RunAsync(input, serverUrl, verbose);
-        }, inputOption, serverOption, verboseOption);
+            await RunAsync(input, serverUrl, verbose, force, output);
+        }, inputOption, serverOption, verboseOption, forceOption, outputOption);
 
         return await rootCommand.InvokeAsync(args);
     }
 
-    static async Task RunAsync(string input, string serverUrl, bool verbose)
+    static async Task RunAsync(string input, string serverUrl, bool verbose, bool force, string? output)
     {
         using var client = new HttpClient();
         client.BaseAddress = new Uri(serverUrl);
@@ -79,7 +89,8 @@ class Program
         {
             RepoPath = targetPath,
             Language = "Detected automatically",
-            ForceRegenerate = false
+            ForceRegenerate = force,
+            SkipPersistence = !string.IsNullOrEmpty(output)
         };
 
         try
@@ -91,15 +102,60 @@ class Program
             if (response.IsSuccessStatusCode)
             {
                 Console.WriteLine("Success! Documentation generated.");
-                if (verbose)
+                
+                if (!string.IsNullOrEmpty(output))
                 {
-                    // Optionally try to parse response to show stats
-                     var json = await response.Content.ReadAsStringAsync();
-                     Console.WriteLine("Server Response: " + json);
+                    try 
+                    {
+                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var structure = await response.Content.ReadFromJsonAsync<WikiStructure>(options);
+
+                        if (structure != null)
+                        {
+                            Directory.CreateDirectory(output);
+                            Console.WriteLine($"Received {structure.Pages.Count} pages from server.");
+                            if (verbose)
+                            {
+                                Console.WriteLine("Pages:");
+                                foreach (var p in structure.Pages) Console.WriteLine($"- {p.Title}");
+                            }
+                            
+                            Console.WriteLine($"Saving pages to {output}...");
+                            
+                            foreach(var page in structure.Pages)
+                            {
+                                var safeTitle = string.Join("_", page.Title.Split(Path.GetInvalidFileNameChars()));
+                                var filePath = Path.Combine(output, $"{safeTitle}.md");
+                                await File.WriteAllTextAsync(filePath, page.Content);
+                            }
+                            Console.WriteLine($"Saved files to {output}");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Warning: Received empty structure from server.");
+                        }
+                    }
+                    catch (JsonException jex)
+                    {
+                        Console.WriteLine($"Error parsing response for file output: {jex.Message}");
+                        if (verbose) Console.WriteLine(await response.Content.ReadAsStringAsync());
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error saving files: {ex.Message}");
+                    }
                 }
                 else
                 {
-                     Console.WriteLine("You can view it now in the Web UI.");
+                    if (verbose)
+                    {
+                         var json = await response.Content.ReadAsStringAsync();
+                         Console.WriteLine("Server Response: " + json);
+                    }
+                    else
+                    {
+                         Console.WriteLine("You can view it now in the Web UI.");
+                    }
                 }
             }
             else
@@ -120,14 +176,6 @@ class Program
         }
         finally
         {
-            // We do NOT delete the temp dir here immediately if the server needs to read it?
-            // Wait, if the server is local, it reads `targetPath`.
-            // If we delete `targetPath` now, the server checks might fail if it does lazy loading?
-            // But `generate-advanced` waits until completion. So it should be safe to delete IF the server has persisted everything.
-            // However, the Server stores `RepoPath` in the DB. If future requests need to read files from disk (e.g. valid links), the files must exist.
-            // If `isTemp`, we probably want to keep it or warn the user.
-            // For a system tool context, usually the repo exists.
-            
             if (isTemp)
             {
                  Console.WriteLine($"Note: Repository was cloned to temporary path: {targetPath}");

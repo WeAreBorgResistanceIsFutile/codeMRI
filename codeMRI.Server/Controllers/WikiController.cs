@@ -103,7 +103,11 @@ public class WikiController : ControllerBase
             request.RepoPath, 
             repoInfo);
 
-        await _wikiRepo.SaveStructureAsync(request.RepoPath, structure);
+        if (!request.SkipPersistence)
+        {
+            await _wikiRepo.SaveStructureAsync(request.RepoPath, structure);
+        }
+        
         return Ok(structure);
     }
 }

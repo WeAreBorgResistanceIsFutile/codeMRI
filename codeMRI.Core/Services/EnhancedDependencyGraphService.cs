@@ -9,14 +9,17 @@ namespace codeMRI.Core.Services;
 public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
 {
     private readonly IASTServiceClient _astServiceClient;
+    private readonly IComponentIdentificationService _componentService;
     private readonly ILogger<EnhancedDependencyGraphService> _logger;
 
     public EnhancedDependencyGraphService(
         ILogger<EnhancedDependencyGraphService> logger,
-        IASTServiceClient astServiceClient)
+        IASTServiceClient astServiceClient,
+        IComponentIdentificationService componentService)
     {
         _logger = logger;
         _astServiceClient = astServiceClient;
+        _componentService = componentService;
     }
 
     public async Task<EnhancedDependencyGraph> BuildGraphAsync(List<CodeComponent> components,
@@ -260,14 +263,7 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Identifying components in repository: {Path}", repositoryPath);
-
-        // This is a placeholder implementation - in a real implementation, this would:
-        // 1. Scan the repository for source files
-        // 2. Parse each file to identify components
-        // 3. Return the list of components
-
-        // For now, return an empty list
-        return await Task.FromResult(new List<CodeComponent>());
+        return await _componentService.IdentifyComponentsAsync(repositoryPath);
     }
 
     private Task<Dictionary<string, double>> CalculatePageRankAsync(EnhancedDependencyGraph graph,
