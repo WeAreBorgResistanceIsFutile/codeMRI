@@ -2,112 +2,86 @@
 @using codeMRI.Server.Api
 @inject AppState AppState
 @inject WikiApiClient WikiApi
-@inject IJSRuntime JS
 
-<div class="h-100 d-flex flex-column">
-    <div class="pane-header">
-        <span>Agent</span>
-        <button class="btn btn-sm btn-link text-muted" @onclick="() => AppState.ClearChat()">Clear</button>
-    </div>
-
-    <div class="chat-history p-3" @ref="chatHistoryRef">
-        @if (AppState.ChatHistory.Count == 0)
+<div class="d-flex flex-column h-100">
+    <div class="flex-grow-1 p-3 overflow-auto custom-scrollbar" style="display: flex; flex-direction: column-reverse;">
+        @foreach (var msg in AppState.ChatHistory.AsEnumerable().Reverse())
         {
-            <div class="text-center text-muted mt-5">
-                <small>Ask me anything about the codebase.</small>
+            <div class="chat-message @msg.Role mb-3">
+                <div class="p-2 rounded border @(msg.Role == "user" ? "bg-white text-end" : "bg-light")">
+                    <strong>@(msg.Role == "user" ? "You" : "Assistant")</strong>
+                    <div style="white-space: pre-wrap;">@msg.Content</div>
+                </div>
             </div>
         }
         
-        @foreach (var msg in AppState.ChatHistory)
+        @if (AppState.ChatHistory.Count == 0)
         {
-            <div class="chat-message @msg.Role mb-2">
-                @msg.Content
+             <div class="chat-message assistant mb-3">
+                <div class="p-2 rounded bg-light border">
+                    <strong>Assistant</strong>
+                    <p class="mb-0">Hello! Select a page to start exploring the codebase.</p>
+                </div>
             </div>
         }
     </div>
-
-    <div class="chat-input-area">
-        <textarea class="form-control mb-2" rows="3" 
-                  placeholder="Type your question... (Ctrl+Enter to send)"
-                  @bind="chatQuery" 
-                  @bind:event="oninput"
-                  @onkeydown="HandleKeyDown"
-                  disabled="@isStreaming"></textarea>
-        <div class="d-flex justify-content-end">
-            <button class="btn btn-sm btn-primary" @onclick="SendChat" disabled="@(string.IsNullOrWhiteSpace(chatQuery) || isStreaming)">
-                @(isStreaming ? "Thinking..." : "Send")
-            </button>
+    <div class="p-3 border-top">
+        <div class="input-group">
+            <input type="text" class="form-control" placeholder="Ask a question..." 
+                   @bind="userInput" @onkeyup="HandleKeyUp" disabled="@isChatting"/>
+            <button class="btn btn-primary" @onclick="SendMessage" disabled="@isChatting">Send</button>
         </div>
     </div>
 </div>
 
 @code {
-    private string chatQuery = "";
-    private bool isStreaming;
-    private ElementReference chatHistoryRef;
+    private string userInput = "";
+    private bool isChatting = false;
 
     protected override void OnInitialized()
     {
         AppState.OnChange += StateHasChanged;
-        AppState.OnChange += ScrollToBottom;
     }
-    
+
     public void Dispose()
     {
         AppState.OnChange -= StateHasChanged;
-        AppState.OnChange -= ScrollToBottom;
     }
 
-    private async void ScrollToBottom()
+    private async Task HandleKeyUp(KeyboardEventArgs e)
     {
-        try {
-            await JS.InvokeVoidAsync("scrollToBottom", ".chat-history");
-        } catch {} 
+        if (e.Key == "Enter") await SendMessage();
     }
 
-    private async Task HandleKeyDown(KeyboardEventArgs e)
+    private async Task SendMessage()
     {
-        if (e.Key == "Enter" && e.CtrlKey)
-        {
-            await SendChat();
-        }
-    }
+        if (string.IsNullOrWhiteSpace(userInput) || isChatting) return;
 
-    private async Task SendChat()
-    {
-        if (string.IsNullOrWhiteSpace(chatQuery) || isStreaming) return;
+        var message = userInput;
+        userInput = "";
+        isChatting = true;
 
-        var query = chatQuery;
-        chatQuery = "";
-        isStreaming = true;
-
-        // 1. Add User Message
-        AppState.AddChatMessage(new ChatMessage { Role = "user", Content = query });
-
-        // 2. Add Placeholder Assistant Message
-        AppState.AddChatMessage(new ChatMessage { Role = "assistant", Content = "" });
-
-        // 3. Stream Response
         try
         {
-            var fullResponse = "";
-            // We include history in the request
-            var history = AppState.ChatHistory.Take(AppState.ChatHistory.Count - 1).ToList(); // Exclude the empty one we just added
-            
-            await foreach (var chunk in WikiApi.ChatAsync(query, history))
-            {
-                fullResponse += chunk;
-                AppState.UpdateLastChatMessage(fullResponse);
-                // Scroll handled by OnChange event
-            }
+            // 1. Add User Message
+            AppState.AddChatMessage(new ChatMessage { Role = "user", Content = message });
+
+            // 2. Add Placeholder for Assistant
+            AppState.AddChatMessage(new ChatMessage { Role = "assistant", Content = "Thinking..." });
+
+            // 3. Call API
+            var response = await WikiApi.ChatAsync(AppState.ChatHistory);
+
+            // 4. Update Assistant Message
+            AppState.UpdateLastChatMessage(response);
         }
         catch (Exception ex)
         {
-            AppState.UpdateLastChatMessage($"[Error: {ex.Message}]");
+            AppState.UpdateLastChatMessage($"Error: {ex.Message}");
         }
         finally
         {
-            isStreaming = false;
+            isChatting = false;
         }
     }
 }

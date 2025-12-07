@@ -1,84 +1,53 @@
 using System.Net.Http.Json;
-using System.Text.Json;
 using codeMRI.Server.Api;
-using Microsoft.AspNetCore.Components.WebAssembly.Http;
 
 namespace codeMRI.Frontend.Services;
 
 public class WikiApiClient
 {
-    private readonly HttpClient _httpClient;
+    private readonly HttpClient _http;
 
-    public WikiApiClient(HttpClient httpClient)
+    public WikiApiClient(HttpClient http)
     {
-        _httpClient = httpClient;
-    }
-
-    public async Task<string> IngestRepoAsync(string repoPath, bool force = false, bool delete = false)
-    {
-        var response = await _httpClient.PostAsJsonAsync("api/ingest", new IngestRequest
-        {
-            RepoPath = repoPath,
-            Force = force,
-            Delete = delete
-        });
-        response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-        return result.GetProperty("message").GetString() ?? "Ingestion complete";
-    }
-
-    public async Task<IngestionStatusResponse> GetIngestionStatusAsync(string repoPath)
-    {
-        var response = await _httpClient.GetAsync($"api/ingest/status?repoPath={Uri.EscapeDataString(repoPath)}");
-        if (!response.IsSuccessStatusCode) return new IngestionStatusResponse { Status = "unknown" };
-        return await response.Content.ReadFromJsonAsync<IngestionStatusResponse>() ?? new IngestionStatusResponse();
+        _http = http;
     }
 
     public async Task<WikiStructure> GenerateStructureAsync(string repoPath)
     {
-        var response =
-            await _httpClient.PostAsJsonAsync("api/wiki/structure", new StructureRequest { RepoPath = repoPath });
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<WikiStructure>() ?? new WikiStructure();
-    }
-
-    public async Task<WikiStructure> GenerateAdvancedWikiAsync(string repoPath)
-    {
-        var response =
-            await _httpClient.PostAsJsonAsync("api/wiki/generate-advanced", new StructureRequest { RepoPath = repoPath });
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<WikiStructure>() ?? new WikiStructure();
-    }
-
-    public async Task<WikiPage> GeneratePageAsync(string repoPath, string title, List<string> filePaths)
-    {
-        var response = await _httpClient.PostAsJsonAsync("api/wiki/page", new PageGenerationRequest
-        {
+        var response = await _http.PostAsJsonAsync("api/Wiki/structure", new StructureRequest 
+        { 
             RepoPath = repoPath,
-            Title = title,
-            FilePaths = filePaths
+            ForceRegenerate = false // Default to cached
         });
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<WikiPage>() ?? new WikiPage();
+        return await response.Content.ReadFromJsonAsync<WikiStructure>() 
+               ?? throw new Exception("Failed to deserialize structure");
     }
 
-    public async IAsyncEnumerable<string> ChatAsync(string query, List<ChatMessage> history)
+    public async Task<WikiPage> GeneratePageAsync(string repoPath, string title, List<string> contextFiles, bool forceRegenerate = false)
     {
-        var request = new ChatRequest { Query = query, History = history };
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/chat");
-        httpRequest.Content = JsonContent.Create(request);
-        httpRequest.SetBrowserResponseStreamingEnabled(true);
-
-        using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead);
+        var response = await _http.PostAsJsonAsync("api/Wiki/page", new PageGenerationRequest 
+        { 
+            RepoPath = repoPath,
+            Title = title,
+            FilePaths = contextFiles ?? new List<string>(),
+            ForceRegenerate = forceRegenerate
+        });
         response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<WikiPage>() 
+               ?? throw new Exception("Failed to deserialize page");
+    }
+    
+    public async Task<List<string>> GetRepositoriesAsync()
+    {
+         return await _http.GetFromJsonAsync<List<string>>("api/Wiki/repositories") 
+                ?? new List<string>();
+    }
 
-        using var stream = await response.Content.ReadAsStreamAsync();
-        var buffer = new byte[1024];
-        int bytesRead;
-        while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-        {
-            var chunk = System.Text.Encoding.UTF8.GetString(buffer, 0, bytesRead);
-            yield return chunk;
-        }
+    public async Task<string> ChatAsync(List<ChatMessage> history)
+    {
+        var response = await _http.PostAsJsonAsync("api/Chat", new ChatRequest { History = history });
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
     }
 }

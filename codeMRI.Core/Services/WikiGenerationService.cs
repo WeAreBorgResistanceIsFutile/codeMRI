@@ -227,6 +227,7 @@ public class WikiGenerationService : IWikiGenerationService
         // Use pageTitle as sourceComponentId context if possible, or a safe fallback
         var pageId = Guid.NewGuid().ToString();
         content = _referenceManagementService.EnrichContentWithLinks(content, pageTitle); // Using title as ID proxy for now
+        content = CleanLLMPageContent(content, pageTitle, filePaths);
 
         return new WikiPage
         {
@@ -235,6 +236,56 @@ public class WikiGenerationService : IWikiGenerationService
             Content = content,
             RelevantFiles = filePaths
         };
+    }
+
+    /// <summary>
+    /// Post-processes the LLM-generated content to remove unwanted preambles and ensure
+    /// the relevant files <details> block is at the very end.
+    /// </summary>
+    private string CleanLLMPageContent(string llmContent, string pageTitle, List<string> filePaths)
+    {
+        var cleanedContent = llmContent.Trim();
+
+        // 1. Remove all existing <details> blocks related to source files
+        // Using a regex that captures the specific "Relevant source files" summary to avoid removing other details blocks
+        var detailsPattern = @"<details>\s*<summary>\s*Relevant source files\s*<\/summary>.*?<\/details>";
+        cleanedContent = System.Text.RegularExpressions.Regex.Replace(cleanedContent, detailsPattern, "", 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline).Trim();
+
+        // 2. Remove all main title headers (H1) that resemble the page title
+        // This handles "# Title", "#Title", " # Title" etc.
+        var titlePattern = @"^\s*#\s*" + System.Text.RegularExpressions.Regex.Escape(pageTitle) + @"\s*$";
+        cleanedContent = System.Text.RegularExpressions.Regex.Replace(cleanedContent, titlePattern, "", 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Multiline).Trim();
+        
+        // Also remove the raw ID/Title if it appears as a standalone line at the very beginning (common LLM artifact)
+        var rawTitlePattern = @"^\s*" + System.Text.RegularExpressions.Regex.Escape(pageTitle) + @"\s*$";
+        cleanedContent = System.Text.RegularExpressions.Regex.Replace(cleanedContent, rawTitlePattern, "",
+             System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Multiline).Trim();
+
+        // 3. Construct the final clean content
+        var sb = new StringBuilder();
+        
+        // Add canonical Title
+        sb.AppendLine($"# {pageTitle}");
+        sb.AppendLine();
+        
+        // Add content
+        sb.Append(cleanedContent);
+        
+        // Add canonical Details block
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.AppendLine("<details>");
+        sb.AppendLine("<summary>Relevant source files</summary>");
+        sb.AppendLine();
+        foreach(var path in filePaths)
+        {
+            sb.AppendLine($"- {path}");
+        }
+        sb.AppendLine("</details>");
+
+        return sb.ToString();
     }
 
     public async Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages,
@@ -324,55 +375,55 @@ public class WikiGenerationService : IWikiGenerationService
         var sb = new StringBuilder();
         
         sb.AppendLine($"<div class=\"interactive-diagram-container\" data-diagram-id=\"{diagram.Id}\">");
-        sb.AppendLine($"    <h3>{title}</h3>");
+        sb.AppendLine($"<h3>{title}</h3>");
         
         // Control Panel
-        sb.AppendLine("    <div class=\"diagram-controls\">");
+        sb.AppendLine("<div class=\"diagram-controls\">");
         // Zoom Controls
-        sb.AppendLine("        <div class=\"zoom-controls\">");
-        sb.AppendLine($"            <button class=\"btn btn-sm btn-outline-secondary\" onclick=\"zoomIn('{diagram.Id}')\">+</button>");
-        sb.AppendLine($"            <button class=\"btn btn-sm btn-outline-secondary\" onclick=\"zoomOut('{diagram.Id}')\">-</button>");
-        sb.AppendLine($"            <button class=\"btn btn-sm btn-outline-secondary\" onclick=\"resetZoom('{diagram.Id}')\">Reset</button>");
-        sb.AppendLine($"            <button class=\"btn btn-sm btn-outline-secondary\" onclick=\"fitToView('{diagram.Id}')\">Fit</button>");
-        sb.AppendLine("        </div>");
+        sb.AppendLine("<div class=\"zoom-controls\">");
+        sb.AppendLine($"<button class=\"btn btn-sm btn-outline-secondary\" onclick=\"zoomIn('{diagram.Id}')\">+</button>");
+        sb.AppendLine($"<button class=\"btn btn-sm btn-outline-secondary\" onclick=\"zoomOut('{diagram.Id}')\">-</button>");
+        sb.AppendLine($"<button class=\"btn btn-sm btn-outline-secondary\" onclick=\"resetZoom('{diagram.Id}')\">Reset</button>");
+        sb.AppendLine($"<button class=\"btn btn-sm btn-outline-secondary\" onclick=\"fitToView('{diagram.Id}')\">Fit</button>");
+        sb.AppendLine("</div>");
         
         // Filter Controls
-        sb.AppendLine("        <div class=\"filter-controls\">");
-        sb.AppendLine($"            <select class=\"form-select form-select-sm\" id=\"filter-type-{diagram.Id}\" onchange=\"applyFilters('{diagram.Id}')\">");
-        sb.AppendLine("                <option value=\"\">All Types</option>");
-        sb.AppendLine($"                {GenerateComponentTypeOptions(diagram.Components)}");
-        sb.AppendLine("            </select>");
+        sb.AppendLine("<div class=\"filter-controls\">");
+        sb.AppendLine($"<select class=\"form-select form-select-sm\" id=\"filter-type-{diagram.Id}\" onchange=\"applyFilters('{diagram.Id}')\">");
+        sb.AppendLine("<option value=\"\">All Types</option>");
+        sb.AppendLine($"{GenerateComponentTypeOptions(diagram.Components)}");
+        sb.AppendLine("</select>");
         
-        sb.AppendLine($"            <select class=\"form-select form-select-sm\" id=\"filter-layer-{diagram.Id}\" onchange=\"applyFilters('{diagram.Id}')\">");
-        sb.AppendLine("                <option value=\"\">All Layers</option>");
-        sb.AppendLine($"                {GenerateLayerOptions(diagram.Components)}");
-        sb.AppendLine("            </select>");
+        sb.AppendLine($"<select class=\"form-select form-select-sm\" id=\"filter-layer-{diagram.Id}\" onchange=\"applyFilters('{diagram.Id}')\">");
+        sb.AppendLine("<option value=\"\">All Layers</option>");
+        sb.AppendLine($"{GenerateLayerOptions(diagram.Components)}");
+        sb.AppendLine("</select>");
         
-        sb.AppendLine($"            <input type=\"range\" class=\"form-range\" id=\"filter-complexity-{diagram.Id}\" ");
-        sb.AppendLine($"                   min=\"0\" max=\"100\" value=\"100\" onchange=\"applyFilters('{diagram.Id}')\"");
-        sb.AppendLine("                   title=\"Filter by complexity\">");
-        sb.AppendLine("        </div>");
+        sb.AppendLine($"<input type=\"range\" class=\"form-range\" id=\"filter-complexity-{diagram.Id}\" ");
+        sb.AppendLine($"min=\"0\" max=\"100\" value=\"100\" onchange=\"applyFilters('{diagram.Id}')\"");
+        sb.AppendLine("title=\"Filter by complexity\">");
+        sb.AppendLine("</div>");
         
         // Export Controls
-        sb.AppendLine("        <div class=\"export-controls\">");
-        sb.AppendLine($"            <button class=\"btn btn-sm btn-primary\" onclick=\"exportDiagram('{diagram.Id}', 'png')\">Export PNG</button>");
-        sb.AppendLine($"            <button class=\"btn btn-sm btn-primary\" onclick=\"exportDiagram('{diagram.Id}', 'svg')\">Export SVG</button>");
-        sb.AppendLine($"            <button class=\"btn btn-sm btn-secondary\" onclick=\"exportDiagram('{diagram.Id}', 'html')\">Export HTML</button>");
-        sb.AppendLine("        </div>");
-        sb.AppendLine("    </div>");
+        sb.AppendLine("<div class=\"export-controls\">");
+        sb.AppendLine($"<button class=\"btn btn-sm btn-primary\" onclick=\"exportDiagram('{diagram.Id}', 'png')\">Export PNG</button>");
+        sb.AppendLine($"<button class=\"btn btn-sm btn-primary\" onclick=\"exportDiagram('{diagram.Id}', 'svg')\">Export SVG</button>");
+        sb.AppendLine($"<button class=\"btn btn-sm btn-secondary\" onclick=\"exportDiagram('{diagram.Id}', 'html')\">Export HTML</button>");
+        sb.AppendLine("</div>");
+        sb.AppendLine("</div>");
         
         // Diagram Container
-        sb.AppendLine($"    <div class=\"diagram-viewport\" id=\"diagram-{diagram.Id}\">");
-        sb.AppendLine("        <div class=\"mermaid\">");
-        sb.AppendLine($"            {diagram.MermaidContent}");
-        sb.AppendLine("        </div>");
-        sb.AppendLine("    </div>");
+        sb.AppendLine($"<div class=\"diagram-viewport\" id=\"diagram-{diagram.Id}\">");
+        sb.AppendLine("<div class=\"mermaid\">");
+        sb.AppendLine($"{diagram.MermaidContent}");
+        sb.AppendLine("</div>");
+        sb.AppendLine("</div>");
         
         // Component Info Panel
-        sb.AppendLine($"    <div class=\"component-info-panel\" id=\"info-{diagram.Id}\" style=\"display: none;\">");
-        sb.AppendLine("        <h5>Component Details</h5>");
-        sb.AppendLine($"        <div id=\"component-details-{diagram.Id}\"></div>");
-        sb.AppendLine("    </div>");
+        sb.AppendLine($"<div class=\"component-info-panel\" id=\"info-{diagram.Id}\" style=\"display: none;\">");
+        sb.AppendLine("<h5>Component Details</h5>");
+        sb.AppendLine($"<div id=\"component-details-{diagram.Id}\"></div>");
+        sb.AppendLine("</div>");
         sb.AppendLine("</div>");
 
         // Script

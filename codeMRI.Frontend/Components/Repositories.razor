@@ -1,68 +1,53 @@
 @using codeMRI.Frontend.Services
-@inject HttpClient Http
+@inject WikiApiClient WikiApi
 @inject AppState AppState
 
-<div class="h-100 d-flex flex-column p-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>Repositories</h1>
-        <button class="btn btn-primary" @onclick="OnAddNew">
-            <span class="oi oi-plus me-2"></span>Add New Repository
-        </button>
-    </div>
-
-    @if (isLoading)
-    {
-        <div class="d-flex justify-content-center p-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-        </div>
-    }
-    else if (repositories == null || !repositories.Any())
-    {
-        <div class="alert alert-info">
-            No repositories found. Click "Add New Repository" to get started.
-        </div>
-    }
-    else
-    {
-        <div class="list-group">
-            @foreach (var repo in repositories)
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <h2 class="mb-4" style="font-family: 'Google Sans';">Repositories</h2>
+            
+            @if (isLoading)
             {
-                <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-                        @onclick="() => SelectRepo(repo)">
-                    <div>
-                        <h5 class="mb-1">@GetRepoName(repo)</h5>
-                        <small class="text-muted">@repo</small>
-                    </div>
-                    <span class="badge bg-secondary rounded-pill">Open</span>
-                </button>
+                <div class="text-center">Loading repositories...</div>
+            }
+            else
+            {
+                <div class="list-group shadow-sm">
+                    @foreach (var repo in repositories)
+                    {
+                        <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3"
+                                @onclick="() => SelectRepo(repo)">
+                            <div>
+                                <strong class="text-primary">@System.IO.Path.GetFileName(repo)</strong>
+                                <div class="small text-muted">@repo</div>
+                            </div>
+                            <span class="text-secondary">➜</span>
+                        </button>
+                    }
+                    @if (repositories.Count == 0)
+                    {
+                        <div class="p-4 text-center text-muted">No repositories found.</div>
+                    }
+                </div>
             }
         </div>
-    }
+    </div>
 </div>
 
 @code {
-    [Parameter] public EventCallback OnAddNew { get; set; }
-    
-    private List<string>? repositories;
+    private List<string> repositories = new();
     private bool isLoading = true;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadRepositories();
-    }
-
-    private async Task LoadRepositories()
-    {
         try
         {
-            isLoading = true;
-            repositories = await Http.GetFromJsonAsync<List<string>>("api/wiki/repositories");
+            repositories = await WikiApi.GetRepositoriesAsync();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading repositories: {ex.Message}");
+            Console.WriteLine($"Error fetching repos: {ex.Message}");
         }
         finally
         {
@@ -70,13 +55,22 @@
         }
     }
 
-    private void SelectRepo(string repoPath)
+    private async Task SelectRepo(string path)
     {
-        AppState.SetRepoPath(repoPath);
-    }
-
-    private string GetRepoName(string path)
-    {
-        return System.IO.Path.GetFileName(path) ?? path;
+        AppState.SetRepoPath(path);
+        AppState.SetBusy(true, "Loading structure...");
+        try
+        {
+            var structure = await WikiApi.GenerateStructureAsync(path);
+            AppState.SetStructure(structure);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading structure: {ex.Message}");
+        }
+        finally
+        {
+            AppState.SetBusy(false);
+        }
     }
 }

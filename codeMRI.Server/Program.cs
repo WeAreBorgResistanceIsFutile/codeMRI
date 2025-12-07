@@ -17,7 +17,6 @@ builder.Services.Configure<ASTServiceSettings>(builder.Configuration.GetSection(
 // Infrastructure
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<ILLMClient, OllamaLLMService>();
-builder.Services.AddSingleton<IDocumentProcessor, TextSplitterService>();
 builder.Services.AddSingleton<IASTServiceClient, ASTServiceClient>();
 
 // Wire up core application services
@@ -26,7 +25,7 @@ WireUp.Registered(builder.Services);
 builder.Services.AddSingleton<IWikiRepository>(sp =>
 {
     var connectionString = builder.Configuration.GetConnectionString("WikiDb")
-                           ?? "Data Source=data/sqlite/codemri.db";
+                           ?? "Data Source=../data/sqlite/codemri.db";
     return new SqliteWikiRepository(connectionString);
 });
 

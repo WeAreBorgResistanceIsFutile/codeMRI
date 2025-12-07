@@ -1,4 +1,5 @@
 /.idea/
+/codeMRI.Server/docs/
 /codeMRI.Server/bin/
 /codeMRI.Server/obj/
 /codeMRI.Server/data/
@@ -35,3 +36,5 @@
 /data/
 /TestResults/
 ./codemri_cli.db
+/docs/
+./*.log

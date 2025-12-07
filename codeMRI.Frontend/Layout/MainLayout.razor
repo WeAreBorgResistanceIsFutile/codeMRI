@@ -1,27 +1,63 @@
-@inherits LayoutComponentBase
-@using codeMRI.Frontend.Services
+﻿@inherits LayoutComponentBase
 @inject AppState AppState
 @implements IDisposable
 
-<div class="top-bar">
-    <div class="brand">codeMRI</div>
-    <div class="context" title="Current Repository">
-        @AppState.RepoPath
-    </div>
-    
-    <div class="actions">
-        <div class="d-flex align-items-center me-3">
-             <span class="status-indicator @(AppState.IsBusy ? "busy" : "")" title="@AppState.BusyMessage"></span>
-             @if (AppState.IsBusy)
-             {
-                 <span class="small ms-2 text-light">@AppState.BusyMessage</span>
-             }
+<div class="app-container">
+    <!-- Header -->
+    <header class="top-bar">
+        <div class="brand">
+            <span class="logo-icon">C</span> codeMRI
         </div>
-    </div>
-</div>
+        <div class="context-pill">
+            @if (!string.IsNullOrEmpty(AppState.RepoPath))
+            {
+                <span class="repo-icon">📂</span> @AppState.RepoPath
+            }
+            else
+            {
+                <span class="text-muted">Select Repository</span>
+            }
+        </div>
+        <div class="actions">
+             <div class="status-wrapper @(AppState.IsBusy ? "busy" : "")">
+                <div class="status-dot"></div>
+                 @if(AppState.IsBusy) { <span class="status-text ms-2">@AppState.BusyMessage</span> }
+            </div>
+        </div>
+    </header>
 
-<div class="workspace-container" style="height: calc(100vh - 48px); overflow: hidden;">
-    @Body
+    <!-- Workspace -->
+    <main class="workspace-grid">
+        <!-- Left: Explorer -->
+        <aside class="sidebar-pane left-pane">
+            <div class="pane-header">EXPLORER</div>
+            <div class="pane-content custom-scrollbar p-0">
+                @if (!string.IsNullOrEmpty(AppState.RepoPath))
+                {
+                    <WikiTree />
+                }
+                else
+                {
+                    <div class="empty-state-sidebar">
+                        <small>No repo selected</small>
+                    </div>
+                }
+            </div>
+        </aside>
+
+        <!-- Center: Content -->
+        <section class="content-pane">
+            @Body
+        </section>
+
+        <!-- Right: Assistant -->
+        <aside class="sidebar-pane right-pane">
+            <div class="pane-header">ASSISTANT</div>
+            <div class="pane-content p-0">
+                <ChatPanel />
+            </div>
+        </aside>
+    </main>
 </div>
 
 @code {

@@ -58,23 +58,27 @@ public static class PromptTemplates
 
                 Page Topic: "{title}"
 
-                CRITICAL STARTING INSTRUCTION:
-                The very first thing on page MUST be a `<details>` block listing ALL source files used.
-                Format it exactly like this:
+                STRICT OUTPUT RULES:
+                1. Return ONLY the Markdown content.
+                2. DO NOT include any conversational filler (e.g., "Here is the page...").
+                3. The output MUST start immediately with the page title (# {title}).
+
+                Structure:
+                1. **Title:** `# {title}`
+                2. **Introduction:** Concise introduction (1-2 paragraphs).
+                3. **Detailed Sections:** Break down into H2 (`##`) and H3 (`###`) sections.
+                4. **Mermaid Diagrams:** EXTENSIVELY use Mermaid diagrams (flowchart TD, sequenceDiagram, classDiagram). 
+                   - STRICT vertical orientation (graph TD).
+                5. **Tables:** Use Markdown tables for summaries.
+                6. **Source Citations:** Cite specific source files for every significant piece of info.
+                
+                Closing:
+                At the VERY END of the page, include a `<details>` block listing ALL source files used, formatted as:
                 <details>
                 <summary>Relevant source files</summary>
 
                 {string.Join("\n", filePaths.Select(p => $"- {p}"))}
                 </details>
-
-                Immediately after `<details>` block, main title of page should be a H1 Markdown heading: `# {title}`.
-
-                1. **Introduction:** Concise introduction (1-2 paragraphs).
-                2. **Detailed Sections:** Break down into H2 (`##`) and H3 (`###`) sections.
-                3. **Mermaid Diagrams:** EXTENSIVELY use Mermaid diagrams (flowchart TD, sequenceDiagram, classDiagram). 
-                   - STRICT vertical orientation (graph TD).
-                4. **Tables:** Use Markdown tables for summaries.
-                5. **Source Citations:** Cite specific source files for every significant piece of info.
 
                 IMPORTANT: Generate the content in {language} language.
                 """;

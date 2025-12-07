@@ -1,172 +1,93 @@
-@page "/"
-@using codeMRI.Frontend.Services
-@using codeMRI.Frontend.Components
-@using Markdig
+﻿@page "/"
 @inject AppState AppState
-@inject IJSRuntime JS
-@implements IDisposable
+@inject IJSRuntime JSRuntime
 
-<div class="workspace-grid">
-    <!-- Left Sidebar: Navigation -->
-    <div class="pane">
-        <div class="pane-header d-flex justify-content-between align-items-center">
-            <span>Explorer</span>
-            @if (!string.IsNullOrEmpty(AppState.RepoPath))
-            {
-                <button class="btn btn-sm btn-outline-secondary" @onclick="GoHome" title="Back to Repositories">
-                    <span class="oi oi-home"></span> Home
+@if (string.IsNullOrEmpty(AppState.RepoPath))
+{
+    <Repositories />
+}
+else if (AppState.CurrentPage == null)
+{
+    <div class="empty-state-start">
+        <h1 class="display-4" style="font-family: 'Google Sans'">Welcome</h1>
+        <p class="lead">Select a page from the explorer to begin.</p>
+    </div>
+}
+else
+{
+    <div class="document-view">
+        <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+            <h1 class="h3 m-0">@AppState.CurrentPage.Title</h1>
+            <div>
+                <button class="btn btn-sm btn-outline-primary me-2" @onclick="RegeneratePage" disabled="@AppState.IsBusy">
+                    @if (AppState.IsBusy) { <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> }
+                    Regenerate
                 </button>
-            }
+                <button class="btn btn-sm btn-outline-secondary" @onclick="ClosePage">Close</button>
+            </div>
         </div>
-        <div class="pane-content p-0">
-            @if (!string.IsNullOrEmpty(AppState.RepoPath))
-            {
-                <WikiTree />
-            }
-            else
-            {
-                <div class="p-3 text-muted small">
-                    Select a repository to view its structure.
-                </div>
-            }
+        
+        <div class="markdown-content">
+            @((MarkupString)Markdown.ToHtml(AppState.CurrentPage.Content ?? "", Pipeline))
         </div>
     </div>
-
-    <!-- Center Stage: Document / Dashboard -->
-    <div class="pane">
-        <div class="pane-header">
-            <span>@(AppState.CurrentPage?.Title ?? (string.IsNullOrEmpty(AppState.RepoPath) ? "Repositories" : "Dashboard"))</span>
-            @if (AppState.CurrentPage != null)
-            {
-                <button class="btn btn-sm btn-light border" @onclick="ClosePage">Close</button>
-            }
-        </div>
-        <div class="pane-content scroll-y">
-            @if (string.IsNullOrEmpty(AppState.RepoPath))
-            {
-                if (isAddingNew)
-                {
-                     <div class="d-flex flex-column h-100">
-                        <div class="p-3">
-                            <button class="btn btn-link text-decoration-none" @onclick="CancelAddNew">
-                                ← Back to list
-                            </button>
-                        </div>
-                        <div class="d-flex align-items-center justify-content-center flex-grow-1">
-                            <IngestionControl />
-                        </div>
-                    </div>
-                }
-                else
-                {
-                    <Repositories OnAddNew="StartAddNew" />
-                }
-            }
-            else if (AppState.CurrentPage == null)
-            {
-                <div class="d-flex align-items-center justify-content-center h-100">
-                    <IngestionControl />
-                </div>
-            }
-            else
-            {
-                <div class="document-view">
-                    <div class="markdown-content">
-                        @((MarkupString)RenderMarkdown(AppState.CurrentPage.Content))
-                    </div>
-                    
-                    <hr class="my-5"/>
-                    
-                    <div class="card bg-light mb-5">
-                        <div class="card-header cursor-pointer" @onclick="ToggleSource">
-                            <strong>Source Files</strong>
-                            <span class="float-end">@sourceFilesIcon</span>
-                        </div>
-                        @if (showSourceFiles)
-                        {
-                            <ul class="list-group list-group-flush">
-                                @foreach (var file in AppState.CurrentPage.RelevantFiles)
-                                {
-                                    <li class="list-group-item font-monospace small">@file</li>
-                                }
-                                @if (!AppState.CurrentPage.RelevantFiles.Any())
-                                {
-                                    <li class="list-group-item text-muted small">No specific files linked.</li>
-                                }
-                            </ul>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
-    </div>
-
-    <!-- Right Sidebar: Chat -->
-    <div class="pane">
-        <ChatPanel />
-    </div>
-</div>
+}
 
 @code {
-    private bool showSourceFiles = false;
-    private bool isAddingNew = false;
-    private string sourceFilesIcon => showSourceFiles ? "▼" : "▶";
-    
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .Build();
+
     protected override void OnInitialized()
     {
         AppState.OnChange += StateHasChanged;
-    }
-
-    public void Dispose()
-    {
-        AppState.OnChange -= StateHasChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (AppState.CurrentPage != null)
         {
-            try
-            {
-                await JS.InvokeVoidAsync("renderMermaid");
-            }
-            catch
-            {
-                // Ignore if mermaid is not loaded or fails
-            }
+            await JSRuntime.InvokeVoidAsync("renderMermaidDiagrams");
         }
     }
+}
 
-    private void StartAddNew()
+@implements IDisposable
+@functions {
+    public void Dispose()
     {
-        isAddingNew = true;
+        AppState.OnChange -= StateHasChanged;
     }
 
-    private void CancelAddNew()
-    {
-        isAddingNew = false;
-    }
-
-    private void GoHome()
-    {
-        AppState.SetRepoPath("");
-        AppState.SetCurrentPage(null!);
-        AppState.SetStructure(null!);
-        isAddingNew = false;
-    }
-
-    private void ClosePage()
+    void ClosePage()
     {
         AppState.SetCurrentPage(null!);
     }
+    
+    [Inject] WikiApiClient WikiApi { get; set; } = default!;
 
-    private void ToggleSource()
+    async Task RegeneratePage()
     {
-        showSourceFiles = !showSourceFiles;
-    }
-
-    private string RenderMarkdown(string markdown)
-    {
-        return Markdown.ToHtml(markdown ?? "");
+        if (AppState.CurrentPage == null) return;
+        
+        AppState.SetBusy(true, "Regenerating page...");
+        try 
+        {
+            var newPage = await WikiApi.GeneratePageAsync(
+                AppState.RepoPath, 
+                AppState.CurrentPage.Title, 
+                AppState.CurrentPage.RelevantFiles, 
+                forceRegenerate: true
+            );
+            AppState.SetCurrentPage(newPage);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error regenerating page: {ex.Message}");
+        }
+        finally 
+        {
+            AppState.SetBusy(false);
+        }
     }
 }

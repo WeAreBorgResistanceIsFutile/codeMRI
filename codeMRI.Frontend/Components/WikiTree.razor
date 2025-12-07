@@ -4,14 +4,19 @@
 @inject WikiApiClient WikiApi
 
 <div class="wiki-tree h-100 d-flex flex-column">
-    <div class="p-2 border-bottom">
-        <input @bind="searchTerm" @bind:event="oninput" class="form-control form-control-sm" placeholder="Filter..." />
+    <div class="search-container p-3 border-bottom">
+        <div class="input-group input-group-sm">
+            <input @bind="searchTerm" @bind:event="oninput" 
+                   class="form-control" 
+                   placeholder="Filter pages..." 
+                   style="border-radius: 4px;" />
+        </div>
     </div>
     
-    <div class="flex-grow-1 overflow-auto p-2">
+    <div class="flex-grow-1 overflow-auto p-2 custom-scrollbar">
         @if (AppState.Structure == null)
         {
-            <div class="text-muted small text-center mt-4">No structure generated.</div>
+            <div class="text-muted small text-center mt-4">Loading structure...</div>
         }
         else
         {
@@ -20,8 +25,8 @@
                 {
                     <li class="mb-3">
                         <div class="section-title">@wikiSection.Title</div>
-                        <ul class="ps-2 border-start ms-1">
-                            @foreach (var pageRef in wikiSection.PageRefs.Where(p => string.IsNullOrEmpty(searchTerm) || p.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
+                        <ul class="list-unstyled ms-1 border-start ps-2" style="border-color: #f1f3f4 !important;">
+                            @foreach (var pageRef in wikiSection.PageRefs.Where(p => Match(p)))
                             {
                                 <li class="wiki-item @(AppState.CurrentPage?.Title == pageRef ? "active" : "")" 
                                     @onclick="() => LoadPage(pageRef)">
@@ -49,6 +54,12 @@
         AppState.OnChange -= StateHasChanged;
     }
     
+    private bool Match(string title)
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm)) return true;
+        return title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
+    }
+
     private IEnumerable<WikiSection> FilteredSections
     {
         get
@@ -58,7 +69,6 @@
             if (string.IsNullOrWhiteSpace(searchTerm))
                 return AppState.Structure.Sections;
 
-            // Simple filter: Show section if title matches OR if it contains matching pages
             return AppState.Structure.Sections.Where(s => 
                 s.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
                 s.PageRefs.Any(p => p.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
@@ -74,13 +84,11 @@
         
         try
         {
-            // Pass the repo path so the backend can resolve files
             var page = await WikiApi.GeneratePageAsync(AppState.RepoPath, pageTitle, new List<string>());
             AppState.SetCurrentPage(page);
         }
         catch (Exception ex)
         {
-            // In a real app, we'd show a toast or error state
             Console.WriteLine($"Error loading page: {ex.Message}");
         }
         finally
