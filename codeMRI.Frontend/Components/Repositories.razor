@@ -84,20 +84,28 @@
         finally
         {
             isLoading = false;
+            StateHasChanged(); // Ensure UI updates immediately
         }
 
-        hubConnection = new HubConnectionBuilder()
-            .WithUrl(Navigation.ToAbsoluteUri("/wikiHub"))
-            .WithAutomaticReconnect()
-            .Build();
-
-        hubConnection.On<codeMRI.Server.Api.ProgressInfo>("ReceiveProgress", (info) =>
+        try
         {
-            AppState.SetProgress(info);
-            InvokeAsync(StateHasChanged);
-        });
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl(Navigation.ToAbsoluteUri("/wikiHub"))
+                .WithAutomaticReconnect()
+                .Build();
 
-        await hubConnection.StartAsync();
+            hubConnection.On<codeMRI.Server.Api.ProgressInfo>("ReceiveProgress", (info) =>
+            {
+                AppState.SetProgress(info);
+                InvokeAsync(StateHasChanged);
+            });
+
+            await hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+             Console.WriteLine($"Warning: Failed to connect to WikiHub: {ex.Message}");
+        }
     }
 
     private async Task SelectRepo(string path)
