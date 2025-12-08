@@ -57,9 +57,9 @@ public class HierarchicalDecompositionLanguageTests
         
         graph.AddNode(fileName, metadata);
 
-        _graphServiceMock.Setup(x => x.GetComponentsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.GetComponentsAsync(It.IsAny<string>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CodeComponent>());
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
@@ -91,7 +91,7 @@ public class HierarchicalDecompositionLanguageTests
         // Dependency
         graph.AddEdge("wrapper.py", "core.cpp", EdgeType.Dependency, 1.0);
 
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());

@@ -31,13 +31,25 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     /// </summary>
     public async Task<ModuleTree> DecomposeHierarchicallyAsync(
         string repositoryPath,
+        IProgress<ProgressInfo>? progress = null,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Starting hierarchical decomposition for repository: {Path}", repositoryPath);
 
+        // Sub-progress for Identification (0-20%)
+        var identProgress = progress != null ? new ActionProgress<ProgressInfo>(info => {
+             progress.Report(new ProgressInfo { Phase = "Identification", Message = info.Message, Percentage = (int)(info.Percentage * 0.2) });
+        }) : null;
+
         // Get components and build dependency graph
-        var components = await _graphService.GetComponentsAsync(repositoryPath, cancellationToken);
-        var graph = await _graphService.BuildGraphAsync(components, cancellationToken);
+        var components = await _graphService.GetComponentsAsync(repositoryPath, identProgress, cancellationToken);
+        
+         // Sub-progress for Graph Build (20-100%)
+        var graphProgress = progress != null ? new ActionProgress<ProgressInfo>(info => {
+             progress.Report(new ProgressInfo { Phase = "Graph Construction", Message = info.Message, Percentage = 20 + (int)(info.Percentage * 0.8) });
+        }) : null;
+
+        var graph = await _graphService.BuildGraphAsync(components, graphProgress, cancellationToken);
 
         // Identify Entry Points
         IdentifyEntryPoints(graph);
@@ -666,5 +678,12 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     {
         return node.Metadata.Type.Contains("Interface", StringComparison.OrdinalIgnoreCase) ||
                node.Metadata.Type.Contains("Abstract", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private class ActionProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _action;
+        public ActionProgress(Action<T> action) => _action = action;
+        public void Report(T value) => _action(value);
     }
 }

@@ -44,9 +44,21 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _logger.LogInformation("Starting CodeWiki Advanced Workflow for {Repo}", repositoryPath);
 
         // 1. Hierarchical Decomposition
+        // 1. Hierarchical Decomposition
         progress?.Report(new ProgressInfo { Phase = "Decomposition", Message = "Analyzing repository structure...", Percentage = 5 });
         _logger.LogInformation("Phase 1: Hierarchical Decomposition");
-        var moduleTree = await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, cancellationToken);
+
+        var decompositionProgress = progress != null ? new Progress<ProgressInfo>(info => {
+             // Scale 0-100 to 5-15
+             int scaledPct = 5 + (int)(info.Percentage * 0.1);
+             progress.Report(new ProgressInfo {
+                 Phase = "Decomposition", 
+                 Message = info.Message,
+                 Percentage = scaledPct
+             });
+        }) : null;
+
+        var moduleTree = await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, decompositionProgress, cancellationToken);
         
         // Convert to initial WikiStructure
         var structure = ConvertToWikiStructure(moduleTree, repositoryInfo);

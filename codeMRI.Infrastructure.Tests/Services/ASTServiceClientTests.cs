@@ -11,6 +11,13 @@ namespace codeMRI.Infrastructure.Tests.Services;
 [TestFixture]
 public class ASTServiceClientTests
 {
+    private Mock<HttpMessageHandler> _httpMessageHandlerMock;
+    private Mock<ILogger<ASTServiceClient>> _loggerMock;
+    private Mock<IOptions<ASTServiceSettings>> _settingsMock;
+    private Mock<ICSharpParser> _csharpParserMock;
+    private HttpClient _httpClient;
+    private ASTServiceClient _service;
+
     [SetUp]
     public void Setup()
     {
@@ -22,6 +29,7 @@ public class ASTServiceClientTests
 
         _loggerMock = new Mock<ILogger<ASTServiceClient>>();
         _settingsMock = new Mock<IOptions<ASTServiceSettings>>();
+        _csharpParserMock = new Mock<ICSharpParser>();
 
         _settingsMock.Setup(s => s.Value).Returns(new ASTServiceSettings
         {
@@ -30,7 +38,7 @@ public class ASTServiceClientTests
             Enabled = true
         });
 
-        _service = new ASTServiceClient(_httpClient, _loggerMock.Object, _settingsMock.Object);
+        _service = new ASTServiceClient(_httpClient, _loggerMock.Object, _settingsMock.Object, _csharpParserMock.Object);
     }
 
     [TearDown]
@@ -39,21 +47,15 @@ public class ASTServiceClientTests
         _httpClient.Dispose();
     }
 
-    private Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private Mock<ILogger<ASTServiceClient>> _loggerMock;
-    private Mock<IOptions<ASTServiceSettings>> _settingsMock;
-    private HttpClient _httpClient;
-    private ASTServiceClient _service;
-
     [Test]
     public async Task ParseCodeAsync_ShouldDeserializeIntoRawDependencyData_AndReturnASTParseResult()
     {
         // Arrange
         var jsonResponse = @"{
-            ""language"": ""csharp"",
-            ""filePath"": ""test.cs"",
+            ""language"": ""java"",
+            ""filePath"": ""test.java"",
             ""dependencyGraph"": {
-                ""dependencies"": [""System"", ""System.IO""]
+                ""dependencies"": [""java.util"", ""java.io""]
             },
             ""tree"": {},
             ""metrics"": {},
@@ -77,12 +79,12 @@ public class ASTServiceClientTests
             });
 
         // Act
-        var result = await _service.ParseCodeAsync("public class Test {}", "csharp", "test.cs");
+        var result = await _service.ParseCodeAsync("public class Test {}", "java", "test.java");
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.Language, Is.EqualTo("csharp"));
-        Assert.That(result.FilePath, Is.EqualTo("test.cs"));
+        Assert.That(result!.Language, Is.EqualTo("java"));
+        Assert.That(result.FilePath, Is.EqualTo("test.java"));
 
         // Verify dependencies were mapped correctly
         Assert.That(result.DependencyGraph, Is.Not.Null);
@@ -180,5 +182,27 @@ if not logger.hasHandlers():
 
         // Assert
         Assert.That(result, Is.Null, "Expected null result when AST Service returns 500");
+    }
+
+    [Test]
+    public async Task ParseCodeAsync_ShouldUseRoslyn_ForCSharp()
+    {
+        // Arrange
+        var code = "public class Foo {}";
+        var language = "csharp";
+        var filePath = "test.cs";
+        var expectedResult = new codeMRI.Core.Interfaces.ASTParseResult { Language = "C#" };
+        
+        _csharpParserMock.Setup(p => p.Parse(code, filePath)).Returns(expectedResult);
+
+        // Act
+        var result = await _service.ParseCodeAsync(code, language, filePath);
+
+        // Assert
+        Assert.That(result, Is.SameAs(expectedResult));
+        _csharpParserMock.Verify(p => p.Parse(code, filePath), Times.Once);
+        
+        // Verify HTTP was NOT called
+        _httpMessageHandlerMock.Protected().Verify("SendAsync", Times.Never(), ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>());
     }
 }

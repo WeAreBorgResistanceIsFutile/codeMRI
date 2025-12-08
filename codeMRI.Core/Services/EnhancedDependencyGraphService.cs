@@ -23,15 +23,24 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
     }
 
     public async Task<EnhancedDependencyGraph> BuildGraphAsync(List<CodeComponent> components,
-        CancellationToken cancellationToken = default)
+        IProgress<ProgressInfo>? progress = null, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Building dependency graph for {ComponentCount} components", components.Count);
 
         var graph = new EnhancedDependencyGraph();
+        int processed = 0;
+        int total = components.Count;
 
         // Build nodes
         foreach (var component in components)
         {
+            processed++;
+            if (progress != null && total > 0 && processed % 10 == 0) // Report every 10 items to reduce traffic
+            {
+                 int pct = (int)((double)processed / total * 100);
+                 progress.Report(new ProgressInfo { Phase = "Graph Building", Message = $"Processing {component.Name} ({processed}/{total})", Percentage = pct });
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
 
             // Enrich with AST Service if possible
@@ -260,10 +269,10 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
     }
 
     public async Task<List<CodeComponent>> GetComponentsAsync(string repositoryPath,
-        CancellationToken cancellationToken = default)
+        IProgress<ProgressInfo>? progress = null, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Identifying components in repository: {Path}", repositoryPath);
-        return await _componentService.IdentifyComponentsAsync(repositoryPath);
+        return await _componentService.IdentifyComponentsAsync(repositoryPath, progress);
     }
 
     private Task<Dictionary<string, double>> CalculatePageRankAsync(EnhancedDependencyGraph graph,

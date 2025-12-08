@@ -1,8 +1,8 @@
 using System.Data;
 using System.Text.Json;
+using Dapper;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
-using Dapper;
 using Microsoft.Data.Sqlite;
 
 namespace codeMRI.Infrastructure.Services;

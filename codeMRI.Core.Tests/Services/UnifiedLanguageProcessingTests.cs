@@ -104,7 +104,7 @@ namespace codeMRI.Core.Tests.Services
                .ReturnsAsync(jsResult);
 
             // Act
-            var graph = await _service.BuildGraphAsync(components);
+            var graph = await _service.BuildGraphAsync(components, null);
 
             // Assert
             Assert.That(graph.NodeCount, Is.GreaterThanOrEqualTo(2));

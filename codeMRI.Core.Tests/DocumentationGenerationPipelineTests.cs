@@ -57,7 +57,7 @@ public class DocumentationGenerationPipelineTests
 
         // Mock Graph & Tree
         var graph = new EnhancedDependencyGraph();
-        _mockGraphService.Setup(s => s.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+        _mockGraphService.Setup(s => s.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _mockGraphService.Setup(s => s.AnalyzeGraphAsync(graph, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
@@ -65,7 +65,7 @@ public class DocumentationGenerationPipelineTests
         var rootNode = new ModuleNode { Id = "root", Name = "Repository" };
         rootNode.Components.Add("comp1");
         _mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ModuleTree { Root = rootNode });
 
         // Mock Visualization

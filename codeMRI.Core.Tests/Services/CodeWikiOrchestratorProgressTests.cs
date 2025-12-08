@@ -59,7 +59,7 @@ public class CodeWikiOrchestratorProgressTests
         rootNode.Children.Add(childNode);
         var moduleTree = new ModuleTree { Root = rootNode };
 
-        _mockDecompositionService.Setup(x => x.DecomposeHierarchicallyAsync(repoPath, It.IsAny<CancellationToken>()))
+        _mockDecompositionService.Setup(x => x.DecomposeHierarchicallyAsync(repoPath, It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
                                  .ReturnsAsync(moduleTree);
 
         var rubric = new EvaluationRubric 

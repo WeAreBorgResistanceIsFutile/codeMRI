@@ -167,7 +167,7 @@ public class EnhancedDependencyGraphServiceTests
 
         // Act & Assert
         Assert.ThrowsAsync<OperationCanceledException>(async () =>
-            await _service.BuildGraphAsync(components, cts.Token));
+            await _service.BuildGraphAsync(components, null, cts.Token));
     }
 
     [Test]

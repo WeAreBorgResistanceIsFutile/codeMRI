@@ -54,6 +54,7 @@ public class ASTServiceIntegrationTests
         _httpClient = new HttpClient();
         _loggerMock = new Mock<ILogger<ASTServiceClient>>();
         _settingsMock = new Mock<IOptions<ASTServiceSettings>>();
+        var csharpParserMock = new Mock<ICSharpParser>();
 
         _settingsMock.Setup(s => s.Value).Returns(new ASTServiceSettings
         {
@@ -62,7 +63,7 @@ public class ASTServiceIntegrationTests
             Enabled = true
         });
 
-        _service = new ASTServiceClient(_httpClient, _loggerMock.Object, _settingsMock.Object);
+        _service = new ASTServiceClient(_httpClient, _loggerMock.Object, _settingsMock.Object, csharpParserMock.Object);
 
         Console.WriteLine("Waiting for AST Service to become healthy...");
         var isServiceHealthy = false;

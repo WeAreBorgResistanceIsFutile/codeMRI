@@ -67,11 +67,11 @@ public class DocumentationGenerationPipelineTests
             });
 
         // Mock Services (Step 1.5)
-        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnhancedDependencyGraph());
 
         _mockDecompositionService
-            .Setup(x => x.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ModuleTree { Root = rootNode }); // Should probably use logic to return our tree
 
         _mockVisualSynthesis.Setup(x =>

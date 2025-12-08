@@ -81,14 +81,14 @@ public class WikiGenerationService : IWikiGenerationService
                 if (!string.IsNullOrEmpty(repoPath))
                 {
                     // 1. Get components from repository
-                    var components = await _graphService.GetComponentsAsync(repoPath, cts.Token);
+                    var components = await _graphService.GetComponentsAsync(repoPath, null, cts.Token);
                     // 2. Build graph to understand relationships
-                    graph = await _graphService.BuildGraphAsync(components, cts.Token);
+                    graph = await _graphService.BuildGraphAsync(components, null, cts.Token);
                 }
                 else
                 {
                     // Fallback (mostly for tests without repo access)
-                    graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), cts.Token);
+                    graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), null, cts.Token);
                 }
 
                 // 3. Find likely entry point matching the page title
@@ -150,7 +150,7 @@ public class WikiGenerationService : IWikiGenerationService
         {
             // Optimization: Set a strict timeout for graph generation to avoid hanging page loads
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), cts.Token);
+            var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), null, cts.Token);
             if (graph.NodeCount > 0)
             {
                 // Try to find a component that matches the page title or file paths
@@ -298,7 +298,7 @@ public class WikiGenerationService : IWikiGenerationService
         // 2. Generate Architecture Diagram
         try
         {
-            var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), CancellationToken.None);
+            var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), null, CancellationToken.None);
             if (graph.NodeCount > 0)
             {
                 // Create a simple module tree for this module and its children

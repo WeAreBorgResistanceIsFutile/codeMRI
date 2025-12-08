@@ -61,7 +61,7 @@ public class CodeWikiOrchestratorTests
         };
 
         _mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<CancellationToken>()))
+            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(moduleTree);
 
         _mockRubricService
@@ -116,7 +116,7 @@ public class CodeWikiOrchestratorTests
         };
 
         _mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<CancellationToken>()))
+            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(moduleTree);
 
         _mockRubricService

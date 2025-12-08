@@ -36,7 +36,8 @@ public class ASTServiceClientConversionTests
             Enabled = true
         });
 
-        _service = new ASTServiceClient(_httpClient, _loggerMock.Object, _settingsMock.Object);
+        var csharpParserMock = new Mock<ICSharpParser>();
+        _service = new ASTServiceClient(_httpClient, _loggerMock.Object, _settingsMock.Object, csharpParserMock.Object);
     }
     
     [TearDown]

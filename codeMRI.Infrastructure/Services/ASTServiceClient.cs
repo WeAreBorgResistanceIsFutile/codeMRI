@@ -13,6 +13,7 @@ public class ASTServiceClient : IASTServiceClient
 {
     private const int FailureThreshold = 5;
     private readonly TimeSpan _circuitBreakTimeout = TimeSpan.FromMinutes(1);
+    private readonly ICSharpParser _csharpParser;
     private readonly HttpClient _httpClient;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly ILogger<ASTServiceClient> _logger;
@@ -26,11 +27,13 @@ public class ASTServiceClient : IASTServiceClient
     public ASTServiceClient(
         HttpClient httpClient,
         ILogger<ASTServiceClient> logger,
-        IOptions<ASTServiceSettings> settings)
+        IOptions<ASTServiceSettings> settings,
+        ICSharpParser csharpParser)
     {
         _httpClient = httpClient;
         _logger = logger;
         _settings = settings.Value;
+        _csharpParser = csharpParser;
 
         _httpClient.BaseAddress = new Uri(_settings.BaseUrl);
         _httpClient.Timeout = TimeSpan.FromSeconds(_settings.TimeoutSeconds);
@@ -116,6 +119,24 @@ public class ASTServiceClient : IASTServiceClient
     public async Task<ASTParseResult?> ParseCodeAsync(string code, string language, string filePath = "",
         CancellationToken cancellationToken = default)
     {
+        // 0. Use local Roslyn parser for C#
+        if (language.Equals("C#", StringComparison.OrdinalIgnoreCase) || 
+            language.Equals("CSharp", StringComparison.OrdinalIgnoreCase) ||
+            filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            try 
+            {
+                return _csharpParser.Parse(code, filePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to parse C# code using Roslyn parser locally for {FilePath}", filePath);
+                // Optionally fall back to remote or return null?
+                // Let's assume remote might handle it differently but user specified Roslyn for C#.
+                return null; 
+            }
+        }
+
         if (_circuitOpen)
         {
             if (DateTime.UtcNow - _circuitOpenTime > _circuitBreakTimeout)

@@ -1,9 +1,11 @@
+using codeMRI.Core.Models;
+
 namespace codeMRI.Core.Interfaces;
 
 public interface IComponentIdentificationService
 {
     Task<RepositoryStructure> AnalyzeRepositoryAsync(string repositoryPath);
-    Task<List<CodeComponent>> IdentifyComponentsAsync(string repositoryPath);
+    Task<List<CodeComponent>> IdentifyComponentsAsync(string repositoryPath, IProgress<ProgressInfo>? progress = null);
     Task<ComponentRelationships> AnalyzeRelationshipsAsync(string repositoryPath, List<CodeComponent> components);
 }
 

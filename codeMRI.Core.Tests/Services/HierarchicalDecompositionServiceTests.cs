@@ -51,7 +51,7 @@ public class HierarchicalDecompositionServiceTests
             graph.AddEdge($"Node_{i}", $"Node_{i+1}", EdgeType.Dependency, 1.0);
         }
 
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
@@ -85,7 +85,7 @@ public class HierarchicalDecompositionServiceTests
         graph.AddNode("Features/Orders/OrderController.cs", new NodeMetadata { FilePath = "Features/Orders/OrderController.cs" });
         graph.AddNode("Features/Orders/OrderService.cs", new NodeMetadata { FilePath = "Features/Orders/OrderService.cs" });
 
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
@@ -116,7 +116,7 @@ public class HierarchicalDecompositionServiceTests
         graph.AddNode("External", new NodeMetadata { Type = "Class", EstimatedTokens = 50 });
         graph.AddEdge("External", "Interface1", EdgeType.Dependency, 1.0);
 
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());

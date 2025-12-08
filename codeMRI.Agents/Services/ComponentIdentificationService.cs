@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Services;
+using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Agents.Services;
@@ -8,7 +9,7 @@ namespace codeMRI.Agents.Services;
 public class ComponentIdentificationService : IComponentIdentificationService
 {
     private readonly IASTServiceClient? _astServiceClient;
-
+    
     private readonly Dictionary<string, string> _languagePatterns = new()
     {
         { ".cs", "C#" },
@@ -75,15 +76,31 @@ public class ComponentIdentificationService : IComponentIdentificationService
         return await Task.FromResult(structure);
     }
 
-    public async Task<List<CodeComponent>> IdentifyComponentsAsync(string repositoryPath)
+
+    public async Task<List<CodeComponent>> IdentifyComponentsAsync(string repositoryPath, IProgress<ProgressInfo>? progress = null)
     {
         var components = new List<CodeComponent>();
         var files = Directory.GetFiles(repositoryPath, "*.*", SearchOption.AllDirectories)
             .Where(f => IsSourceFile(f) && !IsIgnoredPath(f))
             .ToList();
 
+        int totalDocs = files.Count;
+        int processed = 0;
+
         foreach (var file in files)
         {
+            processed++;
+            if (progress != null && totalDocs > 0)
+            {
+               int pct = (int)((double)processed / totalDocs * 100);
+               progress.Report(new ProgressInfo 
+               { 
+                   Phase = "Decomposition", 
+                   Message = $"Analyzed {Path.GetFileName(file)} ({processed}/{totalDocs})",
+                   Percentage = pct 
+               }); 
+            }
+
             var fileComponents = await AnalyzeFileAsync(file);
             components.AddRange(fileComponents);
         }

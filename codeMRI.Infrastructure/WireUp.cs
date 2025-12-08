@@ -3,6 +3,7 @@ using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Services;
+using codeMRI.Infrastructure.Services;
 using codeMRI.Visualization.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -12,6 +13,7 @@ public class WireUp
 {
     public static void Registered(IServiceCollection services)
     {
+        services.AddSingleton<ICSharpParser, RoslynCSharpParser>();
         services.AddSingleton<AgentMessageBus>();
         services.AddSingleton<DelegationService>();
         services.AddScoped<IAgent, AnalyzerAgent>();
