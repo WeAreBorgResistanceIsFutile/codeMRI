@@ -4,8 +4,7 @@ namespace codeMRI.Core.Interfaces;
 
 public interface IEnhancedDependencyGraphService
 {
-    Task<EnhancedDependencyGraph> BuildGraphAsync(List<CodeComponent> components,
-        IProgress<ProgressInfo>? progress = null, CancellationToken cancellationToken = default);
+    Task<EnhancedDependencyGraph> BuildGraphAsync(List<CodeComponent> components, CancellationToken cancellationToken = default);
 
     Task<GraphAnalysisResult> AnalyzeGraphAsync(EnhancedDependencyGraph graph,
         CancellationToken cancellationToken = default);
@@ -22,7 +21,7 @@ public interface IEnhancedDependencyGraphService
     Task<ModuleTree> DecomposeHierarchicallyAsync(EnhancedDependencyGraph graph, int maxTokensPerModule = 32768,
         CancellationToken cancellationToken = default);
 
-    Task<List<CodeComponent>> GetComponentsAsync(string repositoryPath, IProgress<ProgressInfo>? progress = null, CancellationToken cancellationToken = default);
+    Task<List<CodeComponent>> GetComponentsAsync(string repositoryPath, CancellationToken cancellationToken = default);
 
     Task<Dictionary<string, HashSet<string>>> PartitionByDirectoryStructureAsync(EnhancedDependencyGraph graph,
         CancellationToken cancellationToken = default);

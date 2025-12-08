@@ -17,6 +17,7 @@ public class CodeWikiOrchestratorProgressTests
     private Mock<IDocumentationSynthesisService> _mockSynthesisService;
     private Mock<IWikiRepository> _mockWikiRepo;
     private Mock<ILogger<CodeWikiOrchestrator>> _mockLogger;
+    private Mock<IProgressService> _mockProgressService;
     private CodeWikiOrchestrator _orchestrator;
 
     [SetUp]
@@ -29,6 +30,7 @@ public class CodeWikiOrchestratorProgressTests
         _mockSynthesisService = new Mock<IDocumentationSynthesisService>();
         _mockWikiRepo = new Mock<IWikiRepository>();
         _mockLogger = new Mock<ILogger<CodeWikiOrchestrator>>();
+        _mockProgressService = new Mock<IProgressService>();
 
         _orchestrator = new CodeWikiOrchestrator(
             _mockDecompositionService.Object,
@@ -37,6 +39,7 @@ public class CodeWikiOrchestratorProgressTests
             _mockWikiGenerationService.Object,
             _mockSynthesisService.Object,
             _mockWikiRepo.Object,
+            _mockProgressService.Object,
             _mockLogger.Object
         );
     }
@@ -53,13 +56,25 @@ public class CodeWikiOrchestratorProgressTests
         progress.Setup(p => p.Report(It.IsAny<ProgressInfo>()))
                 .Callback<ProgressInfo>(p => capturedProgress.Add(p));
 
+        // Mock ProgressService behavior
+        Action<ProgressInfo> storedHandler = null;
+        _mockProgressService.Setup(x => x.SetHandler(It.IsAny<Action<ProgressInfo>>()))
+            .Callback<Action<ProgressInfo>>(h => storedHandler = h);
+        
+        _mockProgressService.Setup(x => x.Report(It.IsAny<ProgressInfo>()))
+            .Callback<ProgressInfo>(info => storedHandler?.Invoke(info));
+
+        _mockProgressService
+            .Setup(p => p.WithScalingAsync(It.IsAny<double>(), It.IsAny<double>(), It.IsAny<Func<Task>>()))
+            .Returns<double, double, Func<Task>>(async (start, width, op) => await op());
+
         // Setup Mocks
         var rootNode = new ModuleNode { Id = "root", Name = "Root", IsLeaf = false };
         var childNode = new ModuleNode { Id = "child", Name = "Child", IsLeaf = true };
         rootNode.Children.Add(childNode);
         var moduleTree = new ModuleTree { Root = rootNode };
 
-        _mockDecompositionService.Setup(x => x.DecomposeHierarchicallyAsync(repoPath, It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _mockDecompositionService.Setup(x => x.DecomposeHierarchicallyAsync(repoPath, It.IsAny<CancellationToken>()))
                                  .ReturnsAsync(moduleTree);
 
         var rubric = new EvaluationRubric 

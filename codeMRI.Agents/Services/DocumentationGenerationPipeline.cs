@@ -51,11 +51,11 @@ public class DocumentationGenerationPipeline : IDocumentationGenerationPipeline
         // var structure = data.Structure; // Unused for now
 
         // 1.5 Build Graph and Tree for Visualization
-        var graph = await _graphService.BuildGraphAsync(components, null, CancellationToken.None);
+        var graph = await _graphService.BuildGraphAsync(components, CancellationToken.None);
         await _graphService.AnalyzeGraphAsync(graph, CancellationToken.None);
 
         var moduleTree =
-            await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, null, CancellationToken.None);
+            await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, CancellationToken.None);
 
         // Generate Visual Artifacts
         var artifacts = await _visualSynthesisService.GenerateArtifactsAsync(moduleTree, graph);

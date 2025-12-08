@@ -13,7 +13,8 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private readonly IDocumentationSynthesisService _synthesisService;
     private readonly IWikiGenerationService _wikiGenerationService;
     private readonly IWikiRepository _wikiRepo;
-    private readonly List<string> _judgeModels;
+    private readonly IProgressService _progressService; // Added field
+    private readonly string _judgeModel; // Changed from List<string> _judgeModels
 
     public CodeWikiOrchestrator(
         IHierarchicalDecompositionService decompositionService,
@@ -22,8 +23,9 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IWikiGenerationService wikiGenerationService,
         IDocumentationSynthesisService synthesisService,
         IWikiRepository wikiRepo,
+        IProgressService progressService, // Added parameter
         ILogger<CodeWikiOrchestrator> logger,
-        List<string>? judgeModels = null)
+        string judgeModel = "default") // Changed from List<string>? judgeModels = null
     {
         _decompositionService = decompositionService;
         _rubricService = rubricService;
@@ -31,8 +33,9 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _wikiGenerationService = wikiGenerationService;
         _synthesisService = synthesisService;
         _wikiRepo = wikiRepo;
-        _judgeModels = judgeModels ?? new List<string> { "default" };
+        _progressService = progressService; // Initialized new field
         _logger = logger;
+        _judgeModel = judgeModel; // Initialized new field
     }
 
     public async Task<WikiStructure> GenerateAdvancedWikiAsync(
@@ -41,55 +44,56 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IProgress<ProgressInfo>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        // 0. Initialize Progress Sservice
+        if (progress != null) _progressService.SetHandler(p => progress.Report(p));
+
         _logger.LogInformation("Starting CodeWiki Advanced Workflow for {Repo}", repositoryPath);
 
         // 1. Hierarchical Decomposition
-        // 1. Hierarchical Decomposition
-        progress?.Report(new ProgressInfo { Phase = "Decomposition", Message = "Analyzing repository structure...", Percentage = 5 });
+        _progressService.Report(new ProgressInfo { Phase = "Decomposition", Message = "Analyzing repository structure...", Percentage = 0 });
         _logger.LogInformation("Phase 1: Hierarchical Decomposition");
 
-        var decompositionProgress = progress != null ? new Progress<ProgressInfo>(info => {
-             // Scale 0-100 to 5-15
-             int scaledPct = 5 + (int)(info.Percentage * 0.1);
-             progress.Report(new ProgressInfo {
-                 Phase = "Decomposition", 
-                 Message = info.Message,
-                 Percentage = scaledPct
-             });
-        }) : null;
-
-        var moduleTree = await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, decompositionProgress, cancellationToken);
+        ModuleTree moduleTree = null!;
+        
+        // Scale Decomposition (Global 5% to 15%: Start=5, Width=10)
+        await _progressService.WithScalingAsync(5, 10, async () => 
+        {
+             moduleTree = await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, cancellationToken);
+        });
         
         // Convert to initial WikiStructure
         var structure = ConvertToWikiStructure(moduleTree, repositoryInfo);
 
         // 2. Rubric Generation
-        progress?.Report(new ProgressInfo { Phase = "Rubric Generation", Message = "Generating evaluation rubric...", Percentage = 15 });
+        _progressService.Report(new ProgressInfo { Phase = "Rubric Generation", Message = "Generating evaluation rubric...", Percentage = 15 });
         _logger.LogInformation("Phase 2: Rubric Generation");
         var rubric = await _rubricService.GenerateRubricAsync(structure, repositoryInfo, cancellationToken);
         
         // 3. Draft Generation (Content)
-        progress?.Report(new ProgressInfo { Phase = "Content Generation", Message = "Drafting wiki content...", Percentage = 20 });
+        _progressService.Report(new ProgressInfo { Phase = "Content Generation", Message = "Drafting wiki content...", Percentage = 20 });
         _logger.LogInformation("Phase 3: Content Drafting");
         
         // Count total modules for progress calculation
         int totalModules = CountModules(moduleTree.Root, new HashSet<string>());
         var progressState = new ProgressState { Total = totalModules, Processed = 0 };
 
-        // We need to traverse the ModuleTree to generate pages in valid order (bottom-up is often better for synthesis)
-        // But for leaf nodes, order doesn't matter much.
-        await GenerateContentForModulesAsync(moduleTree.Root, structure, repositoryPath, progress, progressState, new HashSet<string>(), cancellationToken);
+        // Scale Content Generation (Global 20% to 90%: Start=20, Width=70)
+        await _progressService.WithScalingAsync(20, 70, async () => 
+        {
+             await GenerateContentForModulesAsync(moduleTree.Root, structure, repositoryPath, progressState, new HashSet<string>(), cancellationToken);
+        });
 
         // 4. Evaluation (The Judge)
-        progress?.Report(new ProgressInfo { Phase = "Evaluation", Message = "Evaluating documentation quality...", Percentage = 90 });
+        _progressService.Report(new ProgressInfo { Phase = "Evaluation", Message = "Evaluating documentation quality...", Percentage = 90 });
         _logger.LogInformation("Phase 4: Evaluation");
         var requirements = ExtractRequirements(rubric);
         // Use configured judge models
-        
+        var judgeModelsList = new List<string> { _judgeModel };
+
         var assessments = await _judgeService.EvaluateRequirementsAsync(
             requirements, 
             structure, 
-            _judgeModels, 
+            judgeModelsList, 
             cancellationToken);
 
         // Log results
@@ -99,7 +103,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // TODO: Implement Refinement Loop based on low scores
         // For now, we return the judged structure (results could be appended to metadata)
         
-        progress?.Report(new ProgressInfo { Phase = "Complete", Message = "Documentation generated successfully.", Percentage = 100 });
+        _progressService.Report(new ProgressInfo { Phase = "Complete", Message = "Documentation generated successfully.", Percentage = 100 });
         return structure;
     }
 
@@ -140,7 +144,6 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         ModuleNode module, 
         WikiStructure structure, 
         string repoPath,
-        IProgress<ProgressInfo>? progress,
         ProgressState progressState,
         HashSet<string> visitedIds,
         CancellationToken cancellationToken)
@@ -150,7 +153,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // Recursively process children first (Bottom-Up)
         foreach (var child in module.Children)
         {
-            await GenerateContentForModulesAsync(child, structure, repoPath, progress, progressState, visitedIds, cancellationToken);
+            await GenerateContentForModulesAsync(child, structure, repoPath, progressState, visitedIds, cancellationToken);
         }
 
         // Check cache first
@@ -170,7 +173,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
             };
             structure.Sections.Add(cachedSection);
             
-            UpdateProgress(progress, progressState, module.Name);
+            UpdateProgress(progressState, module.Name);
             return;
         }
 
@@ -213,18 +216,21 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         };
         structure.Sections.Add(section);
 
-        UpdateProgress(progress, progressState, module.Name);
+        UpdateProgress(progressState, module.Name);
     }
 
-    private void UpdateProgress(IProgress<ProgressInfo>? progress, ProgressState state, string moduleName)
+    private void UpdateProgress(ProgressState state, string moduleName)
     {
         state.Processed++;
-        int percentage = 20 + (int)((double)state.Processed / state.Total * 70);
-        progress?.Report(new ProgressInfo 
+        
+        // Local Percentage 0-100
+        int percentage = (int)((double)state.Processed / state.Total * 100);
+        
+        _progressService.Report(new ProgressInfo 
         { 
             Phase = "Content Generation", 
             Message = $"Generated content for {moduleName} ({state.Processed}/{state.Total})", 
-            Percentage = percentage 
+            Percentage = percentage
         });
     }
 

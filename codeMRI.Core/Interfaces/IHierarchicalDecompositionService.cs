@@ -7,5 +7,5 @@ namespace codeMRI.Core.Interfaces;
 /// </summary>
 public interface IHierarchicalDecompositionService
 {
-    Task<ModuleTree> DecomposeHierarchicallyAsync(string repositoryPath, IProgress<ProgressInfo>? progress = null, CancellationToken cancellationToken = default);
+    Task<ModuleTree> DecomposeHierarchicallyAsync(string repositoryPath, CancellationToken cancellationToken = default);
 }

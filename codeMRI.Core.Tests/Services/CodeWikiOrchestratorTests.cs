@@ -17,6 +17,7 @@ public class CodeWikiOrchestratorTests
     private Mock<IDocumentationSynthesisService> _mockSynthesisService;
     private Mock<IWikiRepository> _mockWikiRepo;
     private Mock<ILogger<CodeWikiOrchestrator>> _mockLogger;
+    private Mock<IProgressService> _mockProgressService;
     private CodeWikiOrchestrator _orchestrator;
 
     [SetUp]
@@ -29,6 +30,12 @@ public class CodeWikiOrchestratorTests
         _mockSynthesisService = new Mock<IDocumentationSynthesisService>();
         _mockWikiRepo = new Mock<IWikiRepository>();
         _mockLogger = new Mock<ILogger<CodeWikiOrchestrator>>();
+        _mockProgressService = new Mock<IProgressService>();
+        
+        // Ensure WithScalingAsync executes the passed operation
+        _mockProgressService
+            .Setup(p => p.WithScalingAsync(It.IsAny<double>(), It.IsAny<double>(), It.IsAny<Func<Task>>()))
+            .Returns<double, double, Func<Task>>(async (start, width, op) => await op());
 
         _orchestrator = new CodeWikiOrchestrator(
             _mockDecompositionService.Object,
@@ -37,6 +44,7 @@ public class CodeWikiOrchestratorTests
             _mockWikiGenerationService.Object,
             _mockSynthesisService.Object,
             _mockWikiRepo.Object,
+            _mockProgressService.Object,
             _mockLogger.Object
         );
     }
@@ -61,7 +69,7 @@ public class CodeWikiOrchestratorTests
         };
 
         _mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<CancellationToken>()))
             .ReturnsAsync(moduleTree);
 
         _mockRubricService
@@ -116,7 +124,7 @@ public class CodeWikiOrchestratorTests
         };
 
         _mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<CancellationToken>()))
             .ReturnsAsync(moduleTree);
 
         _mockRubricService

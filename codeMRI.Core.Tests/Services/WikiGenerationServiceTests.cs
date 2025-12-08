@@ -55,7 +55,7 @@ public class WikiGenerationServiceTests
 
         _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
             .ReturnsAsync("# TestController\n\nThis is a test controller.");
-        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph!);
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c!); // Identity transformation
@@ -104,7 +104,7 @@ public class WikiGenerationServiceTests
 
         _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
             .ReturnsAsync("# TestController\n\nThis is a test controller.");
-        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(emptyGraph!);
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c!);
@@ -155,7 +155,7 @@ public class WikiGenerationServiceTests
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c!);
 
-        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _mockDiagramGenerator.Setup(x =>
                 x.GenerateArchitectureDiagramAsync(It.IsAny<ModuleTree>(), It.IsAny<EnhancedDependencyGraph>()))
@@ -193,7 +193,7 @@ public class WikiGenerationServiceTests
 
         _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
             .ReturnsAsync("# TestController\n\nThis is a test controller.");
-        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph!);
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c!);
@@ -222,7 +222,7 @@ public class WikiGenerationServiceTests
 
         _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
             .ReturnsAsync(content);
-        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnhancedDependencyGraph());
         
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
@@ -246,9 +246,9 @@ public class WikiGenerationServiceTests
         var graph = new EnhancedDependencyGraph();
         graph.AddNode(pageTitle, new NodeMetadata { FilePath = expectedPath });
 
-        _mockGraphService.Setup(x => x.GetComponentsAsync(repoPath, It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _mockGraphService.Setup(x => x.GetComponentsAsync(repoPath, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CodeComponent>());
-        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
             
         _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
@@ -262,6 +262,6 @@ public class WikiGenerationServiceTests
 
         // Assert
         Assert.That(result.RelevantFiles, Contains.Item(expectedPath));
-        _mockGraphService.Verify(x => x.GetComponentsAsync(repoPath, It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockGraphService.Verify(x => x.GetComponentsAsync(repoPath, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

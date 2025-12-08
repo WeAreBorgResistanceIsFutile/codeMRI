@@ -13,6 +13,7 @@ public class HierarchicalDecompositionLanguageTests
     private Mock<ILogger<HierarchicalDecompositionService>> _loggerMock;
     private Mock<IEnhancedDependencyGraphService> _graphServiceMock;
     private Mock<IArchitecturalPatternService> _patternServiceMock;
+    private Mock<IProgressService> _progressServiceMock;
     private HierarchicalDecompositionService _service;
 
     [SetUp]
@@ -21,11 +22,17 @@ public class HierarchicalDecompositionLanguageTests
         _loggerMock = new Mock<ILogger<HierarchicalDecompositionService>>();
         _graphServiceMock = new Mock<IEnhancedDependencyGraphService>();
         _patternServiceMock = new Mock<IArchitecturalPatternService>();
+        _progressServiceMock = new Mock<IProgressService>();
+
+        _progressServiceMock
+            .Setup(p => p.WithScalingAsync(It.IsAny<double>(), It.IsAny<double>(), It.IsAny<Func<Task>>()))
+            .Returns<double, double, Func<Task>>(async (start, width, op) => await op());
 
         _service = new HierarchicalDecompositionService(
             _loggerMock.Object,
             _graphServiceMock.Object,
-            _patternServiceMock.Object);
+            _patternServiceMock.Object,
+            _progressServiceMock.Object);
             
         // Default Pattern Service Setup
         _patternServiceMock.Setup(x => x.DetermineLayer(It.IsAny<GraphNode>()))
@@ -57,9 +64,9 @@ public class HierarchicalDecompositionLanguageTests
         
         graph.AddNode(fileName, metadata);
 
-        _graphServiceMock.Setup(x => x.GetComponentsAsync(It.IsAny<string>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.GetComponentsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CodeComponent>());
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
@@ -91,7 +98,7 @@ public class HierarchicalDecompositionLanguageTests
         // Dependency
         graph.AddEdge("wrapper.py", "core.cpp", EdgeType.Dependency, 1.0);
 
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());

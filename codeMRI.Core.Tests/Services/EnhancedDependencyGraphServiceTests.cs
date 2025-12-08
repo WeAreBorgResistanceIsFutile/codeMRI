@@ -15,12 +15,14 @@ public class EnhancedDependencyGraphServiceTests
         _mockLogger = new Mock<ILogger<EnhancedDependencyGraphService>>();
         _mockAstService = new Mock<IASTServiceClient>();
         _mockComponentService = new Mock<IComponentIdentificationService>();
-        _service = new EnhancedDependencyGraphService(_mockLogger.Object, _mockAstService.Object, _mockComponentService.Object);
+        _mockProgressService = new Mock<IProgressService>();
+        _service = new EnhancedDependencyGraphService(_mockLogger.Object, _mockAstService.Object, _mockComponentService.Object, _mockProgressService.Object);
     }
 
     private Mock<ILogger<EnhancedDependencyGraphService>> _mockLogger;
     private Mock<IASTServiceClient> _mockAstService;
     private Mock<IComponentIdentificationService> _mockComponentService;
+    private Mock<IProgressService> _mockProgressService;
     private EnhancedDependencyGraphService _service;
 
     [Test]
@@ -167,7 +169,7 @@ public class EnhancedDependencyGraphServiceTests
 
         // Act & Assert
         Assert.ThrowsAsync<OperationCanceledException>(async () =>
-            await _service.BuildGraphAsync(components, null, cts.Token));
+            await _service.BuildGraphAsync(components, cts.Token));
     }
 
     [Test]

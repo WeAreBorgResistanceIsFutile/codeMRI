@@ -8,37 +8,73 @@ namespace codeMRI.Core.Services;
 
 public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
 {
-    private readonly IASTServiceClient _astServiceClient;
-    private readonly IComponentIdentificationService _componentService;
     private readonly ILogger<EnhancedDependencyGraphService> _logger;
+    private readonly IASTServiceClient _astServiceClient; // Renamed back
+    private readonly IComponentIdentificationService _componentService;
+    private readonly IProgressService _progressService; 
 
     public EnhancedDependencyGraphService(
         ILogger<EnhancedDependencyGraphService> logger,
-        IASTServiceClient astServiceClient,
-        IComponentIdentificationService componentService)
+        IASTServiceClient astService,
+        IComponentIdentificationService componentService,
+        IProgressService progressService)
     {
         _logger = logger;
-        _astServiceClient = astServiceClient;
+        _astServiceClient = astService;
         _componentService = componentService;
+        _progressService = progressService;
     }
 
-    public async Task<EnhancedDependencyGraph> BuildGraphAsync(List<CodeComponent> components,
-        IProgress<ProgressInfo>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<EnhancedDependencyGraph> BuildGraphAsync(
+        List<CodeComponent> components,
+        CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Building dependency graph for {ComponentCount} components", components.Count);
-
+        _logger.LogInformation("Building enhanced dependency graph for {Count} components", components.Count);
         var graph = new EnhancedDependencyGraph();
+
+        // Add nodes
+        foreach (var component in components)
+        {
+            // The original code had a metadata creation block here.
+            // The edit suggests adding nodes with existing component.Metadata.
+            // I will keep the original metadata creation logic for now,
+            // but add the node to the graph as per the edit's intent.
+            // The edit's comment "Enrich with raw component data if needed" suggests this might be a simplification.
+
+            var metadata = new NodeMetadata
+            {
+                Id = component.Id,
+                Type = component.Type,
+                LineCount = component.LineCount,
+                CyclomaticComplexity = component.ComplexityScore,
+                NestingDepth = EstimateNestingDepth(component),
+                FanIn = 0, // Will be calculated later
+                FanOut = component.Dependencies.Count,
+                IsPublic = IsPublicComponent(component),
+                HasDocumentation = !string.IsNullOrEmpty(component.Description),
+                FilePath = component.FilePath,
+                EstimatedTokens = EstimateComponentTokens(component)
+            };
+            graph.AddNode(component.Id, metadata); // Added this line as per edit's intent
+        }
+
+
         int processed = 0;
         int total = components.Count;
 
-        // Build nodes
+        // Build nodes (original loop, modified for progress reporting and AST service)
         foreach (var component in components)
         {
             processed++;
-            if (progress != null && total > 0 && processed % 10 == 0) // Report every 10 items to reduce traffic
+            if (total > 0)
             {
-                 int pct = (int)((double)processed / total * 100);
-                 progress.Report(new ProgressInfo { Phase = "Graph Building", Message = $"Processing {component.Name} ({processed}/{total})", Percentage = pct });
+                int pct = (int)((double)processed / total * 100);
+                _progressService.Report(new ProgressInfo
+                {
+                    Phase = "Graph Construction",
+                    Message = $"Analyzing dependencies for {component.Name}",
+                    Percentage = pct
+                });
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -269,10 +305,10 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
     }
 
     public async Task<List<CodeComponent>> GetComponentsAsync(string repositoryPath,
-        IProgress<ProgressInfo>? progress = null, CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Identifying components in repository: {Path}", repositoryPath);
-        return await _componentService.IdentifyComponentsAsync(repositoryPath, progress);
+        return await _componentService.IdentifyComponentsAsync(repositoryPath);
     }
 
     private Task<Dictionary<string, double>> CalculatePageRankAsync(EnhancedDependencyGraph graph,

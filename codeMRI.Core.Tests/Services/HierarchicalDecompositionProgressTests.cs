@@ -13,6 +13,7 @@ public class HierarchicalDecompositionProgressTests
     private Mock<ILogger<HierarchicalDecompositionService>> _loggerMock;
     private Mock<IEnhancedDependencyGraphService> _graphServiceMock;
     private Mock<IArchitecturalPatternService> _patternServiceMock;
+    private IProgressService _progressService;
     private HierarchicalDecompositionService _service;
 
     [SetUp]
@@ -21,11 +22,13 @@ public class HierarchicalDecompositionProgressTests
         _loggerMock = new Mock<ILogger<HierarchicalDecompositionService>>();
         _graphServiceMock = new Mock<IEnhancedDependencyGraphService>();
         _patternServiceMock = new Mock<IArchitecturalPatternService>();
+        _progressService = new ProgressService();
 
         _service = new HierarchicalDecompositionService(
             _loggerMock.Object,
             _graphServiceMock.Object,
-            _patternServiceMock.Object);
+            _patternServiceMock.Object,
+            _progressService);
             
          _patternServiceMock.Setup(x => x.DetermineLayer(It.IsAny<GraphNode>()))
             .Returns(ArchitecturalLayerType.Unknown);
@@ -37,34 +40,32 @@ public class HierarchicalDecompositionProgressTests
     public async Task DecomposeHierarchicallyAsync_ShouldReportProgress_AcrossIdentificationAndGraphBuilding()
     {
         // Arrange
-        var progress = new Mock<IProgress<ProgressInfo>>();
         var capturedProgress = new List<ProgressInfo>();
-        progress.Setup(p => p.Report(It.IsAny<ProgressInfo>()))
-                .Callback<ProgressInfo>(p => capturedProgress.Add(p));
+        // Using real service instance from Setup
 
         var components = new List<CodeComponent> { new() { Id = "c1" } };
         var graph = new EnhancedDependencyGraph();
         graph.AddNode("c1", new NodeMetadata());
 
         // Setup GetComponentsAsync to report progress
-        _graphServiceMock.Setup(x => x.GetComponentsAsync(It.IsAny<string>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
-            .Callback<string, IProgress<ProgressInfo>?, CancellationToken>((path, prog, token) => 
+        _graphServiceMock.Setup(x => x.GetComponentsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, CancellationToken>((path, token) => 
             {
                 // Simulate identification progress 0 -> 100
-                prog?.Report(new ProgressInfo { Percentage = 0, Message = "Start ID" });
-                prog?.Report(new ProgressInfo { Percentage = 50, Message = "Half ID" });
-                prog?.Report(new ProgressInfo { Percentage = 100, Message = "End ID" });
+                _progressService.Report(new ProgressInfo { Phase = "Identification", Percentage = 0, Message = "Start ID" });
+                _progressService.Report(new ProgressInfo { Phase = "Identification", Percentage = 50, Message = "Half ID" });
+                _progressService.Report(new ProgressInfo { Phase = "Identification", Percentage = 100, Message = "End ID" });
             })
             .ReturnsAsync(components);
 
         // Setup BuildGraphAsync to report progress
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
-             .Callback<List<CodeComponent>, IProgress<ProgressInfo>?, CancellationToken>((comps, prog, token) => 
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+             .Callback<List<CodeComponent>, CancellationToken>((comps, token) => 
             {
                 // Simulate build progress 0 -> 100
-                prog?.Report(new ProgressInfo { Percentage = 0, Message = "Start Build" });
-                prog?.Report(new ProgressInfo { Percentage = 50, Message = "Half Build" });
-                prog?.Report(new ProgressInfo { Percentage = 100, Message = "End Build" });
+                _progressService.Report(new ProgressInfo { Phase = "Graph Construction", Percentage = 0, Message = "Start Build" });
+                _progressService.Report(new ProgressInfo { Phase = "Graph Construction", Percentage = 50, Message = "Half Build" });
+                _progressService.Report(new ProgressInfo { Phase = "Graph Construction", Percentage = 100, Message = "End Build" });
             })
             .ReturnsAsync(graph);
             
@@ -72,7 +73,9 @@ public class HierarchicalDecompositionProgressTests
             .ReturnsAsync(new GraphAnalysisResult());
 
         // Act
-        await _service.DecomposeHierarchicallyAsync("test/repo", progress.Object);
+        // Act
+        _progressService.SetHandler(p => capturedProgress.Add(p));
+        await _service.DecomposeHierarchicallyAsync("test/repo");
 
         // Assert
         Assert.That(capturedProgress, Is.Not.Empty);

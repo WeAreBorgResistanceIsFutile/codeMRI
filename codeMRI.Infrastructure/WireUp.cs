@@ -45,6 +45,7 @@ public class WireUp
         services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();
         services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
         services.AddScoped<IRubricGenerationService, RubricGenerationService>();
+        services.AddScoped<IProgressService, ProgressService>();
         services.AddScoped<ICodeWikiOrchestrator, CodeWikiOrchestrator>(sp =>
         {
             var settings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<codeMRI.Infrastructure.Configuration.OllamaSettings>>().Value;
@@ -55,8 +56,9 @@ public class WireUp
                 sp.GetRequiredService<IWikiGenerationService>(),
                 sp.GetRequiredService<IDocumentationSynthesisService>(),
                 sp.GetRequiredService<IWikiRepository>(),
+                sp.GetRequiredService<IProgressService>(), // Added
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CodeWikiOrchestrator>>(),
-                settings.JudgeModels);
+                settings.JudgeModels.FirstOrDefault() ?? "llama3");
         });
     }
 }

@@ -25,13 +25,16 @@ public class ComponentIdentificationService : IComponentIdentificationService
 
     private readonly ILogger<ComponentIdentificationService> _logger;
     private readonly RoslynCSharpAnalyzer _roslynAnalyzer;
+    private readonly IProgressService _progressService;
 
     public ComponentIdentificationService(
         ILogger<ComponentIdentificationService> logger,
+        IProgressService progressService,
         IASTServiceClient? astServiceClient = null)
     {
         _logger = logger;
         _roslynAnalyzer = new RoslynCSharpAnalyzer();
+        _progressService = progressService;
         _astServiceClient = astServiceClient;
     }
 
@@ -77,7 +80,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
     }
 
 
-    public async Task<List<CodeComponent>> IdentifyComponentsAsync(string repositoryPath, IProgress<ProgressInfo>? progress = null)
+    public async Task<List<CodeComponent>> IdentifyComponentsAsync(string repositoryPath)
     {
         var components = new List<CodeComponent>();
         var files = Directory.GetFiles(repositoryPath, "*.*", SearchOption.AllDirectories)
@@ -90,10 +93,10 @@ public class ComponentIdentificationService : IComponentIdentificationService
         foreach (var file in files)
         {
             processed++;
-            if (progress != null && totalDocs > 0)
+            if (_progressService != null && totalDocs > 0)
             {
                int pct = (int)((double)processed / totalDocs * 100);
-               progress.Report(new ProgressInfo 
+               _progressService.Report(new ProgressInfo 
                { 
                    Phase = "Decomposition", 
                    Message = $"Analyzed {Path.GetFileName(file)} ({processed}/{totalDocs})",

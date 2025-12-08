@@ -15,15 +15,18 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     private readonly IEnhancedDependencyGraphService _graphService;
     private readonly ILogger<HierarchicalDecompositionService> _logger;
     private readonly IArchitecturalPatternService _patternService;
+    private readonly IProgressService _progressService;
 
     public HierarchicalDecompositionService(
         ILogger<HierarchicalDecompositionService> logger,
         IEnhancedDependencyGraphService graphService,
-        IArchitecturalPatternService patternService)
+        IArchitecturalPatternService patternService,
+        IProgressService progressService)
     {
         _logger = logger;
         _graphService = graphService;
         _patternService = patternService;
+        _progressService = progressService;
     }
 
     /// <summary>
@@ -31,25 +34,23 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     /// </summary>
     public async Task<ModuleTree> DecomposeHierarchicallyAsync(
         string repositoryPath,
-        IProgress<ProgressInfo>? progress = null,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Starting hierarchical decomposition for repository: {Path}", repositoryPath);
 
         // Sub-progress for Identification (0-20%)
-        var identProgress = progress != null ? new ActionProgress<ProgressInfo>(info => {
-             progress.Report(new ProgressInfo { Phase = "Identification", Message = info.Message, Percentage = (int)(info.Percentage * 0.2) });
-        }) : null;
-
-        // Get components and build dependency graph
-        var components = await _graphService.GetComponentsAsync(repositoryPath, identProgress, cancellationToken);
+        List<CodeComponent> components = null!;
+        await _progressService.WithScalingAsync(0, 20, async () => 
+        {
+             components = await _graphService.GetComponentsAsync(repositoryPath, cancellationToken);
+        });
         
-         // Sub-progress for Graph Build (20-100%)
-        var graphProgress = progress != null ? new ActionProgress<ProgressInfo>(info => {
-             progress.Report(new ProgressInfo { Phase = "Graph Construction", Message = info.Message, Percentage = 20 + (int)(info.Percentage * 0.8) });
-        }) : null;
-
-        var graph = await _graphService.BuildGraphAsync(components, graphProgress, cancellationToken);
+        // Sub-progress for Graph Build (20-100%)
+        EnhancedDependencyGraph graph = null!;
+        await _progressService.WithScalingAsync(20, 80, async () => 
+        {
+             graph = await _graphService.BuildGraphAsync(components, cancellationToken);
+        });
 
         // Identify Entry Points
         IdentifyEntryPoints(graph);
@@ -680,10 +681,4 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                node.Metadata.Type.Contains("Abstract", StringComparison.OrdinalIgnoreCase);
     }
 
-    private class ActionProgress<T> : IProgress<T>
-    {
-        private readonly Action<T> _action;
-        public ActionProgress(Action<T> action) => _action = action;
-        public void Report(T value) => _action(value);
-    }
 }

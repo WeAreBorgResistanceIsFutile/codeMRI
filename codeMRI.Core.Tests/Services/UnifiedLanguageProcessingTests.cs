@@ -17,6 +17,7 @@ namespace codeMRI.Core.Tests.Services
         private Mock<IASTServiceClient> _mockAstService;
         private Mock<ILogger<EnhancedDependencyGraphService>> _mockLogger;
         private Mock<IComponentIdentificationService> _mockComponentService;
+        private Mock<IProgressService> _mockProgressService;
         private EnhancedDependencyGraphService _service;
 
         [SetUp]
@@ -25,7 +26,8 @@ namespace codeMRI.Core.Tests.Services
             _mockAstService = new Mock<IASTServiceClient>();
             _mockLogger = new Mock<ILogger<EnhancedDependencyGraphService>>();
             _mockComponentService = new Mock<IComponentIdentificationService>();
-            _service = new EnhancedDependencyGraphService(_mockLogger.Object, _mockAstService.Object, _mockComponentService.Object);
+            _mockProgressService = new Mock<IProgressService>();
+            _service = new EnhancedDependencyGraphService(_mockLogger.Object, _mockAstService.Object, _mockComponentService.Object, _mockProgressService.Object);
         }
 
         [Test]
@@ -104,7 +106,7 @@ namespace codeMRI.Core.Tests.Services
                .ReturnsAsync(jsResult);
 
             // Act
-            var graph = await _service.BuildGraphAsync(components, null);
+            var graph = await _service.BuildGraphAsync(components);
 
             // Assert
             Assert.That(graph.NodeCount, Is.GreaterThanOrEqualTo(2));

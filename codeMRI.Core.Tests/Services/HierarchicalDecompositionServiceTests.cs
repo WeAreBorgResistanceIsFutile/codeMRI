@@ -13,6 +13,7 @@ public class HierarchicalDecompositionServiceTests
     private Mock<ILogger<HierarchicalDecompositionService>> _loggerMock;
     private Mock<IEnhancedDependencyGraphService> _graphServiceMock;
     private Mock<IArchitecturalPatternService> _patternServiceMock;
+    private Mock<IProgressService> _progressServiceMock;
     private HierarchicalDecompositionService _service;
 
     [SetUp]
@@ -21,11 +22,17 @@ public class HierarchicalDecompositionServiceTests
         _loggerMock = new Mock<ILogger<HierarchicalDecompositionService>>();
         _graphServiceMock = new Mock<IEnhancedDependencyGraphService>();
         _patternServiceMock = new Mock<IArchitecturalPatternService>();
+        _progressServiceMock = new Mock<IProgressService>();
+
+        _progressServiceMock
+            .Setup(p => p.WithScalingAsync(It.IsAny<double>(), It.IsAny<double>(), It.IsAny<Func<Task>>()))
+            .Returns<double, double, Func<Task>>(async (start, width, op) => await op());
 
         _service = new HierarchicalDecompositionService(
             _loggerMock.Object,
             _graphServiceMock.Object,
-            _patternServiceMock.Object);
+            _patternServiceMock.Object,
+            _progressServiceMock.Object);
             
         _patternServiceMock.Setup(x => x.DetermineLayer(It.IsAny<GraphNode>()))
             .Returns(ArchitecturalLayerType.Unknown);
@@ -51,7 +58,7 @@ public class HierarchicalDecompositionServiceTests
             graph.AddEdge($"Node_{i}", $"Node_{i+1}", EdgeType.Dependency, 1.0);
         }
 
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
@@ -85,7 +92,7 @@ public class HierarchicalDecompositionServiceTests
         graph.AddNode("Features/Orders/OrderController.cs", new NodeMetadata { FilePath = "Features/Orders/OrderController.cs" });
         graph.AddNode("Features/Orders/OrderService.cs", new NodeMetadata { FilePath = "Features/Orders/OrderService.cs" });
 
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
@@ -116,7 +123,7 @@ public class HierarchicalDecompositionServiceTests
         graph.AddNode("External", new NodeMetadata { Type = "Class", EstimatedTokens = 50 });
         graph.AddEdge("External", "Interface1", EdgeType.Dependency, 1.0);
 
-        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
         _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());

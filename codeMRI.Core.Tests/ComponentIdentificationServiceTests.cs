@@ -1,4 +1,5 @@
 using codeMRI.Agents.Services;
+using codeMRI.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -11,7 +12,7 @@ public class ComponentIdentificationServiceTests
     public void Setup()
     {
         _mockLogger = new Mock<ILogger<ComponentIdentificationService>>();
-        _service = new ComponentIdentificationService(_mockLogger.Object);
+        _service = new ComponentIdentificationService(_mockLogger.Object, new Mock<IProgressService>().Object, new Mock<Interfaces.IASTServiceClient>().Object);
         _testRepoPath = Path.Combine(Path.GetTempPath(), "test_repo_components");
     }
 
