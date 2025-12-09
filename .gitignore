@@ -31,6 +31,8 @@
 /codeMRI.Visualization.Tests/obj/
 /codeMRI.Server.Api/bin/
 /codeMRI.Server.Api/obj/
+/codeMRI.Server.Api/logs/
+/codeMRI.Server/logs/
 /codeMRI.CLI/bin/
 /codeMRI.CLI/obj/
 /data/

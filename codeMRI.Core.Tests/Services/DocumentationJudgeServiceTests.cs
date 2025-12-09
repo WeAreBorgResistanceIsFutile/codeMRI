@@ -37,7 +37,8 @@ public class DocumentationJudgeServiceTests
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>()))
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync("{\"score\": 0.8, \"reasoning\": \"Good\"}");
 
         // Act
@@ -48,13 +49,13 @@ public class DocumentationJudgeServiceTests
             It.IsAny<string>(),
             It.IsAny<string>(),
             It.IsAny<List<ChatMessage>>(),
-            "model-a"), Times.Once, "Should call ChatAsync with model-a");
+            "model-a", It.IsAny<CancellationToken>()), Times.Once, "Should call ChatAsync with model-a");
 
         _mockLlmClient.Verify(x => x.ChatAsync(
             It.IsAny<string>(),
             It.IsAny<string>(),
             It.IsAny<List<ChatMessage>>(),
-            "model-b"), Times.Once, "Should call ChatAsync with model-b");
+            "model-b", It.IsAny<CancellationToken>()), Times.Once, "Should call ChatAsync with model-b");
     }
     [Test]
     public async Task EvaluateRequirementAsync_ShouldParseJsonWithMarkdownFences()
@@ -69,7 +70,8 @@ public class DocumentationJudgeServiceTests
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>()))
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(markdownResponse);
 
         // Act

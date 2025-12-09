@@ -29,7 +29,9 @@ public class RubricGenerationService : IRubricGenerationService
         var prompt = BuildRubricGenerationPrompt(documentationStructure, repositoryInfo);
 
         var response = await _llmClient.ChatAsync("You are a documentation evaluation assistant.", prompt,
-            new List<ChatMessage>());
+            new List<ChatMessage>(),
+            null,
+            cancellationToken);
 
         var rubric = ParseRubricFromResponse(response);
 

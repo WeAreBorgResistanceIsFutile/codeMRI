@@ -32,7 +32,8 @@ public class DocumentationJudgeService : IDocumentationJudgeService
             "You are a technical documentation evaluator.",
             prompt,
             new List<ChatMessage>(),
-            model);
+            model,
+            cancellationToken);
 
         var assessment = ParseAssessmentFromResponse(response, requirement);
 

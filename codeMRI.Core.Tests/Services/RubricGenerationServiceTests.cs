@@ -47,7 +47,7 @@ public class RubricGenerationServiceTests
     ]
 }";
         
-        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
+        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(json);
 
         var structure = new WikiStructure();
@@ -316,7 +316,7 @@ public class RubricGenerationServiceTests
     ]
 }";
         
-        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>()))
+        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(largeJson);
 
         var structure = new WikiStructure();

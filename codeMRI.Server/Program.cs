@@ -3,7 +3,16 @@ using codeMRI.Infrastructure;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
 
+using Serilog;
+
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure Serilog
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .WriteTo.Console());
 
 // Add services to the container.
 builder.Services.AddControllers();

@@ -73,7 +73,8 @@ public class ASTServiceClient : IASTServiceClient
                 var success = response.IsSuccessStatusCode;
 
                 if (success) _failureCount = 0; // Reset failure count on success
-
+                
+                _logger.LogInformation("AST Service health check result: {Success}", success);
                 return success;
             }
             catch (HttpRequestException ex) when (attempt < maxRetries)
@@ -106,8 +107,10 @@ public class ASTServiceClient : IASTServiceClient
 
             var content = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<SupportedLanguagesResponse>(content, _jsonOptions);
-
-            return result?.Languages ?? new List<string>();
+            var languages = result?.Languages ?? new List<string>();
+            
+            _logger.LogInformation("AST Service supported languages: {Languages}", string.Join(", ", languages));
+            return languages;
         }
         catch (Exception ex)
         {
@@ -169,6 +172,8 @@ public class ASTServiceClient : IASTServiceClient
                 };
 
                 var json = JsonSerializer.Serialize(request, _jsonOptions);
+                _logger.LogInformation("Sending AST Parse request for {FilePath} ({Language}). Code length: {Length}", filePath, language, code.Length);
+                
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 var response = await _httpClient.PostAsync("/api/ast/parse", content, cancellationToken);
