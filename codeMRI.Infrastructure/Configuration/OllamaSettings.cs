@@ -7,5 +7,6 @@ public class OllamaSettings
     public string DocumentationModel { get; set; } = "llama3";
     public string ChatModel { get; set; } = "llama3";
     public int ContextSize { get; set; } = 4096;
+    public double Temperature { get; set; } = 0.2;
     public List<string> JudgeModels { get; set; } = new() { "llama3", "llama3.1" };
 }

@@ -15,17 +15,20 @@ public class WikiController : ControllerBase
     private readonly IWikiGenerationService _wikiService;
     private readonly ICodeWikiOrchestrator _orchestrator;
     private readonly IHubContext<WikiHub> _hubContext;
+    private readonly ILogger<WikiController> _logger;
 
     public WikiController(
         IWikiGenerationService wikiService, 
         IWikiRepository wikiRepo, 
         ICodeWikiOrchestrator orchestrator,
-        IHubContext<WikiHub> hubContext)
+        IHubContext<WikiHub> hubContext,
+        ILogger<WikiController> logger)
     {
         _wikiService = wikiService;
         _wikiRepo = wikiRepo;
         _orchestrator = orchestrator;
         _hubContext = hubContext;
+        _logger = logger;
     }
 
     [HttpPost("structure")]
@@ -43,11 +46,9 @@ public class WikiController : ControllerBase
         }
 
         // Simple file tree generation
-        var fileTree = "Files:\n" + string.Join("\n",
-            Directory.GetFiles(request.RepoPath, "*.*", SearchOption.AllDirectories)
-                .Select(f => Path.GetRelativePath(request.RepoPath, f))
-                .Where(f => !f.StartsWith(".") && !f.Contains("bin/") && !f.Contains("obj/"))
-                .Take(200)); // Limit for prompt context
+        // Git-aware file tree generation
+        var files = GetRepoFiles(request.RepoPath);
+        var fileTree = "Files:\n" + string.Join("\n", files.Take(300)); // Limit for prompt context
 
         var structure = await _wikiService.GenerateStructureAsync(fileTree, request.ReadmeContent, request.Language);
 
@@ -67,14 +68,37 @@ public class WikiController : ControllerBase
 
         if (request.FileContents == null) request.FileContents = new Dictionary<string, string>();
 
-        // If contents are empty but RepoPath is provided, try to read them
-        if (request.FileContents.Count == 0 && !string.IsNullOrEmpty(request.RepoPath))
+        // Ensure we try to load content for all requested files if not provided
+        if (!string.IsNullOrEmpty(request.RepoPath))
+        {
             foreach (var relPath in request.FilePaths)
             {
-                var fullPath = Path.Combine(request.RepoPath, relPath);
-                if (System.IO.File.Exists(fullPath))
-                    request.FileContents[relPath] = await System.IO.File.ReadAllTextAsync(fullPath);
+                // Skip if we already have content (and it's not empty/null)
+                if (request.FileContents.TryGetValue(relPath, out var content) && !string.IsNullOrWhiteSpace(content))
+                    continue;
+
+                // Sanitize path to ensure it's relative
+                var clearPath = relPath.TrimStart('/', '\\');
+                var fullPath = Path.Combine(request.RepoPath, clearPath);
+
+                try
+                {
+                    if (System.IO.File.Exists(fullPath))
+                    {
+                        request.FileContents[relPath] = await System.IO.File.ReadAllTextAsync(fullPath);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("File not found for wiki generation: {Path} (Repo: {Repo})", fullPath,
+                            request.RepoPath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error reading file for wiki generation: {Path}", fullPath);
+                }
             }
+        }
 
         var page = await _wikiService.GeneratePageAsync(request.Title, request.FilePaths, request.FileContents,
             request.Language, request.RepoPath);
@@ -125,5 +149,62 @@ public class WikiController : ControllerBase
         }
         
         return Ok(structure);
+    }
+    // Helper Method
+    private List<string> GetRepoFiles(string repoPath)
+    {
+        try 
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "ls-files --cached --others --exclude-standard",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true, // Capture stderr to avoid hanging if git complains
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process != null)
+            {
+                var output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit(3000); // 3 sec timeout
+
+                if (process.HasExited && process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                {
+                    return output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                                 .Select(f => f.Trim())
+                                 .Where(f => !string.IsNullOrWhiteSpace(f))
+                                 .ToList();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to use git ls-files for {Path}, falling back to manual discovery.", repoPath);
+        }
+
+        // Fallback or if not a git repo
+        // Manual filter trying to mimic common gitignores (bin, obj, .git, node_modules)
+        try 
+        {
+             return Directory.GetFiles(repoPath, "*.*", SearchOption.AllDirectories)
+                .Select(f => Path.GetRelativePath(repoPath, f))
+                .Where(f => !f.StartsWith(".") && 
+                            // Common hidden/ignored folders
+                            !f.Contains(Path.DirectorySeparatorChar + ".") &&
+                            !f.Contains("/bin/") && !f.Contains("\\bin\\") && 
+                            !f.Contains("/obj/") && !f.Contains("\\obj\\") &&
+                            !f.Contains("/node_modules/") && !f.Contains("\\node_modules\\") &&
+                            !f.Contains("/dist/") && !f.Contains("\\dist\\"))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+             _logger.LogError(ex, "Error scanning directory {Path}", repoPath);
+             return new List<string>();
+        }
     }
 }

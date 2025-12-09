@@ -173,6 +173,7 @@ public class ASTServiceClient : IASTServiceClient
 
                 var json = JsonSerializer.Serialize(request, _jsonOptions);
                 _logger.LogInformation("Sending AST Parse request for {FilePath} ({Language}). Code length: {Length}", filePath, language, code.Length);
+                _logger.LogInformation("AST Parse Request Body: {Body}", json);
                 
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -180,6 +181,8 @@ public class ASTServiceClient : IASTServiceClient
                 response.EnsureSuccessStatusCode();
 
                 var responseContent = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation("Received AST Parse response. Content length: {Length}", responseContent.Length);
+                _logger.LogInformation("AST Parse Response Content: {Content}", responseContent);
                 var rawResult = JsonSerializer.Deserialize<RawDependencyData>(responseContent, _jsonOptions);
 
                 // Convert to Core ASTParseResult

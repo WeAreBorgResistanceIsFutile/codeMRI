@@ -35,7 +35,11 @@ public class OllamaLLMService : ILLMClient
         {
             model = model ?? _settings.ChatModel,
             messages,
-            stream = false
+            stream = false,
+            options = new
+            {
+                temperature = _settings.Temperature
+            }
         };
 
         var requestJson = JsonSerializer.Serialize(request);
@@ -50,7 +54,7 @@ public class OllamaLLMService : ILLMClient
             var responseContent = result?.Message?.Content ?? string.Empty;
             
             _logger.LogInformation("Received ChatAsync response. Content length: {Length}", responseContent.Length);
-            _logger.LogDebug("ChatAsync Response Content: {Content}", responseContent);
+            _logger.LogInformation("ChatAsync Response Content: {Content}", responseContent);
             
             return responseContent;
         }
@@ -71,7 +75,11 @@ public class OllamaLLMService : ILLMClient
         {
             model = model ?? _settings.ChatModel,
             messages,
-            stream = true
+            stream = true,
+            options = new
+            {
+                temperature = _settings.Temperature
+            }
         };
 
         var jsonRequest = JsonSerializer.Serialize(request);

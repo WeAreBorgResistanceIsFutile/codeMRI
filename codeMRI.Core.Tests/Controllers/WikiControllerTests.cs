@@ -1,11 +1,9 @@
 using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
 using codeMRI.Server.Api;
 using codeMRI.Server.Controllers;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
-using NUnit.Framework;
-
+using Microsoft.Extensions.Logging;
 using codeMRI.Server.Hubs;
 using Microsoft.AspNetCore.SignalR;
 
@@ -18,6 +16,7 @@ public class WikiControllerTests
     private Mock<IWikiRepository> _mockWikiRepo;
     private Mock<ICodeWikiOrchestrator> _mockOrchestrator;
     private Mock<IHubContext<WikiHub>> _mockHubContext;
+    private Mock<ILogger<WikiController>> _mockLogger;
     private WikiController _controller;
 
     [SetUp]
@@ -27,7 +26,8 @@ public class WikiControllerTests
         _mockWikiRepo = new Mock<IWikiRepository>();
         _mockOrchestrator = new Mock<ICodeWikiOrchestrator>();
         _mockHubContext = new Mock<IHubContext<WikiHub>>();
-        _controller = new WikiController(_mockWikiService.Object, _mockWikiRepo.Object, _mockOrchestrator.Object, _mockHubContext.Object);
+        _mockLogger = new Mock<ILogger<WikiController>>();
+        _controller = new WikiController(_mockWikiService.Object, _mockWikiRepo.Object, _mockOrchestrator.Object, _mockHubContext.Object, _mockLogger.Object);
     }
 
     [Test]
