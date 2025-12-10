@@ -14,5 +14,6 @@ public interface IDocumentationJudgeService
         List<RubricRequirement> requirements,
         WikiStructure documentationStructure,
         List<string> judgeModels,
+        int maxConcurrency = 5,
         CancellationToken cancellationToken = default);
 }

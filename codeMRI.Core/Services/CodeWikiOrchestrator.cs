@@ -94,7 +94,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
             requirements, 
             structure, 
             judgeModelsList, 
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         // Log results
         var avgScore = assessments.Any() ? assessments.Average(a => a.MeanScore) : 0;

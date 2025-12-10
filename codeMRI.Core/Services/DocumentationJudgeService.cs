@@ -111,61 +111,78 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         List<RubricRequirement> requirements,
         WikiStructure documentationStructure,
         List<string> judgeModels,
+        int maxConcurrency = 5,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Evaluating {RequirementCount} requirements using {JudgeCount} judges",
-            requirements.Count, judgeModels.Count);
+        _logger.LogInformation("Evaluating {RequirementCount} requirements using {JudgeCount} judges (Concurrency: {Concurrency})",
+            requirements.Count, judgeModels.Count, maxConcurrency);
 
         var assessments = new List<RequirementAssessment>();
+        using var semaphore = new SemaphoreSlim(maxConcurrency);
+        var tasks = new List<Task<RequirementAssessment>>();
 
         foreach (var requirement in requirements)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var modelAssessments = new List<ModelAssessment>();
-            var failedModels = new List<string>();
-
-            foreach (var modelName in judgeModels)
+            tasks.Add(Task.Run(async () =>
+            {
+                await semaphore.WaitAsync(cancellationToken);
                 try
                 {
-                    var assessment = await EvaluateRequirementAsync(
-                        requirement, documentationStructure, cancellationToken, modelName);
+                    var modelAssessments = new List<ModelAssessment>();
+                    var failedModels = new List<string>();
 
-                    modelAssessments.Add(new ModelAssessment
+                    foreach (var modelName in judgeModels)
                     {
-                        ModelName = modelName,
-                        Score = assessment.MeanScore,
-                        Reasoning = string.Join("; ", assessment.Reasoning),
-                        Evidence = assessment.Evidence
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to evaluate with model: {ModelName}", modelName);
-                    failedModels.Add(modelName);
+                        try
+                        {
+                            var assessment = await EvaluateRequirementAsync(
+                                requirement, documentationStructure, cancellationToken, modelName);
+
+                            modelAssessments.Add(new ModelAssessment
+                            {
+                                ModelName = modelName,
+                                Score = assessment.MeanScore,
+                                Reasoning = string.Join("; ", assessment.Reasoning),
+                                Evidence = assessment.Evidence
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to evaluate with model: {ModelName}", modelName);
+                            failedModels.Add(modelName);
+                            
+                            // Record failed model metric
+                            _failedModelsCounter.Add(1, new TagList
+                            {
+                                { "requirement", requirement.Title },
+                                { "model", modelName }
+                            });
+                        }
+                    }
+
+                    var aggregatedAssessment = AggregateAssessments(modelAssessments, requirement, failedModels);
                     
-                    // Record failed model metric
-                    _failedModelsCounter.Add(1, new TagList
+                    // Record standard deviation metric if multiple judges
+                    if (modelAssessments.Count > 1)
                     {
-                        { "requirement", requirement.Title },
-                        { "model", modelName }
-                    });
+                        _standardDeviationHistogram.Record(aggregatedAssessment.StandardDeviation, new TagList
+                        {
+                            { "requirement", requirement.Title },
+                            { "judge_count", modelAssessments.Count }
+                        });
+                    }
+                    
+                    return aggregatedAssessment;
                 }
-
-            var aggregatedAssessment = AggregateAssessments(modelAssessments, requirement, failedModels);
-            
-            // Record standard deviation metric if multiple judges
-            if (modelAssessments.Count > 1)
-            {
-                _standardDeviationHistogram.Record(aggregatedAssessment.StandardDeviation, new TagList
+                finally
                 {
-                    { "requirement", requirement.Title },
-                    { "judge_count", modelAssessments.Count }
-                });
-            }
-            
-            assessments.Add(aggregatedAssessment);
+                    semaphore.Release();
+                }
+            }, cancellationToken));
         }
+
+        var results = await Task.WhenAll(tasks);
+        assessments.AddRange(results);
 
         _logger.LogInformation("Completed evaluation of {RequirementCount} requirements", requirements.Count);
         return assessments;

@@ -77,7 +77,7 @@ public class CodeWikiOrchestratorTests
             .ReturnsAsync(new EvaluationRubric());
             
         _mockJudgeService
-            .Setup(s => s.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(), It.IsAny<List<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<RequirementAssessment>());
 
         // Mock Cache Hit
@@ -132,7 +132,7 @@ public class CodeWikiOrchestratorTests
             .ReturnsAsync(new EvaluationRubric());
             
         _mockJudgeService
-            .Setup(s => s.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(), It.IsAny<List<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<RequirementAssessment>());
 
         // Mock Cache Miss

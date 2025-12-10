@@ -319,4 +319,32 @@ public class DocumentationJudgeServiceTests
         Assert.That(result.MeanScore, Is.EqualTo(0.0));
         Assert.That(result.Reasoning, Does.Contain("Failed to evaluate requirement"));
     }
+    [Test]
+    public async Task EvaluateRequirementsAsync_ShouldRunCorrectlyWithConcurrencyParameter()
+    {
+        // Arrange
+        var requirements = new List<RubricRequirement>
+        {
+            new() { Title = "Req1", Description = "Desc1" },
+            new() { Title = "Req2", Description = "Desc2" }
+        };
+        var structure = new WikiStructure();
+        var judgeModels = new List<string> { "model-a" };
+
+        _mockLlmClient.Setup(x => x.ChatAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<ChatMessage>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("{\"score\": 0.9, \"reasoning\": \"Fast\"}");
+
+        // Act
+        var results = await _service.EvaluateRequirementsAsync(requirements, structure, judgeModels, maxConcurrency: 2);
+
+        // Assert
+        Assert.That(results, Has.Count.EqualTo(2));
+        Assert.That(results[0].MeanScore, Is.EqualTo(0.9));
+        Assert.That(results[1].MeanScore, Is.EqualTo(0.9));
+    }
 }

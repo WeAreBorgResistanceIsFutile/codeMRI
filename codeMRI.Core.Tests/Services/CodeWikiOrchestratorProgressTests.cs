@@ -94,7 +94,7 @@ public class CodeWikiOrchestratorProgressTests
         _mockSynthesisService.Setup(x => x.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>()))
                              .ReturnsAsync(new WikiPage { Id = "p2", Title = "Root" });
 
-        _mockJudgeService.Setup(x => x.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+        _mockJudgeService.Setup(x => x.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(), It.IsAny<List<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                          .ReturnsAsync(new List<RequirementAssessment>());
 
         // Act
