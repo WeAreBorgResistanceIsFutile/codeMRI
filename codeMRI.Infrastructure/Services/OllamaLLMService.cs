@@ -45,24 +45,50 @@ public class OllamaLLMService : ILLMClient
         var requestJson = JsonSerializer.Serialize(request);
         _logger.LogInformation("Sending ChatAsync request to {Url}. Body: {Body}", "/api/chat", requestJson);
 
-        try
-        {
-            var response = await _httpClient.PostAsJsonAsync("/api/chat", request, cancellationToken);
-            response.EnsureSuccessStatusCode();
+        const int maxRetries = 3;
+        const int delayMilliseconds = 2000;
 
-            var result = await response.Content.ReadFromJsonAsync<OllamaChatResponse>(cancellationToken: cancellationToken);
-            var responseContent = result?.Message?.Content ?? string.Empty;
-            
-            _logger.LogInformation("Received ChatAsync response. Content length: {Length}", responseContent.Length);
-            _logger.LogInformation("ChatAsync Response Content: {Content}", responseContent);
-            
-            return responseContent;
-        }
-        catch (OperationCanceledException)
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            _logger.LogWarning("ChatAsync operation canceled or timed out.");
-            throw;
+            try
+            {
+                var response = await _httpClient.PostAsJsonAsync("/api/chat", request, cancellationToken);
+                
+                if ((int)response.StatusCode >= 500 && attempt < maxRetries)
+                {
+                    _logger.LogWarning("Ollama returned {StatusCode} on attempt {Attempt}. Retrying in {Delay}ms...", response.StatusCode, attempt, delayMilliseconds);
+                    await Task.Delay(delayMilliseconds, cancellationToken);
+                    continue;
+                }
+
+                response.EnsureSuccessStatusCode();
+
+                var result = await response.Content.ReadFromJsonAsync<OllamaChatResponse>(cancellationToken: cancellationToken);
+                var responseContent = result?.Message?.Content ?? string.Empty;
+                
+                _logger.LogInformation("Received ChatAsync response. Content length: {Length}", responseContent.Length);
+                _logger.LogInformation("ChatAsync Response Content: {Content}", responseContent);
+                
+                return responseContent;
+            }
+            catch (HttpRequestException ex) when ((int?)ex.StatusCode >= 500 && attempt < maxRetries)
+            {
+                 _logger.LogWarning(ex, "HTTP Request failed with {StatusCode} on attempt {Attempt}. Retrying...", ex.StatusCode, attempt);
+                 await Task.Delay(delayMilliseconds, cancellationToken);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < maxRetries)
+            {
+                _logger.LogWarning("ChatAsync request timed out on attempt {Attempt}. Retrying in {Delay}ms...", attempt, delayMilliseconds);
+                await Task.Delay(delayMilliseconds, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("ChatAsync operation canceled or timed out.");
+                throw;
+            }
         }
+        
+        throw new HttpRequestException("Max retries exceeded for Ollama API.");
     }
 
     public async IAsyncEnumerable<string> ChatStreamAsync(string systemPrompt, string userPrompt,
@@ -87,13 +113,48 @@ public class OllamaLLMService : ILLMClient
         
         var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
 
-        using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/chat")
-        {
-            Content = content
-        };
+        const int maxRetries = 3;
+        const int delayMilliseconds = 2000;
+        
+        HttpResponseMessage? response = null;
 
-        using var response = await _httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                // We need to recreate the request message for each attempt because it gets disposed
+                using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/chat")
+                {
+                    Content = new StringContent(jsonRequest, Encoding.UTF8, "application/json")
+                };
+
+                response = await _httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                
+                if ((int)response.StatusCode >= 500 && attempt < maxRetries)
+                {
+                    _logger.LogWarning("Ollama returned {StatusCode} on stream attempt {Attempt}. Retrying...", response.StatusCode, attempt);
+                    response.Dispose();
+                    response = null;
+                    await Task.Delay(delayMilliseconds, cancellationToken);
+                    continue;
+                }
+                
+                response.EnsureSuccessStatusCode();
+                break; // Success, exit loop
+            }
+            catch (HttpRequestException ex) when ((int?)ex.StatusCode >= 500 && attempt < maxRetries)
+            {
+                 _logger.LogWarning(ex, "HTTP Stream Request failed with {StatusCode} on attempt {Attempt}. Retrying...", ex.StatusCode, attempt);
+                 await Task.Delay(delayMilliseconds, cancellationToken);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < maxRetries)
+            {
+                _logger.LogWarning("ChatStreamAsync request timed out on attempt {Attempt}. Retrying in {Delay}ms...", attempt, delayMilliseconds);
+                await Task.Delay(delayMilliseconds, cancellationToken);
+            }
+        }
+
+        if (response == null) throw new HttpRequestException("Max retries exceeded for Ollama Streaming API.");
 
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
