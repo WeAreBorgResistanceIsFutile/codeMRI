@@ -43,6 +43,7 @@ public class WireUp
         services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
         services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();
         services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();
+        services.AddScoped<IEvaluationPromptBuilder, DefaultEvaluationPromptBuilder>();
         services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
         services.AddScoped<IRubricGenerationService, RubricGenerationService>();
         services.AddScoped<IProgressService, ProgressService>();

@@ -1,21 +1,72 @@
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
 
-public class DocumentationJudgeService : IDocumentationJudgeService
+public partial class DocumentationJudgeService : IDocumentationJudgeService
 {
+    private const string SystemPrompt = "You are a technical documentation evaluator.";
+    
+    private static readonly JsonSerializerOptions JsonParsingOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true
+    };
+    
+    [GeneratedRegex(@"```(?:json)?\s*(.*?)\s*```", RegexOptions.Singleline)]
+    private static partial Regex MarkdownJsonBlockRegex();
+    
     private readonly ILLMClient _llmClient;
     private readonly ILogger<DocumentationJudgeService> _logger;
+    private readonly Meter _meter;
+    private readonly IEvaluationPromptBuilder _promptBuilder;
+    
+    // Metrics
+    private readonly Counter<long> _evaluationCounter;
+    private readonly Histogram<double> _evaluationDuration;
+    private readonly Histogram<double> _scoreDistribution;
+    private readonly Counter<long> _failedModelsCounter;
+    private readonly Histogram<double> _standardDeviationHistogram;
 
     public DocumentationJudgeService(
         ILogger<DocumentationJudgeService> logger,
-        ILLMClient llmClient)
+        ILLMClient llmClient,
+        IMeterFactory meterFactory,
+        IEvaluationPromptBuilder promptBuilder)
     {
         _logger = logger;
         _llmClient = llmClient;
+        _meter = meterFactory.Create("CodeMRI.Judge");
+        _promptBuilder = promptBuilder;
+        
+        // Initialize metrics
+        _evaluationCounter = _meter.CreateCounter<long>(
+            "codemri.judge.evaluations.total",
+            description: "Total number of requirement evaluations performed");
+        
+        _evaluationDuration = _meter.CreateHistogram<double>(
+            "codemri.judge.evaluation.duration",
+            unit: "ms",
+            description: "Duration of requirement evaluation in milliseconds");
+        
+        _scoreDistribution = _meter.CreateHistogram<double>(
+            "codemri.judge.scores",
+            description: "Distribution of evaluation scores (0-1)");
+        
+        _failedModelsCounter = _meter.CreateCounter<long>(
+            "codemri.judge.models.failed",
+            description: "Number of failed model evaluations");
+        
+        _standardDeviationHistogram = _meter.CreateHistogram<double>(
+            "codemri.judge.standard_deviation",
+            description: "Standard deviation of scores across multiple judges");
     }
 
     public async Task<RequirementAssessment> EvaluateRequirementAsync(
@@ -24,12 +75,19 @@ public class DocumentationJudgeService : IDocumentationJudgeService
         CancellationToken cancellationToken = default,
         string? model = null)
     {
+        var stopwatch = Stopwatch.StartNew();
+        var tags = new TagList
+        {
+            { "requirement", requirement.Title },
+            { "model", model ?? "default" }
+        };
+        
         _logger.LogInformation("Evaluating requirement: {RequirementTitle} (Model: {Model})", requirement.Title, model ?? "Default");
 
-        var prompt = BuildEvaluationPrompt(requirement, documentationStructure);
+        var prompt = _promptBuilder.BuildPrompt(requirement, documentationStructure);
 
         var response = await _llmClient.ChatAsync(
-            "You are a technical documentation evaluator.",
+            SystemPrompt,
             prompt,
             new List<ChatMessage>(),
             model,
@@ -37,6 +95,13 @@ public class DocumentationJudgeService : IDocumentationJudgeService
 
         var assessment = ParseAssessmentFromResponse(response, requirement);
 
+        stopwatch.Stop();
+        
+        // Record metrics
+        _evaluationCounter.Add(1, tags);
+        _evaluationDuration.Record(stopwatch.Elapsed.TotalMilliseconds, tags);
+        _scoreDistribution.Record(assessment.MeanScore, tags);
+        
         _logger.LogInformation("Requirement assessment completed with score: {Score}", assessment.MeanScore);
 
         return assessment;
@@ -53,18 +118,18 @@ public class DocumentationJudgeService : IDocumentationJudgeService
 
         var assessments = new List<RequirementAssessment>();
 
-        // Evaluate with each judge model
         foreach (var requirement in requirements)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var modelAssessments = new List<ModelAssessment>();
+            var failedModels = new List<string>();
 
             foreach (var modelName in judgeModels)
                 try
                 {
-                    var assessment = await EvaluateRequirementWithModelAsync(
-                        requirement, documentationStructure, modelName, cancellationToken);
+                    var assessment = await EvaluateRequirementAsync(
+                        requirement, documentationStructure, cancellationToken, modelName);
 
                     modelAssessments.Add(new ModelAssessment
                     {
@@ -77,10 +142,28 @@ public class DocumentationJudgeService : IDocumentationJudgeService
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Failed to evaluate with model: {ModelName}", modelName);
+                    failedModels.Add(modelName);
+                    
+                    // Record failed model metric
+                    _failedModelsCounter.Add(1, new TagList
+                    {
+                        { "requirement", requirement.Title },
+                        { "model", modelName }
+                    });
                 }
 
-            // Aggregate assessments
-            var aggregatedAssessment = AggregateAssessments(modelAssessments, requirement);
+            var aggregatedAssessment = AggregateAssessments(modelAssessments, requirement, failedModels);
+            
+            // Record standard deviation metric if multiple judges
+            if (modelAssessments.Count > 1)
+            {
+                _standardDeviationHistogram.Record(aggregatedAssessment.StandardDeviation, new TagList
+                {
+                    { "requirement", requirement.Title },
+                    { "judge_count", modelAssessments.Count }
+                });
+            }
+            
             assessments.Add(aggregatedAssessment);
         }
 
@@ -88,18 +171,10 @@ public class DocumentationJudgeService : IDocumentationJudgeService
         return assessments;
     }
 
-    private async Task<RequirementAssessment> EvaluateRequirementWithModelAsync(
-        RubricRequirement requirement,
-        WikiStructure documentationStructure,
-        string modelName,
-        CancellationToken cancellationToken)
-    {
-        return await EvaluateRequirementAsync(requirement, documentationStructure, cancellationToken, modelName);
-    }
-
     private RequirementAssessment AggregateAssessments(
         List<ModelAssessment> modelAssessments,
-        RubricRequirement requirement)
+        RubricRequirement requirement,
+        List<string> failedModels)
     {
         if (!modelAssessments.Any())
             return new RequirementAssessment
@@ -110,7 +185,8 @@ public class DocumentationJudgeService : IDocumentationJudgeService
                 StandardDeviation = 0.0,
                 IndividualScores = new List<double>(),
                 Reasoning = new List<string> { "No assessments available" },
-                Evidence = new List<string>()
+                Evidence = new List<string>(),
+                FailedModels = failedModels
             };
 
         var scores = modelAssessments.Select(m => m.Score).ToList();
@@ -122,84 +198,41 @@ public class DocumentationJudgeService : IDocumentationJudgeService
         {
             RequirementId = requirement.Title,
             RequirementTitle = requirement.Title,
-            MeanScore = meanScore,
+            MeanScore = Math.Clamp(meanScore, 0.0, 1.0),
             StandardDeviation = standardDeviation,
             IndividualScores = scores,
             Reasoning = modelAssessments.Select(m => m.Reasoning).ToList(),
-            Evidence = modelAssessments.SelectMany(m => m.Evidence).ToList()
+            Evidence = modelAssessments.SelectMany(m => m.Evidence).ToList(),
+            FailedModels = failedModels
         };
     }
 
-    private string BuildEvaluationPrompt(RubricRequirement requirement, WikiStructure documentationStructure)
-    {
-        return $@"
-You are evaluating technical documentation against a specific requirement.
 
-Requirement: {requirement.Title}
-Description: {requirement.Description}
-
-Documentation Structure (use search tool to explore):
-{FormatDocumentationStructure(documentationStructure)}
-
-Task:
-1. Search the documentation for content related to this requirement
-2. Determine if the requirement is adequately satisfied (score 0-1)
-3. Provide brief reasoning (max 50 words)
-4. Identify specific evidence sections
-
-Scoring Criteria:
-Score 1 if:
-- The documentation clearly addresses this requirement
-- Information is accurate and complete
-- Examples are provided where appropriate
-- Content is easy to find and understand
-
-Score 0 if:
-- Requirement is not mentioned
-- Information is incomplete or unclear
-- Critical details are missing
-- Content is difficult to locate
-
-Respond with JSON format:
-{{
-    ""requirement_id"": ""{requirement.Title}"",
-    ""score"": 0.0,
-    ""reasoning"": ""Brief explanation"",
-    ""evidence"": [""doc_section_1"", ""doc_section_2""]
-}}";
-    }
-
-    private string FormatDocumentationStructure(WikiStructure structure)
-    {
-        // Simple formatting - in real implementation would be more sophisticated
-        return JsonSerializer.Serialize(structure, new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
-    }
 
     private RequirementAssessment ParseAssessmentFromResponse(string response, RubricRequirement requirement)
     {
         try
         {
-            // Clean up response if wrapped in markdown code blocks
+            // 1. Try to extract from markdown blocks
             if (response.Contains("```"))
             {
-                var match = System.Text.RegularExpressions.Regex.Match(response, @"```(?:json)?\s*(.*?)\s*```", System.Text.RegularExpressions.RegexOptions.Singleline);
+                var match = MarkdownJsonBlockRegex().Match(response);
                 if (match.Success)
                 {
                     response = match.Groups[1].Value;
                 }
             }
-
-            var options = new JsonSerializerOptions
+            
+            // 2. Fallback: Find first '{' and last '}' to handle chatty responses
+            var startIdx = response.IndexOf('{');
+            var endIdx = response.LastIndexOf('}');
+            
+            if (startIdx >= 0 && endIdx > startIdx)
             {
-                PropertyNameCaseInsensitive = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            };
+                response = response.Substring(startIdx, endIdx - startIdx + 1);
+            }
 
-            var assessment = JsonSerializer.Deserialize<JudgeResponse>(response, options);
+            var assessment = JsonSerializer.Deserialize<JudgeResponse>(response, JsonParsingOptions);
 
             if (assessment == null)
             {
@@ -211,16 +244,17 @@ Respond with JSON format:
             {
                 RequirementId = requirement.Title,
                 RequirementTitle = requirement.Title,
-                MeanScore = assessment.Score,
-                StandardDeviation = 0.0, // Single assessment, no deviation
-                IndividualScores = new List<double> { assessment.Score },
-                Reasoning = new List<string> { assessment.Reasoning },
+                MeanScore = Math.Clamp(assessment.Score, 0.0, 1.0),
+                StandardDeviation = 0.0,
+                IndividualScores = new List<double> { Math.Clamp(assessment.Score, 0.0, 1.0) },
+                Reasoning = new List<string> { assessment.Reasoning ?? "No reasoning provided" },
                 Evidence = assessment.Evidence ?? new List<string>()
             };
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Error parsing assessment JSON from LLM response");
+            var preview = response.Length > 500 ? response.Substring(0, 500) + "..." : response;
+            _logger.LogError(ex, "Error parsing assessment JSON from LLM response. Raw response (first 500 chars): {ResponsePreview}", preview);
             return CreateDefaultAssessment(requirement);
         }
     }
@@ -238,46 +272,4 @@ Respond with JSON format:
             Evidence = new List<string>()
         };
     }
-}
-
-public interface IDocumentationJudgeService
-{
-    Task<RequirementAssessment> EvaluateRequirementAsync(
-        RubricRequirement requirement,
-        WikiStructure documentationStructure,
-        CancellationToken cancellationToken = default,
-        string? model = null);
-
-    Task<List<RequirementAssessment>> EvaluateRequirementsAsync(
-        List<RubricRequirement> requirements,
-        WikiStructure documentationStructure,
-        List<string> judgeModels,
-        CancellationToken cancellationToken = default);
-}
-
-public class RequirementAssessment
-{
-    public string RequirementId { get; set; } = string.Empty;
-    public string RequirementTitle { get; set; } = string.Empty;
-    public double MeanScore { get; set; }
-    public double StandardDeviation { get; set; }
-    public List<double> IndividualScores { get; set; } = new();
-    public List<string> Reasoning { get; set; } = new();
-    public List<string> Evidence { get; set; } = new();
-}
-
-public class ModelAssessment
-{
-    public string ModelName { get; set; } = string.Empty;
-    public double Score { get; set; }
-    public string Reasoning { get; set; } = string.Empty;
-    public List<string> Evidence { get; set; } = new();
-}
-
-internal class JudgeResponse
-{
-    public string RequirementId { get; set; } = string.Empty;
-    public double Score { get; set; }
-    public string Reasoning { get; set; } = string.Empty;
-    public List<string>? Evidence { get; set; }
 }
