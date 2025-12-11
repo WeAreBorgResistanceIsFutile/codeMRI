@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace codeMRI.Core.Services;
 
@@ -15,6 +17,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private readonly IWikiRepository _wikiRepo;
     private readonly IProgressService _progressService; // Added field
     private readonly string _judgeModel; // Changed from List<string> _judgeModels
+    private readonly SemaphoreSlim _semaphore;
 
     public CodeWikiOrchestrator(
         IHierarchicalDecompositionService decompositionService,
@@ -24,6 +27,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IDocumentationSynthesisService synthesisService,
         IWikiRepository wikiRepo,
         IProgressService progressService, // Added parameter
+        IOptions<CodeWikiOptions> options,
         ILogger<CodeWikiOrchestrator> logger,
         string judgeModel = "default") // Changed from List<string>? judgeModels = null
     {
@@ -36,6 +40,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _progressService = progressService; // Initialized new field
         _logger = logger;
         _judgeModel = judgeModel; // Initialized new field
+        _semaphore = new SemaphoreSlim(options.Value.MaxDegreeOfParallelism);
     }
 
     public async Task<WikiStructure> GenerateAdvancedWikiAsync(
@@ -80,7 +85,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // Scale Content Generation (Global 20% to 90%: Start=20, Width=70)
         await _progressService.WithScalingAsync(20, 70, async () => 
         {
-             await GenerateContentForModulesAsync(moduleTree.Root, structure, repositoryPath, progressState, new HashSet<string>(), cancellationToken);
+             await GenerateContentForModulesAsync(moduleTree.Root, structure, repositoryPath, progressState, new ConcurrentDictionary<string, byte>(), cancellationToken);
         });
 
         // 4. Evaluation (The Judge)
@@ -110,10 +115,10 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private class ProgressState
     {
         public int Total { get; set; }
-        public int Processed { get; set; }
+        public int Processed; // Field for Interlocked
     }
 
-    private int CountModules(ModuleNode node, HashSet<string> visitedIds)
+    private int CountModules(ModuleNode node, HashSet<string> visitedIds) // Helper uses HashSet as it is synchronous pre-calculation
     {
         if (!visitedIds.Add(node.Id)) return 0;
 
@@ -145,83 +150,108 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         WikiStructure structure, 
         string repoPath,
         ProgressState progressState,
-        HashSet<string> visitedIds,
+        ConcurrentDictionary<string, byte> visitedIds,
         CancellationToken cancellationToken)
     {
-        if (!visitedIds.Add(module.Id)) return;
+        if (!visitedIds.TryAdd(module.Id, 0)) return;
 
         // Recursively process children first (Bottom-Up)
-        foreach (var child in module.Children)
-        {
-            await GenerateContentForModulesAsync(child, structure, repoPath, progressState, visitedIds, cancellationToken);
-        }
+        // Parallelize children processing
+        var childTasks = module.Children.Select(child => 
+            GenerateContentForModulesAsync(child, structure, repoPath, progressState, visitedIds, cancellationToken));
+        
+        await Task.WhenAll(childTasks);
 
-        // Check cache first
-        // If a page with this title already exists in the repo, skip generation
-        var existingPage = await _wikiRepo.GetPageByTitleAsync(repoPath, module.Name);
-        if (existingPage != null)
+        // Limit concurrency for the actual generation logic of THIS node
+        await _semaphore.WaitAsync(cancellationToken);
+        try
         {
-            _logger.LogInformation("Skipping generation for page '{PageTitle}' (cached)", module.Name);
-            structure.Pages.Add(existingPage);
+            // Check cache first
+            // If a page with this title already exists in the repo, skip generation
+            var existingPage = await _wikiRepo.GetPageByTitleAsync(repoPath, module.Name);
+            if (existingPage != null)
+            {
+                _logger.LogInformation("Skipping generation for page '{PageTitle}' (cached)", module.Name);
+                lock (structure.Pages)
+                {
+                   structure.Pages.Add(existingPage);
+                }
+                
+                // Add to sections structure
+                var cachedSection = new WikiSection
+                {
+                    Id = $"section_{module.Id}",
+                    Title = module.Name,
+                    PageRefs = new List<string> { existingPage.Id }
+                };
+                lock (structure.Sections)
+                {
+                    structure.Sections.Add(cachedSection);
+                }
+                
+                UpdateProgress(progressState, module.Name);
+                return;
+            }
+
+            // Generate content for this module
+            WikiPage page;
+            if (module.IsLeaf)
+            {
+                 page = await _wikiGenerationService.GeneratePageAsync(
+                     module.Name, 
+                     module.Components.ToList(), 
+                     new Dictionary<string, string>(), /* empty contents */
+                     "English",
+                     repoPath
+                 );
+            }
+            else
+            {
+                // Parent page synthesis
+                // We need the child pages that we just generated
+                // Find child pages in the structure
+                // Note: structure.Pages access must be thread-safe if modified concurrently
+                List<WikiPage> childPages;
+                lock (structure.Pages)
+                {
+                    childPages = structure.Pages
+                        .Where(p => module.Children.Any(c => c.Name == p.Title)) // Loose matching by title
+                        .ToList();
+                }
+
+                page = await _synthesisService.SynthesizeParentPageAsync(module, childPages);
+            }
+
+            lock (structure.Pages)
+            {
+                structure.Pages.Add(page);
+            }
             
-            // Add to sections structure
-            var cachedSection = new WikiSection
+            await _wikiRepo.SavePageAsync(repoPath, page);
+            
+            // Add to sections structure (naive mapping)
+            var section = new WikiSection
             {
                 Id = $"section_{module.Id}",
                 Title = module.Name,
-                PageRefs = new List<string> { existingPage.Id }
+                PageRefs = new List<string> { page.Id }
             };
-            structure.Sections.Add(cachedSection);
-            
+            lock (structure.Sections)
+            {
+                structure.Sections.Add(section);
+            }
+
             UpdateProgress(progressState, module.Name);
-            return;
         }
-
-        // Generate content for this module
-        WikiPage page;
-        if (module.IsLeaf)
+        finally
         {
-             
-             
-             page = await _wikiGenerationService.GeneratePageAsync(
-                 module.Name, 
-                 module.Components.ToList(), 
-                 new Dictionary<string, string>(), /* empty contents */
-                 "English",
-                 repoPath
-             );
+            _semaphore.Release();
         }
-        else
-        {
-            // Parent page synthesis
-            // We need the child pages that we just generated
-            // Find child pages in the structure
-            var childPages = structure.Pages
-                .Where(p => module.Children.Any(c => c.Name == p.Title)) // Loose matching by title
-                .ToList();
-
-            page = await _synthesisService.SynthesizeParentPageAsync(module, childPages);
-        }
-
-        structure.Pages.Add(page);
-        
-        await _wikiRepo.SavePageAsync(repoPath, page);
-        
-        // Add to sections structure (naive mapping)
-        var section = new WikiSection
-        {
-            Id = $"section_{module.Id}",
-            Title = module.Name,
-            PageRefs = new List<string> { page.Id }
-        };
-        structure.Sections.Add(section);
-
-        UpdateProgress(progressState, module.Name);
     }
 
     private void UpdateProgress(ProgressState state, string moduleName)
     {
-        state.Processed++;
+        Interlocked.Increment(ref state.Processed);
         
         // Local Percentage 0-100
         int percentage = (int)((double)state.Processed / state.Total * 100);

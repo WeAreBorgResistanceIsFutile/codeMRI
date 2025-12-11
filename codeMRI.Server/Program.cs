@@ -23,6 +23,7 @@ builder.Services.AddSwaggerGen();
 // Configuration
 builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<ASTServiceSettings>(builder.Configuration.GetSection("ASTService"));
+builder.Services.Configure<codeMRI.Core.Models.CodeWikiOptions>(builder.Configuration.GetSection("CodeWiki"));
 
 // Infrastructure
 builder.Services.AddHttpClient();

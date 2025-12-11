@@ -58,6 +58,7 @@ public class WireUp
                 sp.GetRequiredService<IDocumentationSynthesisService>(),
                 sp.GetRequiredService<IWikiRepository>(),
                 sp.GetRequiredService<IProgressService>(), // Added
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<codeMRI.Core.Models.CodeWikiOptions>>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CodeWikiOrchestrator>>(),
                 settings.JudgeModels.FirstOrDefault() ?? "llama3");
         });
