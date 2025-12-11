@@ -40,18 +40,35 @@ Score 0 if:
 - Critical details are missing
 - Content is difficult to locate
 
-Respond with strict JSON format ONLY. Do not include markdown formatting, explanations, or any other text.
+Respond with valid JSON only.
 {{
     ""requirement_id"": ""{requirement.Title}"",
     ""score"": 0.0,
     ""reasoning"": ""Brief explanation"",
     ""evidence"": [""doc_section_1"", ""doc_section_2""]
-}}";
+}}
+
+Do not include ```json ... ``` markers or any introductory text. Just the raw JSON object.";
     }
 
     private string FormatDocumentationStructure(WikiStructure structure)
     {
-        return JsonSerializer.Serialize(structure, new JsonSerializerOptions
+        // Project to a lightweight structure to save tokens
+        var skeleton = new
+        {
+            structure.Title,
+            structure.Description,
+            Sections = structure.Sections,
+            Pages = structure.Pages.Select(p => new 
+            {
+                p.Id,
+                p.Title,
+                p.Description
+                // Omit Content
+            })
+        };
+
+        return JsonSerializer.Serialize(skeleton, new JsonSerializerOptions
         {
             WriteIndented = true,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase

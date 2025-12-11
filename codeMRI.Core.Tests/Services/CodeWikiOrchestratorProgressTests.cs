@@ -2,6 +2,7 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using NUnit.Framework;
 
@@ -31,6 +32,8 @@ public class CodeWikiOrchestratorProgressTests
         _mockWikiRepo = new Mock<IWikiRepository>();
         _mockLogger = new Mock<ILogger<CodeWikiOrchestrator>>();
         _mockProgressService = new Mock<IProgressService>();
+        var mockOptions = new Mock<IOptions<CodeWikiOptions>>();
+        mockOptions.Setup(o => o.Value).Returns(new CodeWikiOptions { MaxDegreeOfParallelism = 1 });
 
         _orchestrator = new CodeWikiOrchestrator(
             _mockDecompositionService.Object,
@@ -40,6 +43,7 @@ public class CodeWikiOrchestratorProgressTests
             _mockSynthesisService.Object,
             _mockWikiRepo.Object,
             _mockProgressService.Object,
+            mockOptions.Object,
             _mockLogger.Object
         );
     }

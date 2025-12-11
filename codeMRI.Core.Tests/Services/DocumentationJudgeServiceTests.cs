@@ -315,9 +315,33 @@ public class DocumentationJudgeServiceTests
         // Act
         var result = await _service.EvaluateRequirementAsync(requirement, structure);
 
-        // Assert - Should return default assessment
+        // Assert
         Assert.That(result.MeanScore, Is.EqualTo(0.0));
         Assert.That(result.Reasoning, Does.Contain("Failed to evaluate requirement"));
+    }
+
+    [Test]
+    public async Task EvaluateRequirementAsync_ShouldHandleChattyResponse()
+    {
+        // Arrange
+        var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
+        var structure = new WikiStructure();
+        var response = "Okay, I have analyzed the documentation. Here is the JSON you requested:\n\n{ \"score\": 0.95, \"reasoning\": \"Extremely clear\", \"evidence\": [] }\n\nHope this helps!";
+
+        _mockLlmClient.Setup(x => x.ChatAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<ChatMessage>>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(response);
+
+        // Act
+        var result = await _service.EvaluateRequirementAsync(requirement, structure);
+
+        // Assert
+        Assert.That(result.MeanScore, Is.EqualTo(0.95));
+        Assert.That(result.Reasoning[0], Is.EqualTo("Extremely clear"));
     }
     [Test]
     public async Task EvaluateRequirementsAsync_ShouldRunCorrectlyWithConcurrencyParameter()

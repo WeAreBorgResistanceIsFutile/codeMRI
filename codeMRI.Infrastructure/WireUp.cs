@@ -60,7 +60,8 @@ public class WireUp
                 sp.GetRequiredService<IProgressService>(), // Added
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<codeMRI.Core.Models.CodeWikiOptions>>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CodeWikiOrchestrator>>(),
-                settings.JudgeModels.FirstOrDefault() ?? "llama3");
+                // Use configured Judge model, or fall back to DocumentationModel, then to "llama3"
+                (settings.JudgeModels != null && settings.JudgeModels.Any() ? settings.JudgeModels.First() : settings.DocumentationModel) ?? "llama3");
         });
     }
 }

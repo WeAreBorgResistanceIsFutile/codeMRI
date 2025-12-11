@@ -43,8 +43,10 @@ public class JudgeAgentService : IJudgeAgent
             return new RequirementScore
             {
                 RequirementId = requirement.Title,
-                Score = 0.5, // Default middle score for errors
-                Reasoning = $"Error evaluating requirement: {ex.Message}"
+                Score = 0.0,  // Not used when EvaluationFailed is true
+                Reasoning = string.Empty,
+                EvaluationFailed = true,
+                FailureReason = $"Error evaluating requirement: {ex.Message}"
             };
         }
     }

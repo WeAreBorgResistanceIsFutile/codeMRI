@@ -173,7 +173,7 @@ public class JudgeAgentServiceTests
     }
 
     [Test]
-    public async Task EvaluateRequirementAsync_WithLLMException_LogsErrorAndReturnsDefaultScore()
+    public async Task EvaluateRequirementAsync_WithLLMException_SetsEvaluationFailedFlag()
     {
         // Arrange
         var exception = new InvalidOperationException("LLM service unavailable");
@@ -183,9 +183,10 @@ public class JudgeAgentServiceTests
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
 
-        // Assert
-        Assert.That(result.Score, Is.EqualTo(0.5));
-        Assert.That(result.Reasoning, Contains.Substring("Error evaluating requirement"));
+        // Assert - Instead of 0.5 default, we now track failed evaluations explicitly
+        Assert.That(result.EvaluationFailed, Is.True);
+        Assert.That(result.FailureReason, Contains.Substring("Error evaluating requirement"));
+        Assert.That(result.FailureReason, Contains.Substring("LLM service unavailable"));
         
         _mockLogger.Verify(
             x => x.Log(

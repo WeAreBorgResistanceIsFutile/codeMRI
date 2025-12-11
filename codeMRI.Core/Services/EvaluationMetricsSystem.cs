@@ -260,12 +260,19 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             var score = await judge.EvaluateRequirementAsync(page, requirement);
             breakdown[requirement.Title] = score;
 
-            var category = GetParentCategory(node);
-            if (!scoresByCategory.ContainsKey(category))
-                scoresByCategory[category] = new List<double>();
-            scoresByCategory[category].Add(score.Score);
+            // Only include successful evaluations in score aggregations
+            if (!score.EvaluationFailed)
+            {
+                var category = GetParentCategory(node);
+                if (!scoresByCategory.ContainsKey(category))
+                    scoresByCategory[category] = new List<double>();
+                scoresByCategory[category].Add(score.Score);
 
-            return score.Score;
+                return score.Score;
+            }
+            
+            // Return -1 to signal this should be excluded from weighted average
+            return -1.0;
         }
 
         if (node.Children != null && node.Children.Any())
@@ -276,11 +283,15 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             foreach (var child in node.Children)
             {
                 var childScore = await EvaluateRubricNodeWithJudgeAsync(page, child, breakdown, scoresByCategory, judge);
-                childScores.Add(childScore);
-                childWeights.Add(child.Weight);
+                // Only include successful evaluations
+                if (childScore >= 0)
+                {
+                    childScores.Add(childScore);
+                    childWeights.Add(child.Weight);
+                }
             }
 
-            return CalculateWeightedAverage(childScores, childWeights);
+            return childScores.Any() ? CalculateWeightedAverage(childScores, childWeights) : 0.0;
         }
 
         return 0.0;

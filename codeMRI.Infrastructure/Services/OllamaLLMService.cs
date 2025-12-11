@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -54,10 +55,12 @@ public class OllamaLLMService : ILLMClient
             {
                 var response = await _httpClient.PostAsJsonAsync("/api/chat", request, cancellationToken);
                 
-                if ((int)response.StatusCode >= 500 && attempt < maxRetries)
+                if (IsTransientError(response.StatusCode) && attempt < maxRetries)
                 {
-                    _logger.LogWarning("Ollama returned {StatusCode} on attempt {Attempt}. Retrying in {Delay}ms...", response.StatusCode, attempt, delayMilliseconds);
-                    await Task.Delay(delayMilliseconds, cancellationToken);
+                    var delay = GetRetryDelay(response, delayMilliseconds, attempt);
+                    _logger.LogWarning("Transient error {StatusCode} on attempt {Attempt}. Retrying in {Delay}ms...", 
+                        response.StatusCode, attempt, delay);
+                    await Task.Delay(delay, cancellationToken);
                     continue;
                 }
 
@@ -71,10 +74,11 @@ public class OllamaLLMService : ILLMClient
                 
                 return responseContent;
             }
-            catch (HttpRequestException ex) when ((int?)ex.StatusCode >= 500 && attempt < maxRetries)
+            catch (HttpRequestException ex) when (ex.StatusCode.HasValue && IsTransientError(ex.StatusCode.Value) && attempt < maxRetries)
             {
-                 _logger.LogWarning(ex, "HTTP Request failed with {StatusCode} on attempt {Attempt}. Retrying...", ex.StatusCode, attempt);
-                 await Task.Delay(delayMilliseconds, cancellationToken);
+                 var delay = delayMilliseconds * (1 << (attempt - 1));
+                 _logger.LogWarning(ex, "HTTP Request failed with {StatusCode} on attempt {Attempt}. Retrying in {Delay}ms...", ex.StatusCode, attempt, delay);
+                 await Task.Delay(delay, cancellationToken);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < maxRetries)
             {
@@ -169,9 +173,10 @@ public class OllamaLLMService : ILLMClient
             {
                 update = JsonSerializer.Deserialize<OllamaChatResponse>(line);
             }
-            catch
+            catch (JsonException ex)
             {
-                /* Ignore parse errors */
+                _logger.LogDebug(ex, "Failed to parse streaming JSON line: {Line}", 
+                    line.Length > 200 ? line.Substring(0, 200) + "..." : line);
             }
 
             if (update?.Message?.Content != null) yield return update.Message.Content;
@@ -252,6 +257,35 @@ public class OllamaLLMService : ILLMClient
         if (string.IsNullOrEmpty(text)) return 0;
         // Approximation: 1 token ~= 4 characters for English text
         return text.Length / 4;
+    }
+
+    /// <summary>
+    /// Determines if an HTTP status code represents a transient error that can be retried.
+    /// </summary>
+    private static bool IsTransientError(HttpStatusCode statusCode) =>
+        statusCode == HttpStatusCode.TooManyRequests ||       // 429
+        statusCode == HttpStatusCode.RequestTimeout ||        // 408
+        statusCode == HttpStatusCode.ServiceUnavailable ||    // 503
+        (int)statusCode >= 500;                               // 5xx
+
+    /// <summary>
+    /// Gets the retry delay, respecting Retry-After header if present, 
+    /// otherwise using exponential backoff.
+    /// </summary>
+    private static int GetRetryDelay(HttpResponseMessage response, int baseDelayMs, int attempt)
+    {
+        // Check for Retry-After header (common with 429 responses)
+        if (response.Headers.TryGetValues("Retry-After", out var values))
+        {
+            var retryAfter = values.FirstOrDefault();
+            if (int.TryParse(retryAfter, out var seconds))
+            {
+                return seconds * 1000;
+            }
+        }
+        
+        // Exponential backoff: baseDelay * 2^(attempt-1)
+        return baseDelayMs * (1 << (attempt - 1));
     }
 
     private class OllamaChatResponse

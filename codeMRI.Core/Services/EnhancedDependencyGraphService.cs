@@ -32,33 +32,8 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         _logger.LogInformation("Building enhanced dependency graph for {Count} components", components.Count);
         var graph = new EnhancedDependencyGraph();
 
-        // Add nodes
-        foreach (var component in components)
-        {
-            // The original code had a metadata creation block here.
-            // The edit suggests adding nodes with existing component.Metadata.
-            // I will keep the original metadata creation logic for now,
-            // but add the node to the graph as per the edit's intent.
-            // The edit's comment "Enrich with raw component data if needed" suggests this might be a simplification.
-
-            var metadata = new NodeMetadata
-            {
-                Id = component.Id,
-                Type = component.Type,
-                LineCount = component.LineCount,
-                CyclomaticComplexity = component.ComplexityScore,
-                NestingDepth = EstimateNestingDepth(component),
-                FanIn = 0, // Will be calculated later
-                FanOut = component.Dependencies.Count,
-                IsPublic = IsPublicComponent(component),
-                HasDocumentation = !string.IsNullOrEmpty(component.Description),
-                FilePath = component.FilePath,
-                EstimatedTokens = EstimateComponentTokens(component)
-            };
-            graph.AddNode(component.Id, metadata); // Added this line as per edit's intent
-        }
-
-
+        // Note: Node creation happens in the loop below which includes AST enrichment.
+        // Don't add nodes here to avoid duplicates.
         int processed = 0;
         int total = components.Count;
 
@@ -489,46 +464,70 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         return distances;
     }
 
+    /// <summary>
+    /// Finds strongly connected components using Tarjan's algorithm.
+    /// </summary>
     private List<List<string>> FindStronglyConnectedComponents(EnhancedDependencyGraph graph)
     {
         var sccs = new List<List<string>>();
-        var visited = new HashSet<string>();
+        var indices = new Dictionary<string, int>();
+        var lowLinks = new Dictionary<string, int>();
+        var onStack = new HashSet<string>();
         var stack = new Stack<string>();
+        var index = 0;
 
-        foreach (var node in graph.GetNodes())
-            if (!visited.Contains(node.ComponentId))
-                FindSCCRecursive(node.ComponentId, graph, visited, stack, sccs);
-
-        return sccs.Where(scc => scc.Count > 1).ToList(); // Only return cycles (size > 1)
-    }
-
-    private void FindSCCRecursive(string nodeId, EnhancedDependencyGraph graph, HashSet<string> visited,
-        Stack<string> stack, List<List<string>> sccs)
-    {
-        visited.Add(nodeId);
-
-        var node = graph.GetNode(nodeId);
-        if (node != null)
-            foreach (var neighborId in node.OutEdges)
-                if (!visited.Contains(neighborId))
-                    FindSCCRecursive(neighborId, graph, visited, stack, sccs);
-
-        stack.Push(nodeId);
-
-        if (stack.Count > 1 && stack.Peek() == nodeId)
+        void StrongConnect(string nodeId)
         {
-            // Found a strongly connected component
-            var scc = new List<string>();
-            var temp = new Stack<string>(stack);
+            indices[nodeId] = index;
+            lowLinks[nodeId] = index;
+            index++;
+            stack.Push(nodeId);
+            onStack.Add(nodeId);
 
-            while (temp.Count > 0 && temp.Peek() != nodeId) scc.Add(temp.Pop());
-
-            if (temp.Count > 0)
+            var node = graph.GetNode(nodeId);
+            if (node != null)
             {
-                scc.Add(temp.Pop());
+                foreach (var neighborId in node.OutEdges)
+                {
+                    if (!indices.ContainsKey(neighborId))
+                    {
+                        // Successor has not been visited; recurse
+                        StrongConnect(neighborId);
+                        lowLinks[nodeId] = Math.Min(lowLinks[nodeId], lowLinks[neighborId]);
+                    }
+                    else if (onStack.Contains(neighborId))
+                    {
+                        // Successor is on the stack, hence in current SCC
+                        lowLinks[nodeId] = Math.Min(lowLinks[nodeId], indices[neighborId]);
+                    }
+                }
+            }
+
+            // If nodeId is a root node, pop the stack and generate an SCC
+            if (lowLinks[nodeId] == indices[nodeId])
+            {
+                var scc = new List<string>();
+                string poppedId;
+                do
+                {
+                    poppedId = stack.Pop();
+                    onStack.Remove(poppedId);
+                    scc.Add(poppedId);
+                } while (poppedId != nodeId);
+
                 sccs.Add(scc);
             }
         }
+
+        foreach (var node in graph.GetNodes())
+        {
+            if (!indices.ContainsKey(node.ComponentId))
+            {
+                StrongConnect(node.ComponentId);
+            }
+        }
+
+        return sccs.Where(scc => scc.Count > 1).ToList(); // Only return cycles (size > 1)
     }
 
     private GraphStatistics CalculateGraphStatistics(EnhancedDependencyGraph graph)

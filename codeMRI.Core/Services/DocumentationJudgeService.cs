@@ -240,20 +240,18 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
                 }
             }
             
-            // 2. Fallback: Find first '{' and last '}' to handle chatty responses
-            var startIdx = response.IndexOf('{');
-            var endIdx = response.LastIndexOf('}');
-            
-            if (startIdx >= 0 && endIdx > startIdx)
+            // 2. Fallback: Use bracket counting or simple index finding to extract valid JSON
+            var extractedJson = ExtractValidJson(response);
+            if (!string.IsNullOrWhiteSpace(extractedJson))
             {
-                response = response.Substring(startIdx, endIdx - startIdx + 1);
+                response = extractedJson;
             }
 
             var assessment = JsonSerializer.Deserialize<JudgeResponse>(response, JsonParsingOptions);
 
-            if (assessment == null)
+            if (assessment == null || !IsValidAssessment(assessment))
             {
-                _logger.LogWarning("Failed to parse assessment from LLM response");
+                _logger.LogWarning("Failed to parse valid assessment from LLM response");
                 return CreateDefaultAssessment(requirement);
             }
 
@@ -275,6 +273,29 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
             return CreateDefaultAssessment(requirement);
         }
     }
+
+    /// <summary>
+    /// Extracts a valid JSON object by finding the first '{' and the last '}'.
+    /// This is more robust against chatty introductions and conclusions.
+    /// </summary>
+    private static string? ExtractValidJson(string response)
+    {
+        int startIdx = response.IndexOf('{');
+        int endIdx = response.LastIndexOf('}');
+
+        if (startIdx >= 0 && endIdx > startIdx)
+        {
+            return response.Substring(startIdx, endIdx - startIdx + 1);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Validates that a parsed assessment has reasonable values.
+    /// We allow scores slightly outside 0-1 range since we clamp them anyway.
+    /// </summary>
+    private static bool IsValidAssessment(JudgeResponse response) =>
+        response.Score >= -1.0 && response.Score <= 2.0;  // Allow for clamping
 
     private RequirementAssessment CreateDefaultAssessment(RubricRequirement requirement)
     {

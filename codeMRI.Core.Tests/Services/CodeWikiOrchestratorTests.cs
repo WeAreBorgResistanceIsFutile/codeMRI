@@ -2,6 +2,7 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using NUnit.Framework;
 
@@ -37,6 +38,9 @@ public class CodeWikiOrchestratorTests
             .Setup(p => p.WithScalingAsync(It.IsAny<double>(), It.IsAny<double>(), It.IsAny<Func<Task>>()))
             .Returns<double, double, Func<Task>>(async (start, width, op) => await op());
 
+        var mockOptions = new Mock<IOptions<CodeWikiOptions>>();
+        mockOptions.Setup(o => o.Value).Returns(new CodeWikiOptions { MaxDegreeOfParallelism = 1 });
+
         _orchestrator = new CodeWikiOrchestrator(
             _mockDecompositionService.Object,
             _mockRubricService.Object,
@@ -45,6 +49,7 @@ public class CodeWikiOrchestratorTests
             _mockSynthesisService.Object,
             _mockWikiRepo.Object,
             _mockProgressService.Object,
+            mockOptions.Object,
             _mockLogger.Object
         );
     }
