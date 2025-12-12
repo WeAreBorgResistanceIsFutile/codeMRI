@@ -9,5 +9,6 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri("http://localhost:5247") }); // Matches Server launchSettings
 builder.Services.AddScoped<codeMRI.Frontend.Services.AppState>();
 builder.Services.AddScoped<codeMRI.Frontend.Services.WikiApiClient>();
+builder.Services.AddScoped<codeMRI.Frontend.Services.WikiHubClient>();
 
 await builder.Build().RunAsync();

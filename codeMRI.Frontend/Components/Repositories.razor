@@ -1,4 +1,198 @@
 @using codeMRI.Frontend.Services
+@using codeMRI.Frontend.Components.AgentDashboard
+@using Microsoft.AspNetCore.SignalR.Client
+@inject WikiApiClient WikiApi
+@inject WikiHubClient WikiHub
+@inject AppState AppState
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10"> <!-- Widened col to fit dashboard -->
+            <h2 class="mb-4" style="font-family: 'Google Sans';">Repositories</h2>
+            
+            @if (AppState.CurrentProgress != null)
+            {
+                <div class="card mb-4 shadow-sm border-primary">
+                    <div class="card-body">
+                        <h5 class="card-title text-primary">Generating Documentation...</h5>
+                         <div class="progress mb-2" style="height: 20px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
+                                 style="width: @(AppState.CurrentProgress.Percentage)%;" 
+                                 aria-valuenow="@AppState.CurrentProgress.Percentage" aria-valuemin="0" aria-valuemax="100">
+                                @AppState.CurrentProgress.Percentage%
+                            </div>
+                        </div>
+                        <div class="text-muted small mb-3">
+                            <strong>[@AppState.CurrentProgress.Phase]</strong> @AppState.CurrentProgress.Message
+                        </div>
+                        
+                        <!-- Agent Dashboard Visualization -->
+                        <AgentDashboard />
+                    </div>
+                </div>
+            }
+
+            @if (isLoading)
+            {
+                <div class="text-center">Loading repositories...</div>
+            }
+            else
+            {
+                <div class="list-group shadow-sm">
+                    @foreach (var repo in repositories)
+                    {
+                        <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3"
+                             style="cursor: pointer;"
+                             @onclick="() => SelectRepo(repo)">
+                            <div>
+                                <strong class="text-primary">@System.IO.Path.GetFileName(repo)</strong>
+                                <div class="small text-muted">@repo</div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <button class="btn btn-sm btn-outline-success me-3" 
+                                        disabled="@AppState.IsBusy"
+                                        @onclick:stopPropagation="true" 
+                                        @onclick="() => GenerateAdvanced(repo)">
+                                    Advanced Gen
+                                </button>
+                                <span class="text-secondary">➜</span>
+                            </div>
+                        </div>
+                    }
+                    @if (repositories.Count == 0)
+                    {
+                        <div class="p-4 text-center text-muted">No repositories found.</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<string> repositories = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            repositories = await WikiApi.GetRepositoriesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching repos: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged(); 
+        }
+
+        try
+        {
+            WikiHub.OnProgress += HandleProgress;
+            WikiHub.OnAgentStatus += HandleAgentStatus;
+            WikiHub.OnDelegation += HandleDelegation;
+            WikiHub.OnTaskLifecycle += HandleTaskLifecycle;
+
+            await WikiHub.StartAsync();
+        }
+        catch (Exception ex)
+        {
+             Console.WriteLine($"Warning: Failed to connect to WikiHub: {ex.Message}");
+        }
+    }
+
+    private void HandleProgress(codeMRI.Server.Api.ProgressInfo info)
+    {
+        AppState.SetProgress(info);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleAgentStatus(codeMRI.Server.Api.AgentMessage msg)
+    {
+        AppState.UpdateAgentStatus(msg);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleDelegation(codeMRI.Server.Api.AgentMessage msg)
+    {
+        AppState.AddDelegationEvent(msg);
+        InvokeAsync(StateHasChanged);
+    }
+    
+    private void HandleTaskLifecycle(codeMRI.Server.Api.AgentMessage msg)
+    {
+        AppState.AddTaskLifecycleEvent(msg);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SelectRepo(string path)
+    {
+        AppState.SetRepoPath(path);
+        AppState.SetBusy(true, "Loading structure...");
+        try
+        {
+            var structure = await WikiApi.GenerateStructureAsync(path);
+            AppState.SetStructure(structure);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading structure: {ex.Message}");
+        }
+        finally
+        {
+            AppState.SetBusy(false);
+        }
+    }
+
+    private async Task GenerateAdvanced(string path)
+    {
+        AppState.SetBusy(true, "Starting advanced generation...");
+        AppState.SetProgress(new codeMRI.Server.Api.ProgressInfo { Phase = "Init", Message = "Starting...", Percentage = 0 });
+        
+        // Clear previous run state
+        AppState.ActiveAgents.Clear();
+        AppState.DelegationHistory.Clear();
+        AppState.TaskEvents.Clear();
+
+        try
+        {
+            var connectionId = WikiHub.ConnectionId;
+            var structure = await WikiApi.GenerateAdvancedStructureAsync(path, connectionId);
+            
+            AppState.SetRepoPath(path); 
+            AppState.SetStructure(structure);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error generating advanced wiki: {ex.Message}");
+            AppState.SetProgress(new codeMRI.Server.Api.ProgressInfo { Phase = "Error", Message = ex.Message, Percentage = 0 });
+        }
+        finally
+        {
+            AppState.SetBusy(false);
+            AppState.SetProgress(null);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        WikiHub.OnProgress -= HandleProgress;
+        WikiHub.OnAgentStatus -= HandleAgentStatus;
+        WikiHub.OnDelegation -= HandleDelegation;
+        WikiHub.OnTaskLifecycle -= HandleTaskLifecycle;
+        // Do not dispose WikiHub here if it is Scoped/Singleton and meant to stay alive, 
+        // but since we add listeners, we MUST unsubscribe. 
+        // Since WikiHubClient is Scoped to the page or session? Program.cs says Scoped.
+        // It's probably better to keep the connection open if we want chat notifications later, 
+        // but for now Repositories is the only user.
+        // The implementation calls StartAsync in OnInitialized.
+    }
+}
 @using Microsoft.AspNetCore.SignalR.Client
 @inject WikiApiClient WikiApi
 @inject AppState AppState

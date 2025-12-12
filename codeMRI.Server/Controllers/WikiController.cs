@@ -7,6 +7,7 @@ using codeMRI.Server.Api;
 using codeMRI.Server.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using AgentMessage = codeMRI.Agents.Models.AgentMessage;
 
 namespace codeMRI.Server.Controllers;
 
@@ -128,39 +129,42 @@ public class WikiController : ControllerBase
     [HttpPost("generate-advanced")]
     public async Task<IActionResult> GenerateAdvancedWiki([FromBody] StructureRequest request)
     {
-        // Subscribe to agent events for real-time UI updates
-        Action<AgentMessage>? statusHandler = null;
-        Action<AgentMessage>? delegationHandler = null;
-        Action<AgentMessage>? lifecycleHandler = null;
-
-        if (!string.IsNullOrEmpty(request.ConnectionId))
-        {
-            // Subscribe to agent status updates
-            statusHandler = (message) =>
-            {
-                _ = _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveAgentStatus", message);
-            };
-            _messageBus.Subscribe(AgentMessageTypes.AgentStatus, msg => { statusHandler(msg); return Task.CompletedTask; });
-
-            // Subscribe to delegation events
-            delegationHandler = (message) =>
-            {
-                _ = _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveDelegationEvent", message);
-            };
-            _messageBus.Subscribe(AgentMessageTypes.TaskDelegated, msg => { delegationHandler(msg); return Task.CompletedTask; });
-
-            // Subscribe to task lifecycle events
-            lifecycleHandler = (message) =>
-            {
-                _ = _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveTaskLifecycle", message);
-            };
-            _messageBus.Subscribe(AgentMessageTypes.TaskStarted, msg => { lifecycleHandler(msg); return Task.CompletedTask; });
-            _messageBus.Subscribe(AgentMessageTypes.TaskCompleted, msg => { lifecycleHandler(msg); return Task.CompletedTask; });
-            _messageBus.Subscribe(AgentMessageTypes.TaskFailed, msg => { lifecycleHandler(msg); return Task.CompletedTask; });
-        }
+        // Store handlers to unsubscribe later
+        Func<AgentMessage, Task>? statusSubscriber = null;
+        Func<AgentMessage, Task>? delegationSubscriber = null;
+        Func<AgentMessage, Task>? lifecycleSubscriber = null;
 
         try
         {
+            if (!string.IsNullOrEmpty(request.ConnectionId))
+            {
+                // Subscribe to agent status updates
+                statusSubscriber = (message) =>
+                {
+                    _ = _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveAgentStatus", message);
+                    return Task.CompletedTask;
+                };
+                _messageBus.Subscribe(AgentMessageTypes.AgentStatus, statusSubscriber);
+
+                // Subscribe to delegation events
+                delegationSubscriber = (message) =>
+                {
+                    _ = _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveDelegationEvent", message);
+                    return Task.CompletedTask;
+                };
+                _messageBus.Subscribe(AgentMessageTypes.TaskDelegated, delegationSubscriber);
+
+                // Subscribe to task lifecycle events
+                lifecycleSubscriber = (message) =>
+                {
+                    _ = _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveTaskLifecycle", message);
+                    return Task.CompletedTask;
+                };
+                _messageBus.Subscribe(AgentMessageTypes.TaskStarted, lifecycleSubscriber);
+                _messageBus.Subscribe(AgentMessageTypes.TaskCompleted, lifecycleSubscriber);
+                _messageBus.Subscribe(AgentMessageTypes.TaskFailed, lifecycleSubscriber);
+            }
+
             // Construct RepositoryInfo from request and filesystem
             var repoInfo = new RepositoryInfo
             {
@@ -194,8 +198,19 @@ public class WikiController : ControllerBase
         }
         finally
         {
-            // Note: In a production system, you would want to properly manage subscriptions
-            // and unsubscribe when done. For now, we leave them as the message bus is singleton.
+            // Cleanup subscriptions to prevent memory leaks
+            if (statusSubscriber != null)
+                _messageBus.Unsubscribe(AgentMessageTypes.AgentStatus, statusSubscriber);
+            
+            if (delegationSubscriber != null)
+                _messageBus.Unsubscribe(AgentMessageTypes.TaskDelegated, delegationSubscriber);
+            
+            if (lifecycleSubscriber != null)
+            {
+                _messageBus.Unsubscribe(AgentMessageTypes.TaskStarted, lifecycleSubscriber);
+                _messageBus.Unsubscribe(AgentMessageTypes.TaskCompleted, lifecycleSubscriber);
+                _messageBus.Unsubscribe(AgentMessageTypes.TaskFailed, lifecycleSubscriber);
+            }
         }
     }
     // Helper Method

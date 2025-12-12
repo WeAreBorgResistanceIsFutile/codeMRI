@@ -1,0 +1,57 @@
+@using codeMRI.Server.Api
+
+<div class="agent-card card shadow-sm mb-3 @(IsActive ? "border-primary" : "border-secondary")">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="card-title mb-0">
+                <span class="badge @RoleBadgeClass me-2">@Agent.Role</span>
+                <small class="text-muted" style="font-size: 0.7em">@ShortId</small>
+            </h5>
+            @if (IsActive)
+            {
+                <div class="spinner-grow text-primary spinner-grow-sm" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            }
+        </div>
+        
+        <p class="card-text mb-1">
+            <strong>Status:</strong> <span class="@StatusClass">@Agent.Status</span>
+        </p>
+        
+        @if (!string.IsNullOrEmpty(Agent.TaskId))
+        {
+            <p class="card-text small text-muted text-truncate" title="@Agent.TaskId">
+                Task: @Agent.TaskId
+            </p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public AgentStatusEvent Agent { get; set; } = default!;
+
+    private string ShortId => Agent.TaskId.Length > 8 ? Agent.TaskId[..8] : Agent.TaskId; // Display TaskId prefix as ID if SenderId isn't exposed yet, but SenderId is key in AppState map. Actually AgentStatusEvent doesn't have ID, the Map key does.
+    // Wait, AgentStatusEvent has TaskId. But we need Agent ID to display "Who" this is.
+    // The AppState dictionary is keyed by SenderId. I should pass SenderId or Name too.
+    
+    // Let's rely on Role as the name for now, as one agent per role usually unless parallel.
+    
+    private bool IsActive => Agent.Status is "Working" or "Thinking" or "Analyzing";
+
+    private string RoleBadgeClass => Agent.Role switch
+    {
+        "Architect" => "bg-purple text-white", // Custom class, fallback to bg-dark
+        "Analyst" => "bg-info text-dark",
+        "Documenter" => "bg-success text-white",
+        "Reviewer" => "bg-warning text-dark",
+        _ => "bg-secondary text-white"
+    };
+
+    private string StatusClass => Agent.Status switch
+    {
+        "Idle" => "text-muted",
+        "Thinking" => "text-primary fw-bold",
+        _ => "text-info"
+    };
+}

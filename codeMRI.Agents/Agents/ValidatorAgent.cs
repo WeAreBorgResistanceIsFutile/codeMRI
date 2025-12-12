@@ -6,17 +6,25 @@ using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Agents.Agents;
 
-public class ValidatorAgent : BaseAgent
+public class ValidatorAgent : BaseAgent, IDisposable
 {
+    private readonly Func<AgentMessage, Task> _documentationHandler;
+
     public ValidatorAgent(AgentMessageBus messageBus, ILogger<ValidatorAgent> logger,
         IASTServiceClient? astService = null)
         : base(messageBus, logger, astService)
     {
         // Subscribe to documentation results
-        messageBus.Subscribe(AgentMessageTypes.DocumentationComplete, async (message) =>
+        _documentationHandler = async (message) =>
         {
             _logger.LogDebug("Received documentation complete notification: {Content}", message.Content);
-        });
+        };
+        messageBus.Subscribe(AgentMessageTypes.DocumentationComplete, _documentationHandler);
+    }
+
+    public void Dispose()
+    {
+        _messageBus.Unsubscribe(AgentMessageTypes.DocumentationComplete, _documentationHandler);
     }
 
     public override string Role => "Validator";

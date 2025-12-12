@@ -6,17 +6,25 @@ using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Agents.Agents;
 
-public class DocumenterAgent : BaseAgent
+public class DocumenterAgent : BaseAgent, IDisposable
 {
+    private readonly Func<AgentMessage, Task> _analysisHandler;
+
     public DocumenterAgent(AgentMessageBus messageBus, ILogger<DocumenterAgent> logger,
         IASTServiceClient? astService = null)
         : base(messageBus, logger, astService)
     {
         // Subscribe to analysis results for potential use
-        messageBus.Subscribe(AgentMessageTypes.AnalysisComplete, async (message) =>
+        _analysisHandler = async (message) =>
         {
             _logger.LogDebug("Received analysis results: {Content}", message.Content);
-        });
+        };
+        messageBus.Subscribe(AgentMessageTypes.AnalysisComplete, _analysisHandler);
+    }
+
+    public void Dispose()
+    {
+        _messageBus.Unsubscribe(AgentMessageTypes.AnalysisComplete, _analysisHandler);
     }
 
     public override string Role => "Documenter";
