@@ -9,6 +9,7 @@ namespace codeMRI.Core.Services;
 public class CodeWikiOrchestrator : ICodeWikiOrchestrator
 {
     private readonly IHierarchicalDecompositionService _decompositionService;
+    private readonly IEnhancedDependencyGraphService _graphService;
     private readonly IDocumentationJudgeService _judgeService;
     private readonly ILogger<CodeWikiOrchestrator> _logger;
     private readonly IRubricGenerationService _rubricService;
@@ -21,6 +22,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
 
     public CodeWikiOrchestrator(
         IHierarchicalDecompositionService decompositionService,
+        IEnhancedDependencyGraphService graphService,
         IRubricGenerationService rubricService,
         IDocumentationJudgeService judgeService,
         IWikiGenerationService wikiGenerationService,
@@ -32,6 +34,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         string judgeModel = "default") // Changed from List<string>? judgeModels = null
     {
         _decompositionService = decompositionService;
+        _graphService = graphService;
         _rubricService = rubricService;
         _judgeService = judgeService;
         _wikiGenerationService = wikiGenerationService;
@@ -59,12 +62,18 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _logger.LogInformation("Phase 1: Hierarchical Decomposition");
 
         ModuleTree moduleTree = null!;
+        EnhancedDependencyGraph dependencyGraph = null!;
         
         // Scale Decomposition (Global 5% to 15%: Start=5, Width=10)
         await _progressService.WithScalingAsync(5, 10, async () => 
         {
              moduleTree = await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, cancellationToken);
         });
+        
+        // Build dependency graph for file path resolution
+        _progressService.Report(new ProgressInfo { Phase = "Decomposition", Message = "Building dependency graph...", Percentage = 15 });
+        var components = await _graphService.GetComponentsAsync(repositoryPath, cancellationToken);
+        dependencyGraph = await _graphService.BuildGraphAsync(components, cancellationToken);
         
         // Convert to initial WikiStructure
         var structure = ConvertToWikiStructure(moduleTree, repositoryInfo);
@@ -85,7 +94,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // Scale Content Generation (Global 20% to 90%: Start=20, Width=70)
         await _progressService.WithScalingAsync(20, 70, async () => 
         {
-             await GenerateContentForModulesAsync(moduleTree.Root, structure, repositoryPath, progressState, new ConcurrentDictionary<string, byte>(), cancellationToken);
+             await GenerateContentForModulesAsync(moduleTree.Root, structure, repositoryPath, dependencyGraph, progressState, new ConcurrentDictionary<string, byte>(), cancellationToken);
         });
 
         // 4. Evaluation (The Judge)
@@ -149,6 +158,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         ModuleNode module, 
         WikiStructure structure, 
         string repoPath,
+        EnhancedDependencyGraph graph,
         ProgressState progressState,
         ConcurrentDictionary<string, byte> visitedIds,
         CancellationToken cancellationToken)
@@ -158,7 +168,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // Recursively process children first (Bottom-Up)
         // Parallelize children processing
         var childTasks = module.Children.Select(child => 
-            GenerateContentForModulesAsync(child, structure, repoPath, progressState, visitedIds, cancellationToken));
+            GenerateContentForModulesAsync(child, structure, repoPath, graph, progressState, visitedIds, cancellationToken));
         
         await Task.WhenAll(childTasks);
 
@@ -197,10 +207,48 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
             WikiPage page;
             if (module.IsLeaf)
             {
+                 // Map component IDs to file paths and load contents
+                 var filePaths = new List<string>();
+                 var fileContents = new Dictionary<string, string>();
+                 
+                 foreach (var componentId in module.Components)
+                 {
+                     var node = graph.GetNode(componentId);
+                     if (node != null && !string.IsNullOrWhiteSpace(node.Metadata.FilePath))
+                     {
+                         var filePath = node.Metadata.FilePath;
+                         if (!filePaths.Contains(filePath))
+                         {
+                             filePaths.Add(filePath);
+                             
+                             // Try to load file content
+                             try
+                             {
+                                 if (File.Exists(filePath))
+                                 {
+                                     fileContents[filePath] = await File.ReadAllTextAsync(filePath, cancellationToken);
+                                 }
+                                 else
+                                 {
+                                     var fullPath = Path.Combine(repoPath, filePath);
+                                     if (File.Exists(fullPath))
+                                     {
+                                         fileContents[filePath] = await File.ReadAllTextAsync(fullPath, cancellationToken);
+                                     }
+                                 }
+                             }
+                             catch (Exception ex)
+                             {
+                                 _logger.LogWarning(ex, "Failed to read file {FilePath}", filePath);
+                             }
+                         }
+                     }
+                 }
+                 
                  page = await _wikiGenerationService.GeneratePageAsync(
                      module.Name, 
-                     module.Components.ToList(), 
-                     new Dictionary<string, string>(), /* empty contents */
+                     filePaths, 
+                     fileContents,
                      "English",
                      repoPath
                  );

@@ -102,8 +102,8 @@ public class WikiGenerationService : IWikiGenerationService
                         var path = node.Metadata.FilePath;
                         filePaths = new List<string> { path };
 
-                        // 4. Load content if accessible
-                        if (!fileContents.ContainsKey(path))
+                        // 4. Load content if accessible or empty (force reload if empty)
+                        if (!fileContents.ContainsKey(path) || string.IsNullOrWhiteSpace(fileContents[path]))
                         {
                             if (File.Exists(path))
                             {
@@ -127,6 +127,51 @@ public class WikiGenerationService : IWikiGenerationService
                 // Fail gracefully, generation will likely be generic
                 filePaths = new List<string>();
             }
+        }
+        else
+        {
+             // If files provided but contents missing, try to load them
+             foreach(var path in filePaths)
+             {
+                 if (!fileContents.ContainsKey(path) || string.IsNullOrWhiteSpace(fileContents[path]))
+                 {
+                      try 
+                      {
+                           // Check absolute or repo-relative path
+                           if (File.Exists(path))
+                           {
+                               fileContents[path] = await File.ReadAllTextAsync(path);
+                           }
+                           else if (!string.IsNullOrEmpty(repoPath))
+                           {
+                               var fullPath = Path.Combine(repoPath, path);
+                               if (File.Exists(fullPath))
+                               {
+                                   fileContents[path] = await File.ReadAllTextAsync(fullPath);
+                               }
+                           }
+                      }
+                      catch (Exception ex)
+                      {
+                           Console.WriteLine($"Warning: Could not read file content for {path}: {ex.Message}");
+                      }
+                 }
+             }
+         }
+
+        // Validate that we have actual content before proceeding
+        // This prevents hallucinated content generation when no files are available
+        if (filePaths == null || filePaths.Count == 0 || 
+            !fileContents.Any(kv => !string.IsNullOrWhiteSpace(kv.Value)))
+        {
+            Console.WriteLine($"Warning: No content available for page '{pageTitle}'. Skipping detailed generation.");
+            return new WikiPage 
+            { 
+                Id = Guid.NewGuid().ToString(),
+                Title = pageTitle,
+                Content = $"# {pageTitle}\n\n*Documentation pending - no source files available.*",
+                RelevantFiles = new List<string>()
+            };
         }
 
         var contextBuilder = new StringBuilder();
@@ -245,6 +290,22 @@ public class WikiGenerationService : IWikiGenerationService
     private string CleanLLMPageContent(string llmContent, string pageTitle, List<string> filePaths)
     {
         var cleanedContent = llmContent.Trim();
+
+        // 0. Strip markdown code fences that LLMs sometimes wrap around the entire output
+        // This fixes the issue where ```markdown appears at the start and ``` at the end
+        if (cleanedContent.StartsWith("```markdown"))
+        {
+            // Remove opening fence (```markdown) and any immediate newlines
+            cleanedContent = cleanedContent.Substring("```markdown".Length).TrimStart('\n', '\r');
+        }
+        
+        // Remove closing fence if present at the end
+        if (cleanedContent.EndsWith("```"))
+        {
+            cleanedContent = cleanedContent.Substring(0, cleanedContent.Length - 3).TrimEnd();
+        }
+        
+        cleanedContent = cleanedContent.Trim();
 
         // 1. Remove all existing <details> blocks related to source files
         // Using a regex that captures the specific "Relevant source files" summary to avoid removing other details blocks

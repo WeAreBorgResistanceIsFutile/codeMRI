@@ -17,8 +17,3 @@ public interface IAgentCoordinator
     void RegisterAgent(IAgent agent);
     IAgent? GetAgentForTask(AgentTask task);
 }
-
-public interface IAgentFactory
-{
-    IAgent CreateAgent(string agentType);
-}

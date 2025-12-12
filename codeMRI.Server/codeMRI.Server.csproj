@@ -19,4 +19,8 @@
         <ProjectReference Include="..\codeMRI.Server.Api\codeMRI.Server.Api.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="logs\" />
+    </ItemGroup>
+
 </Project>

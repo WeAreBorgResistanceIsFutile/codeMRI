@@ -12,6 +12,7 @@ namespace codeMRI.Core.Tests.Services;
 public class CodeWikiOrchestratorTests
 {
     private Mock<IHierarchicalDecompositionService> _mockDecompositionService;
+    private Mock<IEnhancedDependencyGraphService> _mockGraphService;
     private Mock<IRubricGenerationService> _mockRubricService;
     private Mock<IDocumentationJudgeService> _mockJudgeService;
     private Mock<IWikiGenerationService> _mockWikiGenerationService;
@@ -25,6 +26,7 @@ public class CodeWikiOrchestratorTests
     public void Setup()
     {
         _mockDecompositionService = new Mock<IHierarchicalDecompositionService>();
+        _mockGraphService = new Mock<IEnhancedDependencyGraphService>();
         _mockRubricService = new Mock<IRubricGenerationService>();
         _mockJudgeService = new Mock<IDocumentationJudgeService>();
         _mockWikiGenerationService = new Mock<IWikiGenerationService>();
@@ -40,9 +42,18 @@ public class CodeWikiOrchestratorTests
 
         var mockOptions = new Mock<IOptions<CodeWikiOptions>>();
         mockOptions.Setup(o => o.Value).Returns(new CodeWikiOptions { MaxDegreeOfParallelism = 1 });
+        
+        // Mock GetComponentsAsync and BuildGraphAsync
+        _mockGraphService
+            .Setup(g => g.GetComponentsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CodeComponent>());
+        _mockGraphService
+            .Setup(g => g.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnhancedDependencyGraph());
 
         _orchestrator = new CodeWikiOrchestrator(
             _mockDecompositionService.Object,
+            _mockGraphService.Object,
             _mockRubricService.Object,
             _mockJudgeService.Object,
             _mockWikiGenerationService.Object,

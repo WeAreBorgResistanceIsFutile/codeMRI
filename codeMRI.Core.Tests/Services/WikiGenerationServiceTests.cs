@@ -3,6 +3,8 @@ using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
+using System;
+using System.IO;
 
 #pragma warning disable CS8602 // Dereference of a possibly null reference.
 
@@ -217,10 +219,13 @@ public class WikiGenerationServiceTests
     {
         // Arrange
         var pageTitle = "TestController";
+        var filePaths = new List<string> { "TestController.cs" };
+        var fileContents = new Dictionary<string, string>
+        {
+            { "TestController.cs", "public class TestController { }" }
+        };
         var content = "TestController uses TestService.";
-        var enrichedContent = "[TestController](...) uses [TestService](...).";
-
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+        var enrichedContent = "[TestController](...) uses [TestService](...).";        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(content);
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnhancedDependencyGraph());
@@ -229,7 +234,7 @@ public class WikiGenerationServiceTests
             .Returns(enrichedContent);
 
         // Act
-        var result = await _service.GeneratePageAsync(pageTitle, new List<string>(), new Dictionary<string, string>());
+        var result = await _service.GeneratePageAsync(pageTitle, filePaths, fileContents);
 
         // Assert
         Assert.That(result.Content, Does.Contain(enrichedContent));
@@ -242,26 +247,178 @@ public class WikiGenerationServiceTests
         var pageTitle = "TestService";
         var repoPath = "/src/repo";
         var expectedPath = "Services/TestService.cs";
+        var expectedContent = "public class TestService { }";
         
-        var graph = new EnhancedDependencyGraph();
-        graph.AddNode(pageTitle, new NodeMetadata { FilePath = expectedPath });
+        // Create a temp file to simulate the file being found
+        var tempDir = Path.Combine(Path.GetTempPath(), "test-" + Guid.NewGuid());
+        Directory.CreateDirectory(tempDir);
+        var servicesDir = Path.Combine(tempDir, "Services");
+        Directory.CreateDirectory(servicesDir);
+        var tempFile = Path.Combine(servicesDir, "TestService.cs");
+        File.WriteAllText(tempFile, expectedContent);
 
-        _mockGraphService.Setup(x => x.GetComponentsAsync(repoPath, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<CodeComponent>());
-        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(graph);
-            
+        try
+        {
+            var graph = new EnhancedDependencyGraph();
+            graph.AddNode(pageTitle, new NodeMetadata { FilePath = expectedPath });
+
+            _mockGraphService.Setup(x => x.GetComponentsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<CodeComponent>());
+            _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(graph);
+                
+            _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("# Wiki Page");
+                
+            _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
+                .Returns<string, string>((c, id) => c);
+
+            // Act - Use tempDir as repoPath so the file can be found
+            var result = await _service.GeneratePageAsync(pageTitle, new List<string>(), new Dictionary<string, string>(), "English", tempDir);
+
+            // Assert
+            Assert.That(result.RelevantFiles, Contains.Item(expectedPath));
+            _mockGraphService.Verify(x => x.GetComponentsAsync(tempDir, It.IsAny<CancellationToken>()), Times.Once);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+        }
+    }
+    
+    [Test]
+    public async Task GeneratePageAsync_ShouldReloadContent_WhenMissingOrEmpty()
+    {
+        // Arrange
+        var pageTitle = "TestPage";
+        var repoPath = "/tmp/test-repo";
+        var fileName = "TestFile.cs";
+        var filePath = Path.Combine(repoPath, fileName);
+        var expectedContent = "public class TestFile {}";
+
+        // Mock File.Exists and ReadAllTextAsync using System.IO.Abstractions isn't available here, 
+        // so we rely on the logic that falls back to File.Exists.
+        // Since we can't easily mock static File methods without a wrapper, 
+        // we will assume the integration test environment or use a real temp file.
+        // Given the constraints, let's create a real temp file.
+        
+        Directory.CreateDirectory(repoPath);
+        await File.WriteAllTextAsync(filePath, expectedContent);
+
+        try 
+        {
+            var filePaths = new List<string> { fileName };
+            var fileContents = new Dictionary<string, string> 
+            { 
+                { fileName, "" } // Simulating empty content passed from Orchestrator
+            };
+
+            // Setup mocks
+             _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("# Wiki Page");
+            _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
+                .Returns<string, string>((c, id) => c);
+
+            // Act
+            // We pass repoPath so it can find the file
+            var result = await _service.GeneratePageAsync(pageTitle, filePaths, fileContents, "English", repoPath);
+
+            // Assert
+            // To verify it read the file, we check if the LLM prompt (which we can capture via Verify) contained the code.
+            _mockLlmClient.Verify(x => x.ChatAsync(
+                It.IsAny<string>(), 
+                It.Is<string>(prompt => prompt.Contains(expectedContent)), // The crucial assertion
+                It.IsAny<List<ChatMessage>>(), 
+                It.IsAny<string?>(), 
+                It.IsAny<CancellationToken>()), Times.Once);
+
+        }
+        finally
+        {
+            if (Directory.Exists(repoPath)) Directory.Delete(repoPath, true);
+        }
+    }
+
+    [Test]
+    public async Task GeneratePageAsync_ShouldStripMarkdownCodeFences_FromLLMOutput()
+    {
+        // Arrange: LLM returns content wrapped in ```markdown ... ```
+        var pageTitle = "TestPage";
+        var filePaths = new List<string> { "TestFile.cs" };
+        var fileContents = new Dictionary<string, string>
+        {
+            { "TestFile.cs", "public class TestFile { }" }
+        };
+        
+        var llmOutput = "```markdown\n\n# TestPage\n\nSome test content here.\n\n```";
+
         _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# Wiki Page");
-            
+            .ReturnsAsync(llmOutput);
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnhancedDependencyGraph());
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c);
 
         // Act
-        var result = await _service.GeneratePageAsync(pageTitle, new List<string>(), new Dictionary<string, string>(), "English", repoPath);
+        var result = await _service.GeneratePageAsync(pageTitle, filePaths, fileContents);
 
-        // Assert
-        Assert.That(result.RelevantFiles, Contains.Item(expectedPath));
-        _mockGraphService.Verify(x => x.GetComponentsAsync(repoPath, It.IsAny<CancellationToken>()), Times.Once);
+        // Assert: The cleaned content should not contain code fences
+        Assert.That(result.Content, Does.Not.Contain("```markdown"));
+        Assert.That(result.Content, Does.Not.Contain("```\n</details>"), "Should not have closing fence before details block");
+        Assert.That(result.Content, Does.StartWith("# TestPage"));
+        Assert.That(result.Content, Does.Contain("Some test content here"));
+    }
+
+    [Test]
+    public async Task GeneratePageAsync_ShouldReturnPlaceholder_WhenNoContentAvailable()
+    {
+        // Arrange: Empty file paths and contents
+        var pageTitle = "EmptyPage";
+        var filePaths = new List<string>();
+        var fileContents = new Dictionary<string, string>();
+
+        // Mock graph service (should not be called in this scenario)
+        _mockGraphService.Setup(x => x.GetComponentsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CodeComponent>());
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnhancedDependencyGraph());
+        
+        // Act
+        var result = await _service.GeneratePageAsync(pageTitle, filePaths, fileContents);
+
+        // Assert: Should return placeholder, not call LLM
+        Assert.That(result.Title, Is.EqualTo(pageTitle));
+        Assert.That(result.Content, Does.Contain("Documentation pending"));
+        Assert.That(result.Content, Does.Contain("no source files available"));
+        Assert.That(result.RelevantFiles, Is.Empty);
+        
+        // Verify LLM was never called with empty content
+        _mockLlmClient.Verify(x => x.ChatAsync(
+            It.IsAny<string>(), It.IsAny<string>(), 
+            It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), 
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task GeneratePageAsync_ShouldReturnPlaceholder_WhenFileContentsAreAllEmpty()
+    {
+        // Arrange: Files provided but all contents are empty/whitespace
+        var pageTitle = "EmptyContentPage";
+        var filePaths = new List<string> { "File1.cs", "File2.cs" };
+        var fileContents = new Dictionary<string, string>
+        {
+            { "File1.cs", "" },
+            { "File2.cs", "   " }  // Only whitespace
+        };
+
+        // Act
+        var result = await _service.GeneratePageAsync(pageTitle, filePaths, fileContents);
+
+        // Assert: Should return placeholder, not call LLM
+        Assert.That(result.Content, Does.Contain("Documentation pending"));
+        _mockLlmClient.Verify(x => x.ChatAsync(
+            It.IsAny<string>(), It.IsAny<string>(), 
+            It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), 
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 }

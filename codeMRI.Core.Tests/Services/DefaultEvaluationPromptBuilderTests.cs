@@ -63,7 +63,7 @@ public class DefaultEvaluationPromptBuilderTests
         var prompt = _builder.BuildPrompt(requirement, structure);
 
         // Assert
-        Assert.That(prompt, Does.Contain("JSON format"));
+        Assert.That(prompt, Does.Contain("valid JSON"));
         Assert.That(prompt, Does.Contain("requirement_id"));
         Assert.That(prompt, Does.Contain("score"));
         Assert.That(prompt, Does.Contain("reasoning"));
