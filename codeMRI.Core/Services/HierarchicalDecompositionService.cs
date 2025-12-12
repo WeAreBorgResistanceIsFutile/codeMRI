@@ -59,7 +59,7 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         var moduleTree = new ModuleTree();
 
         // Perform semantic clustering (Cycle -> Layer -> Directory -> Louvain)
-        var semanticClusters = await PerformSemanticClusteringAsync(graph, cancellationToken);
+        var semanticClusters = await PerformSemanticClusteringAsync(graph, repositoryPath, cancellationToken);
 
         // Build hierarchical structure
         await BuildHierarchyAsync(moduleTree, semanticClusters, graph, cancellationToken);
@@ -125,6 +125,7 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     /// </summary>
     private async Task<Dictionary<string, List<string>>> PerformSemanticClusteringAsync(
         EnhancedDependencyGraph graph,
+        string repositoryPath,
         CancellationToken cancellationToken)
     {
         _logger.LogInformation("Performing semantic clustering on {NodeCount} components", graph.NodeCount);
@@ -175,7 +176,7 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
              .Where(n => !assignedNodes.Contains(n.ComponentId))
              .ToList();
 
-        var dirClusters = PerformDirectoryClustering(unassignedForDir);
+        var dirClusters = PerformDirectoryClustering(unassignedForDir, repositoryPath);
         foreach(var kvp in dirClusters)
         {
             clusters[kvp.Key] = kvp.Value;
@@ -197,7 +198,7 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         return clusters;
     }
 
-    private Dictionary<string, List<string>> PerformDirectoryClustering(List<GraphNode> nodes)
+    private Dictionary<string, List<string>> PerformDirectoryClustering(List<GraphNode> nodes, string repositoryPath)
     {
         var clusters = new Dictionary<string, List<string>>();
         
@@ -205,7 +206,11 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         var groups = nodes
             .GroupBy(n => {
                 var dir = Path.GetDirectoryName(n.Metadata.FilePath);
-                return string.IsNullOrEmpty(dir) ? "Root" : dir;
+                if (string.IsNullOrEmpty(dir)) return "Root";
+                
+                // Use relative path for grouping to avoid full system paths in names
+                var relativeDir = Path.GetRelativePath(repositoryPath, dir);
+                return relativeDir == "." ? "Root" : relativeDir;
             })
             .ToList();
 
@@ -217,6 +222,10 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             
             // Clean up name
             var name = group.Key.Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
+            
+            // Clean up potentially unsafe characters or ".." if path is outside repo (unlikely but safe to handle)
+            name = name.Replace("..", "Parent"); 
+            
             if (string.IsNullOrEmpty(name) || name == ".") name = "Root";
             
             clusters[$"Dir_{name}"] = group.Select(n => n.ComponentId).ToList();

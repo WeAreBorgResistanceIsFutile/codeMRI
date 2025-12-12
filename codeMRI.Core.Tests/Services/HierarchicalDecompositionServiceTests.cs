@@ -146,4 +146,34 @@ public class HierarchicalDecompositionServiceTests
         // Abstractness = 1 / 2 = 0.5
         Assert.That(domain.QualityMetrics.Abstractness, Is.EqualTo(0.5).Within(0.01));
     }
+    [Test]
+    public async Task DecomposeHierarchicallyAsync_ShouldUseRelativePaths_ForDirectoryClusters()
+    {
+        // Arrange
+        // Simulate a scenario where absolute paths are used
+        var repoPath = Path.Combine(Path.GetTempPath(), "TestRepo");
+        var featureDir = Path.Combine(repoPath, "Src", "FeatureA");
+        var filePath = Path.Combine(featureDir, "Component1.cs");
+
+        var graph = new EnhancedDependencyGraph();
+        graph.AddNode("Component1", new NodeMetadata { FilePath = filePath });
+        
+        _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(graph);
+        _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GraphAnalysisResult());
+
+        // Act
+        var result = await _service.DecomposeHierarchicallyAsync(repoPath);
+
+        // Assert
+        // The module name should come from "Src/FeatureA", converted to "Src_FeatureA"
+        // It definitely should NOT contain the temp path root.
+        
+        var module = result.Nodes.Values.FirstOrDefault(n => n.Name.Contains("Src_FeatureA"));
+        
+        Assert.That(module, Is.Not.Null, "Should have created a module for Src_FeatureA");
+        Assert.That(module.Name, Does.Not.Contain("TestRepo"), "Module name should be relative, not containing repo root");
+        Assert.That(module.Name, Is.EqualTo("Dir_Src_FeatureA"));
+    }
 }
