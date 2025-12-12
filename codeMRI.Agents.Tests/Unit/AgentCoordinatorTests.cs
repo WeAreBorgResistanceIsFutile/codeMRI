@@ -1,7 +1,9 @@
+using codeMRI.Agents.Configuration;
 using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using NUnit.Framework;
 
@@ -16,7 +18,21 @@ public class AgentCoordinatorTests
         _mockAgent = new Mock<IAgent>();
         _mockLogger = new Mock<ILogger<AgentCoordinator>>();
         _mockDelegationLogger = new Mock<ILogger<DelegationService>>();
-        _delegationService = new DelegationService(_mockDelegationLogger.Object);
+        
+        // Setup AgentSettings mock with default values
+        var mockSettings = new Mock<IOptions<AgentSettings>>();
+        mockSettings.Setup(s => s.Value).Returns(new AgentSettings
+        {
+            EnableDelegation = true,
+            MaxRecursionDepth = 3,
+            ComplexityThresholds = new Dictionary<string, int>
+            {
+                { "ComplexityScore", 8 },
+                { "LineCount", 500 }
+            }
+        });
+        
+        _delegationService = new DelegationService(_mockDelegationLogger.Object, mockSettings.Object);
 
         _coordinator = new AgentCoordinator(
             _delegationService,

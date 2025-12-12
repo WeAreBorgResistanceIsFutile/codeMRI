@@ -1,30 +1,49 @@
+using codeMRI.Agents.Configuration;
 using codeMRI.Agents.Models;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace codeMRI.Agents.Services;
 
 public class DelegationService
 {
     private readonly ILogger<DelegationService> _logger;
+    private readonly AgentSettings _settings;
 
-    public DelegationService(ILogger<DelegationService> logger)
+    public DelegationService(
+        ILogger<DelegationService> logger,
+        IOptions<AgentSettings> settings)
     {
         _logger = logger;
+        _settings = settings.Value;
     }
 
     public bool ShouldDelegate(AgentTask task, object context)
     {
+        // Check if delegation is enabled
+        if (!_settings.EnableDelegation)
+        {
+            return false;
+        }
+
         // Simple heuristic: if payload is a large module or complex component
         if (task.Payload is CodeComponent component)
-            if (component.ComplexityScore > 8 || component.LineCount > 500)
+        {
+            var complexityThreshold = _settings.ComplexityThresholds.GetValueOrDefault("ComplexityScore", 8);
+            var lineCountThreshold = _settings.ComplexityThresholds.GetValueOrDefault("LineCount", 500);
+            
+            if (component.ComplexityScore > complexityThreshold || component.LineCount > lineCountThreshold)
             {
                 _logger.LogInformation(
-                    "Delegation recommended for component {ComponentName} (Complexity: {Complexity})", component.Name,
-                    component.ComplexityScore);
+                    "Delegation recommended for component {ComponentName} (Complexity: {Complexity}, Lines: {Lines})", 
+                    component.Name,
+                    component.ComplexityScore,
+                    component.LineCount);
                 return true;
             }
+        }
 
         return false;
     }
