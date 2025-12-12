@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace codeMRI.Core.Services;
 
@@ -18,11 +20,16 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
     private readonly IJudgeAgent _judgeAgent;
     private readonly ILogger<EvaluationMetricsSystem> _logger;
+    private readonly SemaphoreSlim _semaphore;
 
-    public EvaluationMetricsSystem(ILogger<EvaluationMetricsSystem> logger, IJudgeAgent judgeAgent)
+    public EvaluationMetricsSystem(
+        ILogger<EvaluationMetricsSystem> logger, 
+        IJudgeAgent judgeAgent,
+        IOptions<CodeWikiOptions> options)
     {
         _logger = logger;
         _judgeAgent = judgeAgent;
+        _semaphore = new SemaphoreSlim(options.Value.MaxDegreeOfParallelism);
     }
 
     public async Task<DocumentationQualityMetrics> EvaluateDocumentationQualityAsync(
@@ -125,8 +132,8 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
         _logger.LogInformation("Starting single judge-based evaluation for page: {PageTitle}", page.Title);
 
-        var breakdown = new Dictionary<string, RequirementScore>();
-        var scoresByCategory = new Dictionary<string, List<double>>();
+        var breakdown = new ConcurrentDictionary<string, RequirementScore>();
+        var scoresByCategory = new ConcurrentDictionary<string, ConcurrentBag<double>>();
 
         var overallScore = await EvaluateRubricNodeAsync(page, rubric, breakdown, scoresByCategory);
 
@@ -135,7 +142,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         var qualityScore = new QualityScore
         {
             OverallScore = overallScore,
-            Breakdown = breakdown,
+            Breakdown = new Dictionary<string, RequirementScore>(breakdown),
             Reliability = reliability,
             StandardDeviation = stdDeviation
         };
@@ -159,49 +166,42 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         const int MINIMUM_JUDGES_REQUIRED = 3;
         var meetsMinimumRequirement = judges.Count >= MINIMUM_JUDGES_REQUIRED;
 
-        var individualScores = new List<IndividualJudgeScore>();
-        var allJudgeScores = new List<double>();
-        var judgeReliabilities = new Dictionary<string, double>();
+        var judgeTasks = new List<Task<(string JudgeId, QualityScore? Score)>>();
 
-        // Evaluate with each judge
         for (int i = 0; i < judges.Count; i++)
         {
             var judge = judges[i];
             var judgeId = $"Judge_{i + 1}";
-            
-            try
-            {
-                _logger.LogInformation("Evaluating with {JudgeId}", judgeId);
-                
-                var score = await EvaluateWithSpecificJudgeAsync(page, rubric, judge);
-                
-                var individualScore = new IndividualJudgeScore
-                {
-                    JudgeId = judgeId,
-                    OverallScore = score.OverallScore,
-                    Breakdown = score.Breakdown ?? new Dictionary<string, RequirementScore>(),
-                    Reliability = score.Reliability,
-                    StandardDeviation = score.StandardDeviation ?? new Dictionary<string, double>()
-                };
-                
-                individualScores.Add(individualScore);
-                allJudgeScores.Add(score.OverallScore);
-                judgeReliabilities[judgeId] = score.Reliability;
-                
-                _logger.LogInformation("{JudgeId} completed evaluation with score: {Score}, reliability: {Reliability}", 
-                    judgeId, score.OverallScore, score.Reliability);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error evaluating with {JudgeId}", judgeId);
-                // Continue with other judges even if one fails
-                continue;
-            }
+            judgeTasks.Add(EvaluateJudgeSafeAsync(page, rubric, judge, judgeId));
         }
 
-        if (!individualScores.Any())
+        var results = await Task.WhenAll(judgeTasks);
+        var validResults = results.Where(r => r.Score != null).ToList();
+
+        if (!validResults.Any())
         {
             throw new InvalidOperationException("All judge evaluations failed");
+        }
+
+        var individualScores = new List<IndividualJudgeScore>();
+        var judgeReliabilities = new Dictionary<string, double>();
+
+        foreach (var (judgeId, score) in validResults)
+        {
+            var individualScore = new IndividualJudgeScore
+            {
+                JudgeId = judgeId,
+                OverallScore = score.OverallScore,
+                Breakdown = score.Breakdown ?? new Dictionary<string, RequirementScore>(),
+                Reliability = score.Reliability,
+                StandardDeviation = score.StandardDeviation ?? new Dictionary<string, double>()
+            };
+
+            individualScores.Add(individualScore);
+            judgeReliabilities[judgeId] = score.Reliability;
+
+            _logger.LogInformation("{JudgeId} completed evaluation with score: {Score}, reliability: {Reliability}", 
+                judgeId, score.OverallScore, score.Reliability);
         }
 
         // Calculate consensus metrics
@@ -230,10 +230,25 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         return consensusQualityScore;
     }
 
+    private async Task<(string JudgeId, QualityScore? Score)> EvaluateJudgeSafeAsync(WikiPage page, EvaluationRubric rubric, IJudgeAgent judge, string judgeId)
+    {
+        try
+        {
+            _logger.LogInformation("Evaluating with {JudgeId}", judgeId);
+            var score = await EvaluateWithSpecificJudgeAsync(page, rubric, judge);
+            return (judgeId, score);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error evaluating with {JudgeId}", judgeId);
+            return (judgeId, null);
+        }
+    }
+
     private async Task<QualityScore> EvaluateWithSpecificJudgeAsync(WikiPage page, EvaluationRubric rubric, IJudgeAgent judge)
     {
-        var breakdown = new Dictionary<string, RequirementScore>();
-        var scoresByCategory = new Dictionary<string, List<double>>();
+        var breakdown = new ConcurrentDictionary<string, RequirementScore>();
+        var scoresByCategory = new ConcurrentDictionary<string, ConcurrentBag<double>>();
 
         var overallScore = await EvaluateRubricNodeWithJudgeAsync(page, rubric, breakdown, scoresByCategory, judge);
 
@@ -242,7 +257,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         return new QualityScore
         {
             OverallScore = overallScore,
-            Breakdown = breakdown,
+            Breakdown = new Dictionary<string, RequirementScore>(breakdown),
             Reliability = reliability,
             StandardDeviation = stdDeviation
         };
@@ -251,22 +266,31 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
     private async Task<double> EvaluateRubricNodeWithJudgeAsync(
         WikiPage page,
         RubricNode node,
-        Dictionary<string, RequirementScore> breakdown,
-        Dictionary<string, List<double>> scoresByCategory,
+        ConcurrentDictionary<string, RequirementScore> breakdown,
+        ConcurrentDictionary<string, ConcurrentBag<double>> scoresByCategory,
         IJudgeAgent judge)
     {
         if (node is RubricRequirement requirement)
         {
-            var score = await judge.EvaluateRequirementAsync(page, requirement);
+            RequirementScore score;
+            await _semaphore.WaitAsync();
+            try
+            {
+                score = await judge.EvaluateRequirementAsync(page, requirement);
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+
             breakdown[requirement.Title] = score;
 
             // Only include successful evaluations in score aggregations
             if (!score.EvaluationFailed)
             {
                 var category = GetParentCategory(node);
-                if (!scoresByCategory.ContainsKey(category))
-                    scoresByCategory[category] = new List<double>();
-                scoresByCategory[category].Add(score.Score);
+                var categoryScores = scoresByCategory.GetOrAdd(category, _ => new ConcurrentBag<double>());
+                categoryScores.Add(score.Score);
 
                 return score.Score;
             }
@@ -277,17 +301,24 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
         if (node.Children != null && node.Children.Any())
         {
+            var tasks = node.Children.Select(async child => 
+            {
+                var s = await EvaluateRubricNodeWithJudgeAsync(page, child, breakdown, scoresByCategory, judge);
+                return (Score: s, Weight: child.Weight);
+            });
+
+            var results = await Task.WhenAll(tasks);
+            
             var childScores = new List<double>();
             var childWeights = new List<double>();
 
-            foreach (var child in node.Children)
+            foreach (var result in results)
             {
-                var childScore = await EvaluateRubricNodeWithJudgeAsync(page, child, breakdown, scoresByCategory, judge);
-                // Only include successful evaluations
-                if (childScore >= 0)
+                 // Only include successful evaluations
+                if (result.Score >= 0)
                 {
-                    childScores.Add(childScore);
-                    childWeights.Add(child.Weight);
+                    childScores.Add(result.Score);
+                    childWeights.Add(result.Weight);
                 }
             }
 
@@ -426,32 +457,48 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
     private async Task<double> EvaluateRubricNodeAsync(
         WikiPage page,
         RubricNode node,
-        Dictionary<string, RequirementScore> breakdown,
-        Dictionary<string, List<double>> scoresByCategory)
+        ConcurrentDictionary<string, RequirementScore> breakdown,
+        ConcurrentDictionary<string, ConcurrentBag<double>> scoresByCategory)
     {
         if (node is RubricRequirement requirement)
         {
-            var score = await _judgeAgent.EvaluateRequirementAsync(page, requirement);
+            RequirementScore score;
+            await _semaphore.WaitAsync();
+            try
+            {
+                score = await _judgeAgent.EvaluateRequirementAsync(page, requirement);
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+            
             breakdown[requirement.Title] = score;
 
             var category = GetParentCategory(node);
-            if (!scoresByCategory.ContainsKey(category))
-                scoresByCategory[category] = new List<double>();
-            scoresByCategory[category].Add(score.Score);
+            var categoryScores = scoresByCategory.GetOrAdd(category, _ => new ConcurrentBag<double>());
+            categoryScores.Add(score.Score);
 
             return score.Score;
         }
 
         if (node.Children != null && node.Children.Any())
         {
+            var tasks = node.Children.Select(async child => 
+            {
+                var s = await EvaluateRubricNodeAsync(page, child, breakdown, scoresByCategory);
+                return (Score: s, Weight: child.Weight);
+            });
+
+            var results = await Task.WhenAll(tasks);
+            
             var childScores = new List<double>();
             var childWeights = new List<double>();
 
-            foreach (var child in node.Children)
+            foreach (var result in results)
             {
-                var childScore = await EvaluateRubricNodeAsync(page, child, breakdown, scoresByCategory);
-                childScores.Add(childScore);
-                childWeights.Add(child.Weight);
+                childScores.Add(result.Score);
+                childWeights.Add(result.Weight);
             }
 
             return CalculateWeightedAverage(childScores, childWeights);
@@ -478,12 +525,14 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
     }
 
     private static (double Reliability, Dictionary<string, double> StandardDeviation)
-        CalculateReliabilityMetrics(Dictionary<string, List<double>> scoresByCategory)
+        CalculateReliabilityMetrics(ConcurrentDictionary<string, ConcurrentBag<double>> scoresByCategory)
     {
         var stdDeviation = new Dictionary<string, double>();
         var reliabilities = new List<double>();
 
-        foreach (var (category, scores) in scoresByCategory)
+        foreach (var (category, bag) in scoresByCategory)
+        {
+            var scores = bag.ToList();
             if (scores.Count > 1)
             {
                 var mean = scores.Average();
@@ -500,6 +549,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
                 stdDeviation[category] = 0.0;
                 reliabilities.Add(1.0);
             }
+        }
 
         var overallReliability = reliabilities.Any() ? reliabilities.Average() : 1.0;
         return (overallReliability, stdDeviation);

@@ -32,6 +32,8 @@ public class WireUp
         
         services.AddSingleton<ICSharpParser, RoslynCSharpParser>();
         services.AddSingleton<AgentMessageBus>();
+        services.AddSingleton<IAgentTelemetryService, AgentTelemetryService>();
+        services.AddSingleton<AgentMessageBusProgressBridge>();
         services.AddScoped<DelegationService>();
         services.AddScoped<IAgent, AnalyzerAgent>();
         services.AddScoped<IAgent, DocumenterAgent>();

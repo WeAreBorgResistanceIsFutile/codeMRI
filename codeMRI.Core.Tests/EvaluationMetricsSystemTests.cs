@@ -2,6 +2,7 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace codeMRI.Core.Tests;
@@ -14,11 +15,17 @@ public class EvaluationMetricsSystemTests
     {
         _mockLogger = new Mock<ILogger<EvaluationMetricsSystem>>();
         _mockJudgeAgent = new Mock<IJudgeAgent>();
-        _service = new EvaluationMetricsSystem(_mockLogger.Object, _mockJudgeAgent.Object);
+        
+        var options = new CodeWikiOptions { MaxDegreeOfParallelism = 5 };
+        _mockOptions = new Mock<IOptions<CodeWikiOptions>>();
+        _mockOptions.Setup(o => o.Value).Returns(options);
+        
+        _service = new EvaluationMetricsSystem(_mockLogger.Object, _mockJudgeAgent.Object, _mockOptions.Object);
     }
 
     private Mock<ILogger<EvaluationMetricsSystem>> _mockLogger;
     private Mock<IJudgeAgent> _mockJudgeAgent;
+    private Mock<IOptions<CodeWikiOptions>> _mockOptions;
     private EvaluationMetricsSystem _service;
 
     [Test]

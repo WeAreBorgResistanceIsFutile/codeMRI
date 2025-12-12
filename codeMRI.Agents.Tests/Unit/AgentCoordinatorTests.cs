@@ -32,7 +32,8 @@ public class AgentCoordinatorTests
             }
         });
         
-        _delegationService = new DelegationService(_mockDelegationLogger.Object, mockSettings.Object);
+        var mockMessageBus = new Mock<AgentMessageBus>(Mock.Of<ILogger<AgentMessageBus>>());
+        _delegationService = new DelegationService(_mockDelegationLogger.Object, mockSettings.Object, mockMessageBus.Object);
 
         _coordinator = new AgentCoordinator(
             _delegationService,

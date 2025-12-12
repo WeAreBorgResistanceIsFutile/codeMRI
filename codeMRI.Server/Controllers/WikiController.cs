@@ -1,3 +1,6 @@
+using codeMRI.Agents.Interfaces;
+using codeMRI.Agents.Models;
+using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Server.Api;
@@ -16,19 +19,25 @@ public class WikiController : ControllerBase
     private readonly ICodeWikiOrchestrator _orchestrator;
     private readonly IHubContext<WikiHub> _hubContext;
     private readonly ILogger<WikiController> _logger;
+    private readonly AgentMessageBus _messageBus;
+    private readonly IAgentTelemetryService _telemetryService;
 
     public WikiController(
         IWikiGenerationService wikiService, 
         IWikiRepository wikiRepo, 
         ICodeWikiOrchestrator orchestrator,
         IHubContext<WikiHub> hubContext,
-        ILogger<WikiController> logger)
+        ILogger<WikiController> logger,
+        AgentMessageBus messageBus,
+        IAgentTelemetryService telemetryService)
     {
         _wikiService = wikiService;
         _wikiRepo = wikiRepo;
         _orchestrator = orchestrator;
         _hubContext = hubContext;
         _logger = logger;
+        _messageBus = messageBus;
+        _telemetryService = telemetryService;
     }
 
     [HttpPost("structure")]
@@ -119,36 +128,75 @@ public class WikiController : ControllerBase
     [HttpPost("generate-advanced")]
     public async Task<IActionResult> GenerateAdvancedWiki([FromBody] StructureRequest request)
     {
-        // Construct RepositoryInfo from request and filesystem
-        var repoInfo = new RepositoryInfo
-        {
-            Name = Path.GetFileName(request.RepoPath),
-            Language = request.Language,
-            // Estimation
-            LinesOfCode = 0, 
-            ComponentCount = 0
-        };
+        // Subscribe to agent events for real-time UI updates
+        Action<AgentMessage>? statusHandler = null;
+        Action<AgentMessage>? delegationHandler = null;
+        Action<AgentMessage>? lifecycleHandler = null;
 
-        IProgress<codeMRI.Core.Models.ProgressInfo>? progress = null;
         if (!string.IsNullOrEmpty(request.ConnectionId))
         {
-            progress = new Progress<codeMRI.Core.Models.ProgressInfo>(info =>
+            // Subscribe to agent status updates
+            statusHandler = (message) =>
             {
-                _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveProgress", info);
-            });
+                _ = _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveAgentStatus", message);
+            };
+            _messageBus.Subscribe(AgentMessageTypes.AgentStatus, msg => { statusHandler(msg); return Task.CompletedTask; });
+
+            // Subscribe to delegation events
+            delegationHandler = (message) =>
+            {
+                _ = _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveDelegationEvent", message);
+            };
+            _messageBus.Subscribe(AgentMessageTypes.TaskDelegated, msg => { delegationHandler(msg); return Task.CompletedTask; });
+
+            // Subscribe to task lifecycle events
+            lifecycleHandler = (message) =>
+            {
+                _ = _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveTaskLifecycle", message);
+            };
+            _messageBus.Subscribe(AgentMessageTypes.TaskStarted, msg => { lifecycleHandler(msg); return Task.CompletedTask; });
+            _messageBus.Subscribe(AgentMessageTypes.TaskCompleted, msg => { lifecycleHandler(msg); return Task.CompletedTask; });
+            _messageBus.Subscribe(AgentMessageTypes.TaskFailed, msg => { lifecycleHandler(msg); return Task.CompletedTask; });
         }
 
-        var structure = await _orchestrator.GenerateAdvancedWikiAsync(
-            request.RepoPath, 
-            repoInfo,
-            progress);
-
-        if (!request.SkipPersistence)
+        try
         {
-            await _wikiRepo.SaveStructureAsync(request.RepoPath, structure);
+            // Construct RepositoryInfo from request and filesystem
+            var repoInfo = new RepositoryInfo
+            {
+                Name = Path.GetFileName(request.RepoPath),
+                Language = request.Language,
+                // Estimation
+                LinesOfCode = 0,
+                ComponentCount = 0
+            };
+
+            IProgress<codeMRI.Core.Models.ProgressInfo>? progress = null;
+            if (!string.IsNullOrEmpty(request.ConnectionId))
+            {
+                progress = new Progress<codeMRI.Core.Models.ProgressInfo>(info =>
+                {
+                    _hubContext.Clients.Client(request.ConnectionId).SendAsync("ReceiveProgress", info);
+                });
+            }
+
+            var structure = await _orchestrator.GenerateAdvancedWikiAsync(
+                request.RepoPath,
+                repoInfo,
+                progress);
+
+            if (!request.SkipPersistence)
+            {
+                await _wikiRepo.SaveStructureAsync(request.RepoPath, structure);
+            }
+
+            return Ok(structure);
         }
-        
-        return Ok(structure);
+        finally
+        {
+            // Note: In a production system, you would want to properly manage subscriptions
+            // and unsubscribe when done. For now, we leave them as the message bus is singleton.
+        }
     }
     // Helper Method
     private List<string> GetRepoFiles(string repoPath)

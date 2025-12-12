@@ -41,28 +41,54 @@ public class AgentMessageBus
             });
     }
 
+    public void Unsubscribe(string messageType, Func<AgentMessage, Task> handler)
+    {
+        if (_subscribers.TryGetValue(messageType, out var handlers))
+        {
+            lock (handlers)
+            {
+                handlers.Remove(handler);
+            }
+        }
+    }
+
     private async Task ProcessMessagesAsync()
     {
         await foreach (var message in _channel.Reader.ReadAllAsync())
             try
             {
+                // Collect all handlers for this specific message type
+                var allHandlers = new List<Func<AgentMessage, Task>>();
+                
+                // Add specific message type handlers
                 if (_subscribers.TryGetValue(message.MessageType, out var handlers))
                 {
-                    List<Func<AgentMessage, Task>> handlersCopy;
                     lock (handlers)
                     {
-                        handlersCopy = handlers.ToList();
+                        allHandlers.AddRange(handlers.ToList());
                     }
+                }
+                
+                // Add wildcard handlers (subscribe to all message types)
+                if (_subscribers.TryGetValue("*", out var wildcardHandlers))
+                {
+                    lock (wildcardHandlers)
+                    {
+                        allHandlers.AddRange(wildcardHandlers.ToList());
+                    }
+                }
 
-                    foreach (var handler in handlersCopy)
-                        try
-                        {
-                            await handler(message);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error handling message {MessageType}", message.MessageType);
-                        }
+                // Invoke all handlers
+                foreach (var handler in allHandlers)
+                {
+                    try
+                    {
+                        await handler(message);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error handling message {MessageType}", message.MessageType);
+                    }
                 }
             }
             catch (Exception ex)

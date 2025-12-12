@@ -12,31 +12,62 @@ public class DocumenterAgent : BaseAgent
         IASTServiceClient? astService = null)
         : base(messageBus, logger, astService)
     {
+        // Subscribe to analysis results for potential use
+        messageBus.Subscribe(AgentMessageTypes.AnalysisComplete, async (message) =>
+        {
+            _logger.LogDebug("Received analysis results: {Content}", message.Content);
+        });
     }
 
     public override string Role => "Documenter";
 
-    public override Task<AgentResult> ExecuteAsync(AgentTask task, CancellationToken cancellationToken)
+    public override async Task<AgentResult> ExecuteAsync(AgentTask task, CancellationToken cancellationToken)
     {
+        await PublishTaskStartedAsync(task);
         _logger.LogInformation("DocumenterAgent executing task {TaskId}", task.Id);
+        await PublishStatusAsync("Generating documentation", task.Id);
 
-        if (task.Payload is CodeComponent component)
+        try
         {
-            var content = GenerateComponentContent(component);
-            return Task.FromResult(new AgentResult
-            {
-                TaskId = task.Id,
-                Success = true,
-                Output = new WikiPage
-                {
-                    Id = component.Id,
-                    Title = component.Name,
-                    Content = content
-                }
-            });
-        }
+            AgentResult result;
 
-        return Task.FromResult(new AgentResult { TaskId = task.Id, Success = false, Errors = { "Invalid payload" } });
+            if (task.Payload is CodeComponent component)
+            {
+                var content = GenerateComponentContent(component);
+                result = new AgentResult
+                {
+                    TaskId = task.Id,
+                    Success = true,
+                    Output = new WikiPage
+                    {
+                        Id = component.Id,
+                        Title = component.Name,
+                        Content = content
+                    }
+                };
+            }
+            else
+            {
+                result = new AgentResult { TaskId = task.Id, Success = false, Errors = { "Invalid payload" } };
+            }
+
+            // Publish documentation complete
+            await _messageBus.PublishAsync(new AgentMessage
+            {
+                SenderId = Id,
+                MessageType = AgentMessageTypes.DocumentationComplete,
+                Content = new { TaskId = task.Id }
+            });
+
+            await PublishTaskCompletedAsync(task, result);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in DocumenterAgent");
+            await PublishTaskFailedAsync(task, ex);
+            return new AgentResult { TaskId = task.Id, Success = false, Errors = { ex.Message } };
+        }
     }
 
     private string GenerateComponentContent(CodeComponent component)

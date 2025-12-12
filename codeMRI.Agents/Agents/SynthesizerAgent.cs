@@ -16,28 +16,55 @@ public class SynthesizerAgent : BaseAgent
 
     public override string Role => "Synthesizer";
 
-    public override Task<AgentResult> ExecuteAsync(AgentTask task, CancellationToken cancellationToken)
+    public override async Task<AgentResult> ExecuteAsync(AgentTask task, CancellationToken cancellationToken)
     {
-        // Logic to combine wiki pages or structure
-        if (task.Payload is List<WikiPage> pages)
+        await PublishTaskStartedAsync(task);
+        await PublishStatusAsync("Synthesizing results", task.Id);
+
+        try
         {
-            var structure = new WikiStructure
+            AgentResult result;
+
+            // Logic to combine wiki pages or structure
+            if (task.Payload is List<WikiPage> pages)
             {
-                Title = "Generated Documentation",
-                Sections = new List<WikiSection>
+                var structure = new WikiStructure
                 {
-                    new() { Title = "Components", PageRefs = pages.Select(p => p.Id).ToList() }
-                }
-            };
+                    Title = "Generated Documentation",
+                    Sections = new List<WikiSection>
+                    {
+                        new() { Title = "Components", PageRefs = pages.Select(p => p.Id).ToList() }
+                    }
+                };
 
-            return Task.FromResult(new AgentResult
+                result = new AgentResult
+                {
+                    TaskId = task.Id,
+                    Success = true,
+                    Output = structure
+                };
+            }
+            else
             {
-                TaskId = task.Id,
-                Success = true,
-                Output = structure
-            });
-        }
+                result = new AgentResult { TaskId = task.Id, Success = true };
+            }
 
-        return Task.FromResult(new AgentResult { TaskId = task.Id, Success = true });
+            // Publish synthesis complete
+            await _messageBus.PublishAsync(new AgentMessage
+            {
+                SenderId = Id,
+                MessageType = AgentMessageTypes.SynthesisComplete,
+                Content = new { TaskId = task.Id }
+            });
+
+            await PublishTaskCompletedAsync(task, result);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in SynthesizerAgent");
+            await PublishTaskFailedAsync(task, ex);
+            return new AgentResult { TaskId = task.Id, Success = false, Errors = { ex.Message } };
+        }
     }
 }

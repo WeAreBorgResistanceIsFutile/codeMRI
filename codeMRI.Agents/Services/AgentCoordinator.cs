@@ -53,6 +53,21 @@ public class AgentCoordinator : IAgentCoordinator
             _logger.LogInformation("Task {TaskId} delegated to {Target}. Reason: {Reason}", task.Id,
                 delegationRequest.TargetAgentType, delegationRequest.Reason);
 
+            // Publish delegation event for telemetry and UI updates
+            await _delegationService.MessageBus.PublishAsync(new AgentMessage
+            {
+                SenderId = agent.Id,
+                MessageType = AgentMessageTypes.TaskDelegated,
+                Content = new 
+                { 
+                    TaskId = task.Id,
+                    FromAgent = agent.Role,
+                    ToAgent = delegationRequest.TargetAgentType,
+                    Reason = delegationRequest.Reason,
+                    Timestamp = DateTime.UtcNow
+                }
+            });
+
             // Ensure SubTask has the correct target type
             var subTask = delegationRequest.SubTask with { Type = delegationRequest.TargetAgentType };
 

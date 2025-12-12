@@ -136,8 +136,38 @@ public abstract class BaseAgent : IAgent
         await _messageBus.PublishAsync(new AgentMessage
         {
             SenderId = Id,
-            MessageType = "AgentStatus",
-            Content = new { Status = status, TaskId = taskId }
+            MessageType = AgentMessageTypes.AgentStatus,
+            Content = new { Status = status, TaskId = taskId, Role }
+        });
+    }
+
+    protected async Task PublishTaskStartedAsync(AgentTask task)
+    {
+        await _messageBus.PublishAsync(new AgentMessage
+        {
+            SenderId = Id,
+            MessageType = AgentMessageTypes.TaskStarted,
+            Content = new { TaskId = task.Id, Role, TaskType = task.Type, Timestamp = DateTime.UtcNow }
+        });
+    }
+
+    protected async Task PublishTaskCompletedAsync(AgentTask task, AgentResult result)
+    {
+        await _messageBus.PublishAsync(new AgentMessage
+        {
+            SenderId = Id,
+            MessageType = AgentMessageTypes.TaskCompleted,
+            Content = new { TaskId = task.Id, Role, Success = result.Success, Timestamp = DateTime.UtcNow }
+        });
+    }
+
+    protected async Task PublishTaskFailedAsync(AgentTask task, Exception ex)
+    {
+        await _messageBus.PublishAsync(new AgentMessage
+        {
+            SenderId = Id,
+            MessageType = AgentMessageTypes.TaskFailed,
+            Content = new { TaskId = task.Id, Role, Error = ex.Message, Timestamp = DateTime.UtcNow }
         });
     }
 }

@@ -26,7 +26,8 @@ public class DelegationServiceTests
     {
         var mockSettings = new Mock<IOptions<AgentSettings>>();
         mockSettings.Setup(s => s.Value).Returns(settings);
-        return new DelegationService(_mockLogger.Object, mockSettings.Object);
+        var mockMessageBus = new Mock<AgentMessageBus>(Mock.Of<ILogger<AgentMessageBus>>());
+        return new DelegationService(_mockLogger.Object, mockSettings.Object, mockMessageBus.Object);
     }
 
     [Test]

@@ -11,13 +11,16 @@ public class DelegationService
 {
     private readonly ILogger<DelegationService> _logger;
     private readonly AgentSettings _settings;
+    public readonly AgentMessageBus MessageBus;
 
     public DelegationService(
         ILogger<DelegationService> logger,
-        IOptions<AgentSettings> settings)
+        IOptions<AgentSettings> settings,
+        AgentMessageBus messageBus)
     {
         _logger = logger;
         _settings = settings.Value;
+        MessageBus = messageBus;
     }
 
     public bool ShouldDelegate(AgentTask task, object context)

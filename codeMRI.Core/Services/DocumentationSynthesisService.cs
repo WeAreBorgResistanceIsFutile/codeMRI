@@ -48,6 +48,7 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
         var themePrompt = $@"
 Analyze the following child module summaries for the parent module '{module.Name}'.
 Identify common architectural themes, design patterns, and cross-cutting concerns.
+IMPORTANT: Only identify themes that are clearly supported by the provided child module summaries. Do not invent themes.
 
 Child Modules:
 {summariesBuilder}
@@ -69,11 +70,12 @@ Identified Themes & Patterns:
 Child Modules:
 {summariesBuilder}
 
-Instructions:
-1. Create a high-level overview.
-2. Explain how the child modules collaborate to fulfill the parent module's responsibilities.
-3. Highlight the identified themes and patterns.
-4. Provide a usage guide or feature summary if applicable.
+ Instructions:
+ 1. Create a high-level overview based ONLY on the provided summaries and themes.
+ 2. Explain how the child modules collaborate to fulfill the parent module's responsibilities.
+ 3. Highlight the identified themes and patterns.
+ 4. Provide a usage guide or feature summary if applicable.
+ 5. DO NOT hallucinate classes or components not mentioned in the child modules.
 ";
 
         var overviewContent = await _llmClient.ChatAsync("You are a technical documentation expert.", synthesisPrompt,

@@ -108,6 +108,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
             requirements, 
             structure, 
             judgeModelsList, 
+            maxConcurrency: _semaphore.CurrentCount > 0 ? _semaphore.CurrentCount : 5, // Pass the configured max concurrency
             cancellationToken: cancellationToken);
 
         // Log results

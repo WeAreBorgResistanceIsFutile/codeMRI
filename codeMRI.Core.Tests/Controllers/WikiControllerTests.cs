@@ -1,3 +1,5 @@
+using codeMRI.Agents.Interfaces;
+using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
 using codeMRI.Server.Api;
 using codeMRI.Server.Controllers;
@@ -17,6 +19,8 @@ public class WikiControllerTests
     private Mock<ICodeWikiOrchestrator> _mockOrchestrator;
     private Mock<IHubContext<WikiHub>> _mockHubContext;
     private Mock<ILogger<WikiController>> _mockLogger;
+    private Mock<AgentMessageBus> _mockMessageBus;
+    private Mock<IAgentTelemetryService> _mockTelemetryService;
     private WikiController _controller;
 
     [SetUp]
@@ -27,7 +31,9 @@ public class WikiControllerTests
         _mockOrchestrator = new Mock<ICodeWikiOrchestrator>();
         _mockHubContext = new Mock<IHubContext<WikiHub>>();
         _mockLogger = new Mock<ILogger<WikiController>>();
-        _controller = new WikiController(_mockWikiService.Object, _mockWikiRepo.Object, _mockOrchestrator.Object, _mockHubContext.Object, _mockLogger.Object);
+        _mockMessageBus = new Mock<AgentMessageBus>(Mock.Of<ILogger<AgentMessageBus>>());
+        _mockTelemetryService = new Mock<IAgentTelemetryService>();
+        _controller = new WikiController(_mockWikiService.Object, _mockWikiRepo.Object, _mockOrchestrator.Object, _mockHubContext.Object, _mockLogger.Object, _mockMessageBus.Object, _mockTelemetryService.Object);
     }
 
     [Test]
