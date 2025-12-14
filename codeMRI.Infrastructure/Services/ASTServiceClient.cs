@@ -216,6 +216,7 @@ public class ASTServiceClient : IASTServiceClient
                                                       Random.Shared.Next(0, 500));
                 await Task.Delay(delay, cancellationToken);
             }
+
             catch (TaskCanceledException ex) when (attempt < maxRetries && !cancellationToken.IsCancellationRequested)
             {
                 _logger.LogWarning(ex,
@@ -224,6 +225,16 @@ public class ASTServiceClient : IASTServiceClient
 
                 var delay = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
                 await Task.Delay(delay, cancellationToken);
+            }
+            catch (HttpRequestException ex) when (ex.InnerException is System.IO.IOException)
+            {
+                _logger.LogWarning(ex, "AST Service connection dropped (Response ended prematurely) for {FilePath} on attempt {Attempt}. Likely payload size issue.", filePath, attempt);
+                 if (attempt < maxRetries) 
+                 {
+                    await Task.Delay(1000 * attempt, cancellationToken);
+                    continue;
+                 }
+                 throw;
             }
             catch (Exception ex)
             {

@@ -146,11 +146,35 @@
     {
         if (AppState.IsBusy) return;
 
+        // Check cache first
+        var cachedPage = GetPageMetadata(pageTitle);
+        if (cachedPage != null && !string.IsNullOrEmpty(cachedPage.Content))
+        {
+            AppState.SetCurrentPage(cachedPage);
+            return;
+        }
+
         AppState.SetBusy(true, $"Loading '{pageTitle}'...");
         
         try
         {
-            var page = await WikiApi.GeneratePageAsync(AppState.RepoPath, pageTitle, new List<string>());
+            var relevantFiles = cachedPage?.RelevantFiles ?? new List<string>();
+            var page = await WikiApi.GeneratePageAsync(AppState.RepoPath, pageTitle, relevantFiles);
+            
+            // Update cache
+            if (AppState.Structure?.Pages != null)
+            {
+                var index = AppState.Structure.Pages.FindIndex(p => p.Title == page.Title);
+                if (index != -1)
+                {
+                    AppState.Structure.Pages[index] = page;
+                }
+                else
+                {
+                    AppState.Structure.Pages.Add(page);
+                }
+            }
+            
             AppState.SetCurrentPage(page);
         }
         catch (Exception ex)

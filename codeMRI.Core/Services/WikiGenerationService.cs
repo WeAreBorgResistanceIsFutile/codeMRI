@@ -1,9 +1,9 @@
 using System.Text;
 using System.Text.Json;
-using System.Xml.Linq;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
+
 
 namespace codeMRI.Core.Services;
 
@@ -31,42 +31,6 @@ public class WikiGenerationService : IWikiGenerationService
         _referenceManagementService = referenceManagementService;
         _logger = logger;
         _documentationModel = documentationModel;
-    }
-
-    public async Task<WikiStructure> GenerateStructureAsync(string fileTree, string readme, string language = "English")
-    {
-        var prompt = PromptTemplates.StructurePrompt(fileTree, readme, language);
-        var response = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>(), _documentationModel);
-
-        var cleanXml = response.Replace("```xml", "").Replace("```", "").Trim();
-        try
-        {
-            var start = cleanXml.IndexOf("<wiki_structure>");
-            var end = cleanXml.LastIndexOf("</wiki_structure>");
-            if (start >= 0 && end > start) cleanXml = cleanXml.Substring(start, end - start + 17);
-
-            var doc = XDocument.Parse(cleanXml);
-            var root = doc.Element("wiki_structure");
-
-            var structure = new WikiStructure
-            {
-                Title = root?.Element("title")?.Value ?? "Wiki",
-                Description = root?.Element("description")?.Value ?? "",
-                Sections = root?.Element("sections")?.Elements("section").Select(s => new WikiSection
-                {
-                    Id = s.Attribute("id")?.Value ?? Guid.NewGuid().ToString(),
-                    Title = s.Element("title")?.Value ?? "Section",
-                    PageRefs = s.Element("pages")?.Elements("page_ref").Select(p => p.Value).ToList() ??
-                               new List<string>()
-                }).ToList() ?? new List<WikiSection>()
-            };
-            return structure;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error generating structure from response: {Message}", ex.Message);
-            return new WikiStructure { Title = "Error generating structure", Sections = new List<WikiSection>() };
-        }
     }
 
     public async Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths,
@@ -352,9 +316,121 @@ public class WikiGenerationService : IWikiGenerationService
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Generates a wiki page using the enhanced prompt with full module context.
+    /// This provides richer documentation by including quality metrics, dependencies, and related pages.
+    /// </summary>
+    public async Task<WikiPage> GenerateEnhancedPageAsync(
+        ModuleNode module,
+        List<WikiPage>? relatedPages,
+        ModulePageContext context,
+        Dictionary<string, string> fileContents,
+        string language = "English",
+        string? repoPath = null)
+    {
+        var filePaths = module.Components.ToList();
+        
+        // Ensure we have file contents for all components
+        foreach (var componentId in module.Components)
+        {
+            if (!fileContents.ContainsKey(componentId) || string.IsNullOrWhiteSpace(fileContents[componentId]))
+            {
+                try
+                {
+                    if (File.Exists(componentId))
+                    {
+                        fileContents[componentId] = await File.ReadAllTextAsync(componentId);
+                    }
+                    else if (!string.IsNullOrEmpty(repoPath))
+                    {
+                        var fullPath = Path.Combine(repoPath, componentId.TrimStart('/', '\\'));
+                        if (File.Exists(fullPath))
+                        {
+                            fileContents[componentId] = await File.ReadAllTextAsync(fullPath);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not read file content for component {ComponentId}", componentId);
+                }
+            }
+        }
+
+        // Validate content availability
+        var availableFiles = fileContents.Where(kv => !string.IsNullOrWhiteSpace(kv.Value)).ToList();
+        if (!availableFiles.Any())
+        {
+            _logger.LogWarning("No content available for module '{ModuleName}'. Generating placeholder.", module.Name);
+            return new WikiPage
+            {
+                Id = Guid.NewGuid().ToString(),
+                Title = module.Name,
+                Content = $"# {module.Name}\n\n*Documentation pending - no source files available.*",
+                RelevantFiles = filePaths
+            };
+        }
+
+        // Build source files context
+        var contextBuilder = new StringBuilder();
+        foreach (var kv in availableFiles)
+        {
+            contextBuilder.AppendLine($"File: {kv.Key}");
+            contextBuilder.AppendLine("```");
+            contextBuilder.AppendLine(kv.Value);
+            contextBuilder.AppendLine("```");
+            contextBuilder.AppendLine();
+        }
+
+        // Use the enhanced prompt with module context
+        var prompt = PromptTemplates.EnhancedPagePrompt(module, relatedPages, context, language);
+        var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + contextBuilder;
+
+        var content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
+
+        // Generate diagrams if available
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), cts.Token);
+            
+            if (graph.NodeCount > 0)
+            {
+                var entryPointId = FindEntryPointForPage(module.Name, filePaths, graph);
+                if (!string.IsNullOrEmpty(entryPointId))
+                {
+                    // Add component diagram
+                    var componentDiagram = await _diagramGenerator.GenerateComponentDiagramAsync(graph, entryPointId);
+                    if (!string.IsNullOrWhiteSpace(componentDiagram) && componentDiagram.Contains("classDiagram"))
+                    {
+                        content += "\n\n## Component Diagram\n\n";
+                        content += "```mermaid\n" + componentDiagram + "\n```\n";
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate diagrams for module {ModuleName}: {Message}", module.Name, ex.Message);
+        }
+
+        // Enrich with cross-links and clean up
+        content = _referenceManagementService.EnrichContentWithLinks(content, module.Name);
+        content = CleanLLMPageContent(content, module.Name, filePaths);
+
+        return new WikiPage
+        {
+            Id = Guid.NewGuid().ToString(),
+            Title = module.Name,
+            Content = content,
+            RelevantFiles = filePaths
+        };
+    }
+
     public async Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages,
         string language = "English")
     {
+
         // 1. Delegate synthesis to the specialized service
         var page = await _synthesisService.SynthesizeParentPageAsync(module, childPages, language);
         var content = page.Content;

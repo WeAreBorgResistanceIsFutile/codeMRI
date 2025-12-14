@@ -71,10 +71,19 @@ public class WikiApiClient
                ?? throw new Exception("Failed to get repository status");
     }
 
-    public async Task<WikiStructure> GetNavigationAsync(string repoPath)
+    public async Task<WikiStructure?> GetNavigationAsync(string repoPath)
     {
         var encoded = Uri.EscapeDataString(repoPath);
-        return await _http.GetFromJsonAsync<WikiStructure>($"api/Wiki/navigation/{encoded}")
+        var result = await _http.GetAsync($"api/Wiki/navigation/{encoded}");
+        
+        if (result.StatusCode == System.Net.HttpStatusCode.NoContent)
+        {
+            return null;
+        }
+        
+        result.EnsureSuccessStatusCode();
+        
+        return await result.Content.ReadFromJsonAsync<WikiStructure>()
                ?? throw new Exception("Failed to get navigation structure");
     }
 

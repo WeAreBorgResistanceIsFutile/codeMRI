@@ -1,4 +1,3 @@
-using System.Text;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 
@@ -19,85 +18,99 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
         // If no children, perform a simple generation
         if (childPages == null || !childPages.Any())
         {
-            var simplePrompt = $"Generate a brief overview for the module '{module.Name}'. It has no child modules detected.";
-            if (!string.IsNullOrEmpty(module.Description))
-            {
-                simplePrompt += $"\nDescription: {module.Description}";
-            }
-            var simpleContent = await _llmClient.ChatAsync("You are a documentation assistant.", simplePrompt,
+            var simplePrompt = $"""
+                Generate a brief overview for the module '{module.Name}'. It has no child modules detected.
+                
+                Module Context:
+                - Level: {module.Level}
+                - Architectural Pattern: {module.Metadata.GetValueOrDefault("ArchitecturalPattern", "Not identified")}
+                - Description: {module.Description ?? "N/A"}
+                
+                Quality Metrics:
+                - Cohesion: {module.QualityMetrics.Cohesion:F2}
+                - Coupling: {module.QualityMetrics.Coupling:F2}
+                - Complexity: {module.ComplexityScore:F1}
+                
+                STRICT RULES:
+                - Do NOT invent features or components
+                - Use {language} for all content
+                
+                Output markdown starting with # {module.Name}
+                """;
+            
+            var simpleContent = await _llmClient.ChatAsync(
+                "You are a technical documentation expert.", 
+                simplePrompt,
                 new List<ChatMessage>());
             
             return new WikiPage
             {
                 Id = Guid.NewGuid().ToString(),
                 Title = module.Name,
-                Content = simpleContent,
+                Content = CleanContent(simpleContent, module.Name),
                 RelevantFiles = new List<string>()
             };
         }
 
-        // 1. Theme Analysis
-        var summariesBuilder = new StringBuilder();
-        foreach (var page in childPages)
-        {
-            summariesBuilder.AppendLine($"Module: {page.Title}");
-            summariesBuilder.AppendLine($"Summary: {ExtractSummary(page.Content)}");
-            summariesBuilder.AppendLine("---");
-        }
+        // Estimate cross-module dependencies (simplified - could be enhanced with graph data)
+        var estimatedCrossModuleDeps = childPages.Count > 1 ? childPages.Count * 2 : 0;
 
-        var themePrompt = $@"
-Analyze the following child module summaries for the parent module '{module.Name}'.
-Identify common architectural themes, design patterns, and cross-cutting concerns.
-IMPORTANT: Only identify themes that are clearly supported by the provided child module summaries. Do not invent themes.
+        // Use the new ParentPageSynthesisPrompt from PromptTemplates
+        var prompt = PromptTemplates.ParentPageSynthesisPrompt(
+            module,
+            childPages,
+            estimatedCrossModuleDeps,
+            language);
 
-Child Modules:
-{summariesBuilder}
-
-Output a concise list of themes and patterns.";
-
-        var themes = await _llmClient.ChatAsync("You are a software architect.", themePrompt, new List<ChatMessage>());
-
-        // 2. Architectural Overview Synthesis
-        var synthesisPrompt = $@"
-Synthesize a comprehensive architectural overview for the parent module '{module.Name}' (Level {module.Level}).
-Language: {language}
-
-Module Description: {module.Description ?? "N/A"}
-
-Identified Themes & Patterns:
-{themes}
-
-Child Modules:
-{summariesBuilder}
-
- Instructions:
- 1. Create a high-level overview based ONLY on the provided summaries and themes.
- 2. Explain how the child modules collaborate to fulfill the parent module's responsibilities.
- 3. Highlight the identified themes and patterns.
- 4. Provide a usage guide or feature summary if applicable.
- 5. DO NOT hallucinate classes or components not mentioned in the child modules.
-";
-
-        var overviewContent = await _llmClient.ChatAsync("You are a technical documentation expert.", synthesisPrompt,
+        var overviewContent = await _llmClient.ChatAsync(
+            "You are a technical documentation expert and software architect.", 
+            prompt,
             new List<ChatMessage>());
 
         return new WikiPage
         {
             Id = Guid.NewGuid().ToString(),
             Title = module.Name,
-            Content = overviewContent,
+            Content = CleanContent(overviewContent, module.Name),
             RelevantFiles = new List<string>()
         };
     }
 
-    private string ExtractSummary(string content)
+    /// <summary>
+    /// Cleans the LLM output to ensure consistent formatting.
+    /// </summary>
+    private string CleanContent(string content, string title)
     {
-        if (string.IsNullOrEmpty(content)) return "";
-        // Try to find the first paragraph or a summary section
-        var idx = content.IndexOf("\n\n");
-        if (idx > 0) return content.Substring(0, idx);
+        if (string.IsNullOrWhiteSpace(content))
+            return $"# {title}\n\n*Documentation pending.*";
         
-        // If no double newline, just take the first 200 chars
-        return content.Length > 200 ? content.Substring(0, 200) + "..." : content;
+        var cleaned = content.Trim();
+        
+        // Remove markdown code fences if the LLM wrapped the entire output
+        if (cleaned.StartsWith("```markdown"))
+        {
+            cleaned = cleaned.Substring("```markdown".Length).TrimStart('\n', '\r');
+        }
+        if (cleaned.EndsWith("```"))
+        {
+            cleaned = cleaned.Substring(0, cleaned.Length - 3).TrimEnd();
+        }
+        
+        // Ensure it starts with the title
+        if (!cleaned.StartsWith($"# {title}"))
+        {
+            // Remove any existing title and add the canonical one
+            if (cleaned.StartsWith("# "))
+            {
+                var firstNewline = cleaned.IndexOf('\n');
+                if (firstNewline > 0)
+                {
+                    cleaned = cleaned.Substring(firstNewline).TrimStart('\n', '\r');
+                }
+            }
+            cleaned = $"# {title}\n\n{cleaned}";
+        }
+        
+        return cleaned;
     }
 }

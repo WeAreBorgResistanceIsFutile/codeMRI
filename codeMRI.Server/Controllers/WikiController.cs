@@ -48,36 +48,27 @@ public class WikiController : ControllerBase
     [HttpPost("structure")]
     public async Task<IActionResult> GenerateStructure([FromBody] StructureRequest request)
     {
-        if (!request.ForceRegenerate)
-        {
-            var existing = await _wikiRepo.GetStructureAsync(request.RepoPath);
-            if (existing != null)
-            {
-                // Populate pages for navigation
-                existing.Pages = await _wikiRepo.GetAllPagesAsync(request.RepoPath);
-                return Ok(existing);
-            }
-        }
-        else
-        {
-            // If regenerating structure, wipe the old one (including pages) to avoid orphans
-            await _wikiRepo.DeleteStructureAsync(request.RepoPath);
-        }
-
-        // Simple file tree generation
-        // Git-aware file tree generation
-        var files = GetRepoFiles(request.RepoPath);
-        var fileTree = "Files:\n" + string.Join("\n", files.Take(300)); // Limit for prompt context
-
-        var structure = await _wikiService.GenerateStructureAsync(fileTree, request.ReadmeContent, request.Language);
-
-        await _wikiRepo.SaveStructureAsync(request.RepoPath, structure);
+        // The legacy structure generation has been removed.
+        // This endpoint now only returns cached structures or redirects to advanced generation.
         
-        // Populate pages (will be empty for new structure, but consistent API)
-        structure.Pages = await _wikiRepo.GetAllPagesAsync(request.RepoPath);
+        var existing = await _wikiRepo.GetStructureAsync(request.RepoPath);
+        if (existing != null)
+        {
+            // Populate pages for navigation
+            existing.Pages = await _wikiRepo.GetAllPagesAsync(request.RepoPath);
+            return Ok(existing);
+        }
 
-        return Ok(structure);
+        if (request.ForceRegenerate)
+        {
+            // Redirect to advanced generation endpoint
+            return await GenerateAdvancedWiki(request);
+        }
+
+        // No cached structure and not forcing regeneration
+        return NotFound(new { Error = "No wiki structure found. Use /api/Wiki/generate-advanced to create one." });
     }
+
 
     [HttpPost("page")]
     public async Task<IActionResult> GeneratePage([FromBody] PageGenerationRequest request)
@@ -213,7 +204,7 @@ public class WikiController : ControllerBase
         var structure = await _wikiRepo.GetStructureAsync(repoPath);
         if (structure == null)
         {
-            return NotFound(new { Message = "Repository not found. Please ingest it first." });
+            return NoContent();
         }
         
         // Populate pages for full navigation tree

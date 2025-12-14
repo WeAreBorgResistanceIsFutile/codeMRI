@@ -225,16 +225,27 @@ public class DbIngestionManager : IIngestionJobManager
 
             // We need to wrap the orchestrator call to support cancellation via the token that we cancel if DB says "Cancel"
             // Start a task to poll DB for cancellation and cancel CTS
+            // Capture token to avoid accessing disposed cts in the loop condition race
+            var token = cts.Token;
             _ = Task.Run(async () => 
             {
-                while (!cts.Token.IsCancellationRequested)
+                try
                 {
-                    if (await CheckCancellationAsync(jobId))
+                    while (!token.IsCancellationRequested)
                     {
-                        cts.Cancel();
-                        break;
+                        if (await CheckCancellationAsync(jobId))
+                        {
+                            cts.Cancel();
+                            break;
+                        }
+                        await Task.Delay(2000, token);
                     }
-                    await Task.Delay(2000);
+                }
+                catch (ObjectDisposedException) { /* Request likely finished, cts disposed */ }
+                catch (OperationCanceledException) { /* Token cancelled */ }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error in cancellation polling for job {JobId}", jobId);
                 }
             });
 

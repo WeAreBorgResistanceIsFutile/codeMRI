@@ -192,25 +192,31 @@
         try
         {
             var structure = await WikiApi.GetNavigationAsync(repoPath);
-            AppState.SetStructure(structure);
-            Navigation.NavigateTo("/");
-        }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-            // Structure doesn't exist yet, generate it
-            Console.WriteLine($"No structure found for {repoPath}, generating...");
-            AppState.SetBusy(true, "Generating documentation structure...");
             
-            try
+            if (structure == null)
             {
-                var structure = await WikiApi.GenerateStructureAsync(repoPath);
-                AppState.SetStructure(structure);
-                Navigation.NavigateTo("/");
+                // Structure doesn't exist yet, generate it
+                Console.WriteLine($"No structure found for {repoPath}, generating...");
+                AppState.SetBusy(true, "Generating documentation structure...");
+                
+                try
+                {
+                    structure = await WikiApi.GenerateStructureAsync(repoPath);
+                    AppState.SetStructure(structure);
+                    AppState.SetBusy(false);
+                    Navigation.NavigateTo("/");
+                }
+                catch (Exception genEx)
+                {
+                    Console.WriteLine($"Error generating structure: {genEx.Message}");
+                    AppState.SetBusy(false);
+                }
             }
-            catch (Exception genEx)
+            else
             {
-                Console.WriteLine($"Error generating structure: {genEx.Message}");
+                AppState.SetStructure(structure);
                 AppState.SetBusy(false);
+                Navigation.NavigateTo("/");
             }
         }
         catch (Exception ex)

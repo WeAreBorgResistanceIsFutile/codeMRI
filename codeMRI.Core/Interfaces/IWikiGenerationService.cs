@@ -1,12 +1,30 @@
 using codeMRI.Core.Models;
+using codeMRI.Core.Services;
 
 namespace codeMRI.Core.Interfaces;
 
 public interface IWikiGenerationService
 {
-    Task<WikiStructure> GenerateStructureAsync(string fileTree, string readme, string language = "English");
-
+    /// <summary>
+    /// Generates a wiki page for the given title using file paths and contents.
+    /// Uses the legacy PagePrompt for backward compatibility.
+    /// </summary>
     Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths, Dictionary<string, string> fileContents, string language = "English", string? repoPath = null);
 
+    /// <summary>
+    /// Generates a wiki page using the enhanced prompt with full module context.
+    /// This is the preferred method for advanced wiki generation.
+    /// </summary>
+    Task<WikiPage> GenerateEnhancedPageAsync(
+        ModuleNode module,
+        List<WikiPage>? relatedPages,
+        ModulePageContext context,
+        Dictionary<string, string> fileContents,
+        string language = "English",
+        string? repoPath = null);
+
+    /// <summary>
+    /// Generates a parent/overview page by synthesizing child pages.
+    /// </summary>
     Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages, string language = "English");
 }
