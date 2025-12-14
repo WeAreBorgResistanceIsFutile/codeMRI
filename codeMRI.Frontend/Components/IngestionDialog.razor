@@ -12,204 +12,225 @@
     <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
         <div class="modal-content">
             <div class="modal-header border-0">
-                <h5 class="modal-title">Add Repository</h5>
+                <h5 class="modal-title">Repository Ingestion</h5>
                 <button type="button" class="btn-close" @onclick="Close"></button>
             </div>
             <div class="modal-body">
-                @if (!isIngesting)
+                
+                <!-- Main Ingestion Form -->
+                @if (currentJob == null)
                 {
-                    <!-- Input Form -->
                     <div class="mb-4">
-                        <label class="form-label fw-semibold">Repository Path or Git URL</label>
+                        <label class="form-label fw-semibold">Repository Git URL</label>
                         <input type="text" class="form-control form-control-lg" 
-                               placeholder="e.g., /path/to/local/repo or https://github.com/user/repo" 
+                               placeholder="e.g., https://github.com/user/repo" 
                                @bind="repoInput" />
-                        <div class="form-text">Enter a local repository path or Git URL</div>
+                        <div class="form-text">Enter a public Git repository URL.</div>
                     </div>
-
-                    <div class="mb-4">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="forceRegenerate" @bind="forceRegenerate">
-                            <label class="form-check-label" for="forceRegenerate">
-                                Force regeneration (ignore cache)
-                            </label>
-                        </div>
-                    </div>
-
+                    
                     @if (!string.IsNullOrEmpty(errorMessage))
                     {
                         <div class="alert alert-danger" role="alert">
                             @errorMessage
                         </div>
                     }
+                    
+                    <div class="d-flex justify-content-end mb-4">
+                         <button type="button" class="btn btn-primary btn-lg" 
+                                 @onclick="StartIngestion" 
+                                 disabled="@string.IsNullOrWhiteSpace(repoInput)">
+                            Start Ingestion
+                        </button>
+                    </div>
                 }
                 else
                 {
-                    <!-- Progress Display -->
+                    <!-- Active Job Progress -->
                     <div class="text-center py-4">
-                        <div class="mb-4">
-                            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
-                                <span class="visually-hidden">Processing...</span>
+                        <h5 class="mb-3">Ingesting @currentJob.RepoName</h5>
+                        
+                        <div class="progress mb-3" style="height: 30px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated @GetStatusColor(currentJob.Status)" 
+                                 role="progressbar" 
+                                 style="width: @(currentJob.ProgressPercentage)%"
+                                 aria-valuenow="@currentJob.ProgressPercentage" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                <strong>@currentJob.ProgressPercentage%</strong>
                             </div>
                         </div>
                         
-                        <h5 class="mb-4">Ingesting Repository</h5>
-                        
-                        @if (AppState.CurrentProgress != null)
+                        <div class="d-flex justify-content-between text-muted mb-4">
+                            <span>@currentJob.CurrentPhase</span>
+                            <small>@currentJob.Message</small>
+                        </div>
+
+                        @if (currentJob.Status == IngestionStatus.Failed || currentJob.Status == IngestionStatus.Cancelled)
                         {
-                            <div class="mb-4">
-                                <div class="progress" style="height: 30px;">
-                                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
-                                         role="progressbar" 
-                                         style="width: @(AppState.CurrentProgress.Percentage)%"
-                                         aria-valuenow="@AppState.CurrentProgress.Percentage" 
-                                         aria-valuemin="0" 
-                                         aria-valuemax="100">
-                                        <strong>@AppState.CurrentProgress.Percentage%</strong>
-                                    </div>
-                                </div>
+                            <div class="alert alert-warning">
+                                <strong>Stopped:</strong> @(currentJob.Error ?? currentJob.Message)
                             </div>
-                            
-                            <div class="alert alert-light border" role="alert">
-                                <div class="d-flex align-items-center">
-                                    <div class="flex-shrink-0">
-                                        <span class="badge bg-primary">@AppState.CurrentProgress.Phase</span>
-                                    </div>
-                                    <div class="flex-grow-1 ms-3 text-start">
-                                        <small>@AppState.CurrentProgress.Message</small>
-                                    </div>
-                                </div>
+                            <button class="btn btn-secondary" @onclick="ResetForm">Try Another</button>
+                        }
+                        else if (currentJob.Status == IngestionStatus.Completed)
+                        {
+                             <div class="alert alert-success">
+                                <strong>Success!</strong> Ingestion complete.
                             </div>
+                            <button class="btn btn-success" @onclick="() => OnIngestionComplete.InvokeAsync(currentJob.RepoPath)">Open Repository</button>
                         }
                         else
                         {
-                            <p class="text-muted">Initializing...</p>
+                            <!-- Cancellation -->
+                            <button class="btn btn-outline-danger" @onclick="() => CancelJob(currentJob.Id)">
+                                Cancel Ingestion
+                            </button>
                         }
                     </div>
-
-                    <!-- Agent Dashboard (if available) -->
-                    @if (AppState.ActiveAgents.Any())
-                    {
-                        <div class="border-top pt-3">
-                            <h6 class="mb-3 text-start">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-2" viewBox="0 0 16 16">
-                                    <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
-                                    <path fill-rule="evenodd" d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216z"/>
-                                    <path d="M4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/>
-                                </svg>
-                                Active Agents (@AppState.ActiveAgents.Count)
-                            </h6>
-                            <div class="list-group list-group-flush" style="max-height: 200px; overflow-y: auto;">
-                                @foreach (var kvp in AppState.ActiveAgents.Take(5))
-                                {
-                                    var agent = kvp.Value;
-                                    <div class="list-group-item px-0">
-                                        <div class="d-flex justify-content-between align-items-center mb-1">
-                                            <span class="fw-semibold small">@agent.Role</span>
-                                            <span class="badge bg-success bg-opacity-10 text-success">@agent.Status</span>
-                                        </div>
-                                        @if (!string.IsNullOrEmpty(agent.TaskId))
-                                        {
-                                            <small class="text-muted d-block">Task: @agent.TaskId</small>
-                                        }
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    }
                 }
-            </div>
-            <div class="modal-footer border-0">
-                @if (!isIngesting)
+
+                <hr />
+
+                <!-- Active Ingestions List -->
+                <h6 class="mb-3 text-muted">Active Ingestions on Server</h6>
+                @if (activeJobs == null)
                 {
-                    <button type="button" class="btn btn-secondary" @onclick="Close">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="StartIngestion" disabled="@string.IsNullOrWhiteSpace(repoInput)">
-                        Start Ingestion
-                    </button>
+                     <div class="text-center"><small>Loading...</small></div>
+                }
+                else if (!activeJobs.Any(j => currentJob == null || j.Id != currentJob.Id))
+                {
+                     <div class="text-center text-muted"><small>No other active ingestions.</small></div>
                 }
                 else
                 {
-                    <button type="button" class="btn btn-secondary" @onclick="Close" disabled>
-                        Processing...
-                    </button>
+                    <div class="list-group list-group-flush small" style="max-height: 200px; overflow-y: auto;">
+                        @foreach (var job in activeJobs.Where(j => currentJob == null || j.Id != currentJob.Id))
+                        {
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>@job.RepoUrl</strong>
+                                    <div class="text-muted">@job.Status - @job.CurrentPhase (@job.ProgressPercentage%)</div>
+                                </div>
+                                @if (job.Status != IngestionStatus.Completed && job.Status != IngestionStatus.Failed && job.Status != IngestionStatus.Cancelled)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => CancelJob(job.Id)">Cancel</button>
+                                }
+                            </div>
+                        }
+                    </div>
                 }
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" @onclick="Close">Close</button>
             </div>
         </div>
     </div>
 </div>
+
+
 
 @code {
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<string> OnIngestionComplete { get; set; }
 
     private string repoInput = "";
-    private bool forceRegenerate = false;
-    private bool isIngesting = false;
     private string errorMessage = "";
+    private IngestionJob? currentJob = null;
+    private List<IngestionJob>? activeJobs;
+    private System.Threading.Timer? _pollingTimer;
 
-    private async Task Close()
+    protected override async Task OnInitializedAsync()
     {
-        if (!isIngesting)
+        await LoadActiveJobs();
+        // Simple polling for the list update
+        _pollingTimer = new System.Threading.Timer(async _ => await InvokeAsync(LoadActiveJobs), null, 2000, 2000);
+        
+        WikiHub.OnAgentStatus += HandleHubMessage; 
+    }
+
+    private void HandleHubMessage(AgentMessage msg)
+    {
+        // For now, any message triggers a refresh if relevant
+        // Logic can be refined to check message type
+        _ = InvokeAsync(LoadActiveJobs);
+    }
+
+    private async Task LoadActiveJobs()
+    {
+        try
         {
-            await OnClose.InvokeAsync();
+            activeJobs = await WikiApi.ListActiveIngestionsAsync();
+            
+            // Also update current job if it exists
+            if (currentJob != null)
+            {
+                var updated = activeJobs.FirstOrDefault(j => j.Id == currentJob.Id);
+                if (updated != null)
+                {
+                     currentJob = updated;
+                     if (currentJob.Status == IngestionStatus.Completed)
+                     {
+                         // Stop polling aggressively if done, or auto-redirect
+                     }
+                }
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex) 
+        { 
+            Console.WriteLine("Failed to load jobs: " + ex.Message); 
         }
     }
 
     private async Task StartIngestion()
     {
-        if (string.IsNullOrWhiteSpace(repoInput))
-        {
-            errorMessage = "Please enter a repository path or Git URL";
-            return;
-        }
-
-        isIngesting = true;
         errorMessage = "";
-        
         try
         {
-            // Simple ingestion: clone the Git repo
-            var result = await WikiApi.IngestGitRepositoryAsync(repoInput);
-            
-            // Success! Notify parent component with the repository path
-            await OnIngestionComplete.InvokeAsync(result.Path);
+            currentJob = await WikiApi.StartIngestionAsync(repoInput);
         }
         catch (Exception ex)
         {
-            errorMessage = $"Ingestion failed: {ex.Message}";
-            isIngesting = false;
+            errorMessage = ex.Message;
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    private async Task CancelJob(string jobId)
     {
-        // Subscribe to progress updates
-        WikiHub.OnProgress += HandleProgress;
-        
-        // Start SignalR connection
-        try
+        if (JSRuntime == null) return;
+        if (await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to stop this ingestion?"))
         {
-            await WikiHub.StartAsync();
+            await WikiApi.CancelIngestionAsync(jobId);
+            await LoadActiveJobs(); // Refresh immediately
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Warning: Could not connect to SignalR hub: {ex.Message}");
-        }
-        
-        AppState.OnChange += StateHasChanged;
+    }
+
+    private void ResetForm()
+    {
+        currentJob = null;
+        repoInput = "";
+        errorMessage = "";
     }
     
-    private void HandleProgress(ProgressInfo info)
+    private async Task Close()
     {
-        AppState.SetProgress(info);
-        StateHasChanged();
+        await OnClose.InvokeAsync();
     }
+
+    private string GetStatusColor(IngestionStatus status) => status switch
+    {
+        IngestionStatus.Completed => "bg-success",
+        IngestionStatus.Failed => "bg-danger",
+        IngestionStatus.Cancelled => "bg-warning",
+        IngestionStatus.Cloning => "bg-info",
+        IngestionStatus.Analyzing => "bg-primary",
+        _ => "bg-primary"
+    };
 
     public void Dispose()
     {
-        WikiHub.OnProgress -= HandleProgress;
-        AppState.OnChange -= StateHasChanged;
+        _pollingTimer?.Dispose();
     }
+    
+    [Inject] IJSRuntime? JSRuntime { get; set; }
 }
-
-@implements IDisposable

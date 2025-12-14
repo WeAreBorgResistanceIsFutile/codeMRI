@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
@@ -6,6 +7,7 @@ using codeMRI.Core.Models;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace codeMRI.Infrastructure.Services;
 
@@ -14,30 +16,15 @@ public class DbIngestionManager : IIngestionJobManager
     private readonly string _connectionString;
     private readonly ILogger<DbIngestionManager> _logger;
     private readonly AgentMessageBus _messageBus;
-    private readonly ICodeWikiOrchestrator _orchestrator;
-    private readonly IWikiApiClient _wikiApi; // Wait, we don't need API client here. We need helper services.
-    private readonly IServiceProvider _serviceProvider; // To resolve Orchestrator in a new scope if needed? No, Orchestrator should be singleton or scoped.
+    private readonly IServiceProvider _serviceProvider; 
     
-    // We need to inject the Orchestrator to run the actual job.
-    // However, Circular dependency risk if Orchestrator depends on Manager.
-    // In the plan, Orchestrator depends on "IProgressService".
-    
-    // Let's rely on a callback or separate "JobRunner" service to avoid putting heavy logic in the Manager.
-    // But for simplicity, I'll inject the dependencies needed to RUN the job here, 
-    // OR have the Manager just manage state and spawn a Task that resolves services.
-    
-    // Better: The Manager just manages state. The Controller or a BackgroundService runs the job using the Manager to update state.
-    // BUT the requirement is "Fire and Forget" from the Controller.
-    // So the Manager should probably spawn the Task.
-    
-    // Dependencies to run the job:
     private readonly IServiceScopeFactory _scopeFactory;
 
     public DbIngestionManager(
         ILogger<DbIngestionManager> logger,
         AgentMessageBus messageBus,
         IServiceScopeFactory scopeFactory,
-        string dbPath = "ingestion.db")
+        string dbPath)
     {
         _logger = logger;
         _messageBus = messageBus;
@@ -78,6 +65,20 @@ public class DbIngestionManager : IIngestionJobManager
                 LastUpdated TEXT,
                 Error TEXT
             )");
+            
+        // Sanitize data (fix previous string enums)
+        try 
+        {
+            connection.Execute("UPDATE IngestionJobs SET Status = 4 WHERE Status = 'Completed'");
+            connection.Execute("UPDATE IngestionJobs SET Status = 5 WHERE Status = 'Failed'");
+            connection.Execute("UPDATE IngestionJobs SET Status = 7 WHERE Status = 'Cancelled'");
+            connection.Execute("UPDATE IngestionJobs SET Status = 6 WHERE Status = 'Cancelling'");
+            connection.Execute("UPDATE IngestionJobs SET Status = 0 WHERE Status = 'Queued'");
+            connection.Execute("UPDATE IngestionJobs SET Status = 1 WHERE Status = 'Cloning'");
+            connection.Execute("UPDATE IngestionJobs SET Status = 2 WHERE Status = 'Analyzing'");
+            connection.Execute("UPDATE IngestionJobs SET Status = 3 WHERE Status = 'Generating'");
+        }
+        catch { /* Ignore if fails, e.g. type mismatch in where clause if strict */ }
     }
 
     public async Task<IngestionJob> StartJobAsync(string repoUrl, bool forceRegenerate, string? connectionId = null)
@@ -135,7 +136,7 @@ public class DbIngestionManager : IIngestionJobManager
         using var connection = new SqliteConnection(_connectionString);
         await connection.ExecuteAsync(
             "UPDATE IngestionJobs SET Status = @Cancelling, LastUpdated = @Now WHERE Id = @Id AND Status NOT IN (@Completed, @Failed, @Cancelled)",
-            new { Cancelling = IngestionStatus.Cancelling, Now = DateTime.UtcNow, Id = jobId });
+            new { Cancelling = IngestionStatus.Cancelling, Completed = IngestionStatus.Completed, Failed = IngestionStatus.Failed, Cancelled = IngestionStatus.Cancelled, Now = DateTime.UtcNow, Id = jobId });
             
         // Publish event so local job runner can pick it up if it's not polling (though we will implement polling/checking)
         await _messageBus.PublishAsync(new AgentMessage 
@@ -165,18 +166,41 @@ public class DbIngestionManager : IIngestionJobManager
             // Since GitHelper doesn't take token yet (per my plan), I will just check before/after.
             
             if (await CheckCancellationAsync(jobId)) return;
+            
+            // Determine target path
+            var cleanName = Path.GetFileNameWithoutExtension(repoUrl);
+            if (string.IsNullOrWhiteSpace(cleanName)) cleanName = "repo_" + jobId;
+            
+            // Sanitize name
+            cleanName = string.Join("_", cleanName.Split(Path.GetInvalidFileNameChars()));
+            
+            var targetDir = Path.GetFullPath(Path.Combine("../data/repos", cleanName));
+            
+            // Ensure data dir exists
+            var dataDir = Path.GetDirectoryName(targetDir);
+            if (!Directory.Exists(dataDir)) Directory.CreateDirectory(dataDir!);
+            
+            // Clean up if exists (fresh clone) or we could pull... for now overwrite
+            if (Directory.Exists(targetDir)) Directory.Delete(targetDir, true);
 
-            string targetDir = await GitHelper.CloneRepositoryAsync(repoUrl);
+            await GitHelper.CloneRepositoryAsync(repoUrl, targetDir, cts.Token);
             
             // Update Job with path and real name
             using (var connection = new SqliteConnection(_connectionString))
             {
-                var repoName = Path.GetFileName(targetDir);
-                 await connection.ExecuteAsync(
-                    "UPDATE IngestionJobs SET RepoPath = @RepoPath, RepoName = @RepoName, LastUpdated = @Now WHERE Id = @Id",
-                    new { RepoPath = targetDir, RepoName = repoName, Now = DateTime.UtcNow, Id = jobId });
+                var progressJson = JsonSerializer.Serialize(new ProgressInfo { Phase = "Completed", Percentage = 100, Message = "Ingestion complete" });
+                
+                await connection.ExecuteAsync(
+                    @"UPDATE IngestionJobs 
+                      SET Status = @Status, 
+                          RepoPath = @RepoPath,
+                          ProgressPercentage = 100,
+                          CurrentPhase = 'Completed',
+                          Message = 'Ingestion complete',
+                          LastUpdated = @LastUpdated
+                      WHERE Id = @Id",
+                    new { Status = IngestionStatus.Completed, RepoPath = targetDir, Id = jobId, LastUpdated = DateTime.UtcNow });
             }
-
             if (await CheckCancellationAsync(jobId)) return;
 
             // 2. Orchestration

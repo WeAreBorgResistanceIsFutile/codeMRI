@@ -3,11 +3,13 @@ using System.Text.Json;
 using System.Xml.Linq;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
 
 public class WikiGenerationService : IWikiGenerationService
 {
+    private readonly ILogger<WikiGenerationService> _logger;
     private readonly IDiagramGenerator _diagramGenerator;
     private readonly IEnhancedDependencyGraphService _graphService; // Needed to fetch graph for diagrams
     private readonly ILLMClient _llmClient;
@@ -20,14 +22,14 @@ public class WikiGenerationService : IWikiGenerationService
         IDiagramGenerator diagramGenerator,
         IEnhancedDependencyGraphService graphService,
         IDocumentationSynthesisService synthesisService,
-        IReferenceManagementService referenceManagementService,
-        string documentationModel = "llama3")
+        IReferenceManagementService referenceManagementService, ILogger<WikiGenerationService> logger, string documentationModel)
     {
         _llmClient = llmClient;
         _diagramGenerator = diagramGenerator;
         _graphService = graphService;
         _synthesisService = synthesisService;
         _referenceManagementService = referenceManagementService;
+        _logger = logger;
         _documentationModel = documentationModel;
     }
 
@@ -60,8 +62,9 @@ public class WikiGenerationService : IWikiGenerationService
             };
             return structure;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Error generating structure from response: {Message}", ex.Message);
             return new WikiStructure { Title = "Error generating structure", Sections = new List<WikiSection>() };
         }
     }
@@ -123,7 +126,7 @@ public class WikiGenerationService : IWikiGenerationService
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error resolving file for page '{pageTitle}': {ex.Message}");
+                _logger.LogError(ex, "Error resolving file for page '{PageTitle}': {Message}", pageTitle, ex.Message);
                 // Fail gracefully, generation will likely be generic
                 filePaths = new List<string>();
             }
@@ -153,7 +156,7 @@ public class WikiGenerationService : IWikiGenerationService
                       }
                       catch (Exception ex)
                       {
-                           Console.WriteLine($"Warning: Could not read file content for {path}: {ex.Message}");
+                           _logger.LogWarning(ex, "Warning: Could not read file content for {Path}: {Message}", path, ex.Message);
                       }
                  }
              }
@@ -164,7 +167,7 @@ public class WikiGenerationService : IWikiGenerationService
         if (filePaths == null || filePaths.Count == 0 || 
             !fileContents.Any(kv => !string.IsNullOrWhiteSpace(kv.Value)))
         {
-            Console.WriteLine($"Warning: No content available for page '{pageTitle}'. Skipping detailed generation.");
+            _logger.LogWarning("Warning: No content available for page '{PageTitle}'. Skipping detailed generation.", pageTitle);
             return new WikiPage 
             { 
                 Id = Guid.NewGuid().ToString(),
@@ -265,7 +268,7 @@ public class WikiGenerationService : IWikiGenerationService
         {
             // Log error but don't fail the page generation
             // In a real implementation, you'd use proper logging
-            Console.WriteLine($"Failed to generate diagrams for page {pageTitle}: {ex.Message}");
+            _logger.LogError(ex, "Failed to generate diagrams for page {PageTitle}: {Message}", pageTitle, ex.Message);
         }
 
         // Enrich content with intelligent cross-links
@@ -377,7 +380,7 @@ public class WikiGenerationService : IWikiGenerationService
         catch (Exception ex)
         {
             // Log error but don't fail the page generation
-            Console.WriteLine($"Failed to generate architecture diagram for module {module.Name}: {ex.Message}");
+            _logger.LogError(ex, "Failed to generate architecture diagram for module {ModuleName}: {Message}", module.Name, ex.Message);
         }
 
         // Enrich with links

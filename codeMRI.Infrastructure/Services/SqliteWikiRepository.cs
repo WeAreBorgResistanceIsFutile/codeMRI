@@ -176,9 +176,16 @@ public class SqliteWikiRepository : IWikiRepository
 
     private void InitializeDatabase()
     {
-        var dbPath = _connectionString.Replace("Data Source=", "").Trim();
-        var dir = Path.GetDirectoryName(dbPath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        var builder = new SqliteConnectionStringBuilder(_connectionString);
+        var dbPath = builder.DataSource;
+        if (!string.IsNullOrWhiteSpace(dbPath) && dbPath != ":memory:")
+        {
+             var dir = Path.GetDirectoryName(dbPath);
+             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) 
+             {
+                 Directory.CreateDirectory(dir);
+             }
+        }
 
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();

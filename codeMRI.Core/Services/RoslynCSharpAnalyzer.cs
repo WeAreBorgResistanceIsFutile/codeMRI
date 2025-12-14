@@ -3,11 +3,19 @@ using codeMRI.Core.Interfaces;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
 
 public class RoslynCSharpAnalyzer
 {
+    private readonly ILogger<RoslynCSharpAnalyzer> _logger;
+
+    public RoslynCSharpAnalyzer(ILogger<RoslynCSharpAnalyzer> logger)
+    {
+        _logger = logger;
+    }
+
     public async Task<List<CodeComponent>> AnalyzeCSharpFileAsync(string filePath)
     {
         var components = new List<CodeComponent>();
@@ -53,7 +61,7 @@ public class RoslynCSharpAnalyzer
         catch (Exception ex)
         {
             // Log error but continue processing other files
-            Console.WriteLine($"Error analyzing file {filePath}: {ex.Message}");
+            _logger.LogError(ex, "Error analyzing file {FilePath}: {Message}", filePath, ex.Message);
         }
 
         return components;

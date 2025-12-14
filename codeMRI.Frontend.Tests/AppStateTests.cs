@@ -14,7 +14,8 @@ namespace codeMRI.Frontend.Tests
         [SetUp]
         public void Setup()
         {
-            _appState = new AppState();
+            var logger = new Microsoft.Extensions.Logging.Abstractions.NullLogger<codeMRI.Frontend.Services.AppState>();
+        _appState = new AppState(logger);
             _wasNotified = false;
             _appState.OnChange += () => _wasNotified = true;
         }

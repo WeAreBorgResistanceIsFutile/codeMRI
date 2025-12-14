@@ -30,10 +30,11 @@ public class ComponentIdentificationService : IComponentIdentificationService
     public ComponentIdentificationService(
         ILogger<ComponentIdentificationService> logger,
         IProgressService progressService,
+        ILoggerFactory loggerFactory,
         IASTServiceClient? astServiceClient = null)
     {
         _logger = logger;
-        _roslynAnalyzer = new RoslynCSharpAnalyzer();
+        _roslynAnalyzer = new RoslynCSharpAnalyzer(loggerFactory.CreateLogger<RoslynCSharpAnalyzer>());
         _progressService = progressService;
         _astServiceClient = astServiceClient;
     }

@@ -51,13 +51,20 @@ public class WireUp
         services.AddScoped<IWikiGenerationService, WikiGenerationService>(sp =>
         {
             var settings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
+            var docModel = settings.DocumentationModel;
+            if (string.IsNullOrWhiteSpace(docModel))
+            {
+                throw new InvalidOperationException("DocumentationModel is not configured in OllamaSettings.");
+            }
+            
             return new WikiGenerationService(
                 sp.GetRequiredService<ILLMClient>(),
                 sp.GetRequiredService<IDiagramGenerator>(),
                 sp.GetRequiredService<IEnhancedDependencyGraphService>(),
                 sp.GetRequiredService<IDocumentationSynthesisService>(),
                 sp.GetRequiredService<IReferenceManagementService>(),
-                settings.DocumentationModel);
+                sp.GetRequiredService<ILogger<WikiGenerationService>>(),
+                docModel);
         });
         services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
         services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();

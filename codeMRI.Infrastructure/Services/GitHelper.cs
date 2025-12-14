@@ -4,7 +4,7 @@ namespace codeMRI.Infrastructure.Services;
 
 public static class GitHelper
 {
-    public static async Task<string> CloneRepositoryAsync(string gitUrl, string? targetDir = null)
+    public static async Task<string> CloneRepositoryAsync(string gitUrl, string? targetDir = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(targetDir))
         {
@@ -42,7 +42,7 @@ public static class GitHelper
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        await process.WaitForExitAsync();
+        await process.WaitForExitAsync(cancellationToken);
 
         if (process.ExitCode != 0)
         {

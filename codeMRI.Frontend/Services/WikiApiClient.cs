@@ -79,12 +79,38 @@ public class WikiApiClient
     }
 
     
-    public async Task<IngestionResult> IngestGitRepositoryAsync(string gitUrl)
+    public async Task<IngestionJob> StartIngestionAsync(string gitUrl)
     {
         var response = await _http.PostAsJsonAsync("api/Wiki/ingest", new { Url = gitUrl });
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<IngestionResult>()
-               ?? throw new Exception("Failed to ingest repository");
+        var result = await response.Content.ReadFromJsonAsync<StartIngestionResponse>()
+               ?? throw new Exception("Failed to start ingestion");
+        
+        return new IngestionJob { Id = result.JobId, Status = Enum.Parse<IngestionStatus>(result.Status) };
+    }
+
+    public async Task<IngestionJob?> GetIngestionJobAsync(string jobId)
+    {
+         return await _http.GetFromJsonAsync<IngestionJob>($"api/Wiki/ingestion/{jobId}");
+    }
+
+    public async Task CancelIngestionAsync(string jobId)
+    {
+        var response = await _http.DeleteAsync($"api/Wiki/ingestion/{jobId}");
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<List<IngestionJob>> ListActiveIngestionsAsync()
+    {
+         return await _http.GetFromJsonAsync<List<IngestionJob>>("api/Wiki/ingestions/active") 
+                ?? new List<IngestionJob>();
+    }
+
+    // Deprecated but kept for compatibility if needed (simplified wrapper)
+    public async Task<IngestionResult> IngestGitRepositoryAsync(string gitUrl)
+    {
+        var job = await StartIngestionAsync(gitUrl);
+        return new IngestionResult { Name = "", Path = "" }; // Placeholder as this flow is changing
     }
 
     public async Task<WikiStructure> IngestRepositoryAsync(string repoPath, bool forceRegenerate = false, string? connectionId = null)
@@ -101,8 +127,43 @@ public class WikiApiClient
     }
 }
 
+public class StartIngestionResponse
+{
+    public string JobId { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+}
+
 public class IngestionResult
 {
     public string Path { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+}
+
+// Replicate Enum/Model on Client (or move to shared project, but for now duplicate)
+public enum IngestionStatus
+{
+    Queued,
+    Cloning,
+    Analyzing,
+    Generating,
+    Completed,
+    Failed,
+    Cancelling,
+    Cancelled
+}
+
+public class IngestionJob
+{
+    public string Id { get; set; } = string.Empty;
+    public string RepoUrl { get; set; } = string.Empty;
+    public string RepoPath { get; set; } = string.Empty;
+    public string RepoName { get; set; } = string.Empty;
+    public IngestionStatus Status { get; set; }
+    public int ProgressPercentage { get; set; }
+    public string CurrentPhase { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string WorkerId { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public DateTime LastUpdated { get; set; }
+    public string? Error { get; set; }
 }

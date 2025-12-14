@@ -21,6 +21,7 @@ public class WikiControllerTests
     private Mock<ILogger<WikiController>> _mockLogger;
     private Mock<AgentMessageBus> _mockMessageBus;
     private Mock<IAgentTelemetryService> _mockTelemetryService;
+    private Mock<IIngestionJobManager> _mockIngestionManager;
     private WikiController _controller;
 
     [SetUp]
@@ -33,7 +34,16 @@ public class WikiControllerTests
         _mockLogger = new Mock<ILogger<WikiController>>();
         _mockMessageBus = new Mock<AgentMessageBus>(Mock.Of<ILogger<AgentMessageBus>>());
         _mockTelemetryService = new Mock<IAgentTelemetryService>();
-        _controller = new WikiController(_mockWikiService.Object, _mockWikiRepo.Object, _mockOrchestrator.Object, _mockHubContext.Object, _mockLogger.Object, _mockMessageBus.Object, _mockTelemetryService.Object);
+        _mockIngestionManager = new Mock<IIngestionJobManager>();
+        _controller = new WikiController(
+            _mockWikiService.Object, 
+            _mockWikiRepo.Object, 
+            _mockOrchestrator.Object, 
+            _mockHubContext.Object, 
+            _mockLogger.Object, 
+            _mockMessageBus.Object, 
+            _mockTelemetryService.Object,
+            _mockIngestionManager.Object);
     }
 
     [Test]

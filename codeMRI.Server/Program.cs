@@ -35,9 +35,47 @@ WireUp.Registered(builder.Services);
 
 builder.Services.AddSingleton<IWikiRepository>(sp =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("WikiDb")
-                           ?? "Data Source=../data/sqlite/codemri.db";
+    var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
+    if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
+    
+    var connectionString = builder.Configuration.GetConnectionString("WikiDb");
+    if (string.IsNullOrEmpty(connectionString))
+    {
+        var dbPath = Path.Combine(appDataPath, "codemri.db");
+        connectionString = $"Data Source={dbPath}";
+    }
     return new SqliteWikiRepository(connectionString);
+});
+
+builder.Services.AddSingleton<IIngestionJobManager, DbIngestionManager>(sp => 
+{
+    var logger = sp.GetRequiredService<ILogger<DbIngestionManager>>();
+    var messageBus = sp.GetRequiredService<codeMRI.Agents.Services.AgentMessageBus>();
+    var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
+    
+    var connectionString = builder.Configuration.GetConnectionString("IngestionDb");
+    string dbPath;
+    
+    if (!string.IsNullOrEmpty(connectionString) && connectionString.Contains("Data Source="))
+    {
+        // Extract if it's a connection string
+        var builder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString);
+        dbPath = builder.DataSource;
+    }
+    else if (!string.IsNullOrEmpty(connectionString))
+    {
+        // Treat as path
+        dbPath = connectionString;
+    }
+    else
+    {
+        // Default
+        var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
+        if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
+        dbPath = Path.Combine(appDataPath, "ingestion.db");
+    }
+    
+    return new DbIngestionManager(logger, messageBus, scopeFactory, dbPath);
 });
 
 

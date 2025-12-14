@@ -1,6 +1,7 @@
 using System;
 using codeMRI.Server.Api;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Frontend.Services;
 
@@ -70,6 +71,13 @@ public class AppState
     public List<DelegationEvent> DelegationHistory { get; private set; } = new();
     public List<TaskLifecycleEvent> TaskEvents { get; private set; } = new();
 
+    private readonly ILogger<AppState> _logger;
+
+    public AppState(ILogger<AppState> logger)
+    {
+        _logger = logger;
+    }
+
     public void UpdateAgentStatus(AgentMessage msg)
     {
         try 
@@ -84,7 +92,7 @@ public class AppState
         }
         catch (Exception ex)
         {
-             Console.WriteLine($"Error updating agent status: {ex.Message}");
+             _logger.LogError(ex, "Error updating agent status: {Message}", ex.Message);
         }
     }
 
@@ -101,7 +109,7 @@ public class AppState
         }
         catch (Exception ex)
         {
-             Console.WriteLine($"Error adding delegation event: {ex.Message}");
+             _logger.LogError(ex, "Error adding delegation event: {Message}", ex.Message);
         }
     }
 
@@ -118,7 +126,7 @@ public class AppState
         }
         catch (Exception ex)
         {
-             Console.WriteLine($"Error adding task lifecycle event: {ex.Message}");
+             _logger.LogError(ex, "Error adding task lifecycle event: {Message}", ex.Message);
         }
     }
 

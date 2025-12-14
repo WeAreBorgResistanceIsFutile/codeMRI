@@ -15,6 +15,9 @@
             </div>
         }
         <div class="actions">
+            <a href="ingestions" title="Monitor Ingestions" style="color: rgba(255,255,255,0.7); text-decoration: none; margin-right: 20px; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
+                <span>📊</span> Monitor
+            </a>
             @if (string.IsNullOrEmpty(AppState.RepoPath))
             {
                 <span class="text-muted" style="font-size: 0.85rem; margin-right: 12px;">Select Repository</span>

@@ -28,7 +28,9 @@ public class WikiGenerationServiceTests
             _mockDiagramGenerator!.Object,
             _mockGraphService!.Object,
             _mockSynthesisService!.Object,
-            _mockRefService!.Object);
+            _mockRefService!.Object,
+            _mockLogger!.Object,
+            "dummy_model");
     }
 
     private Mock<ILLMClient>? _mockLlmClient;

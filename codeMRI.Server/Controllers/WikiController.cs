@@ -21,6 +21,7 @@ public class WikiController : ControllerBase
     private readonly ICodeWikiOrchestrator _orchestrator;
     private readonly IHubContext<WikiHub> _hubContext;
     private readonly ILogger<WikiController> _logger;
+    private readonly IIngestionJobManager _ingestionManager;
     private readonly AgentMessageBus _messageBus;
     private readonly IAgentTelemetryService _telemetryService;
 
@@ -31,7 +32,8 @@ public class WikiController : ControllerBase
         IHubContext<WikiHub> hubContext,
         ILogger<WikiController> logger,
         AgentMessageBus messageBus,
-        IAgentTelemetryService telemetryService)
+        IAgentTelemetryService telemetryService,
+        IIngestionJobManager ingestionManager)
     {
         _wikiService = wikiService;
         _wikiRepo = wikiRepo;
@@ -40,6 +42,7 @@ public class WikiController : ControllerBase
         _logger = logger;
         _messageBus = messageBus;
         _telemetryService = telemetryService;
+        _ingestionManager = ingestionManager;
     }
 
     [HttpPost("structure")]
@@ -138,68 +141,44 @@ public class WikiController : ControllerBase
     [HttpPost("ingest")]
     public async Task<IActionResult> IngestRepository([FromBody] IngestionRequest request)
     {
-        _logger.LogInformation("IngestRepository called. Request is null: {IsNull}", request == null);
-        
-        if (request != null)
-        {
-            _logger.LogInformation("Request.Url: '{Url}'", request.Url ?? "(null)");
-        }
-        
         if (string.IsNullOrWhiteSpace(request?.Url))
-        {
-            _logger.LogWarning("URL is required - returning BadRequest");
             return BadRequest("URL is required.");
-        }
 
         if (!GitHelper.IsGitUrl(request.Url))
-        {
-            _logger.LogWarning("Invalid Git URL: {Url}", request.Url);
             return BadRequest("Invalid Git URL.");
-        }
 
         try
         {
-            _logger.LogInformation("Starting ingestion for {Url}", request.Url);
-            
-            // Extract a name from the URL
-            var name = Path.GetFileNameWithoutExtension(request.Url);
-            if (string.IsNullOrWhiteSpace(name)) name = "repo_" + Guid.NewGuid().ToString("N").Substring(0, 8);
-
-            _logger.LogInformation("Repository name: {Name}", name);
-
-            // Target path: ../data/repos/{name}
-            var dataDir = Path.GetFullPath("../data/repos");
-            _logger.LogInformation("Data directory: {DataDir}", dataDir);
-            
-            if (!Directory.Exists(dataDir))
-            {
-                _logger.LogInformation("Creating data directory: {DataDir}", dataDir);
-                Directory.CreateDirectory(dataDir);
-            }
-            
-            var targetPath = Path.Combine(dataDir, name);
-            _logger.LogInformation("Target path: {TargetPath}", targetPath);
-
-            // Check if directory already exists
-            if (Directory.Exists(targetPath))
-            {
-                _logger.LogWarning("Repository directory already exists: {TargetPath}", targetPath);
-                Directory.Delete(targetPath, true);
-            }
-
-            // Clone
-            _logger.LogInformation("Cloning repository from {Url} to {TargetPath}", request.Url, targetPath);
-            await GitHelper.CloneRepositoryAsync(request.Url, targetPath);
-            _logger.LogInformation("Repository cloned successfully");
-
-            // Repository will be discovered by GetAllRepositoriesAsync which scans the data directory
-            return Ok(new { Path = targetPath, Name = name });
+            var job = await _ingestionManager.StartJobAsync(request.Url, true, null); // We might want ConnectionId here if we update the request model
+            return Ok(new { JobId = job.Id, Status = job.Status.ToString() });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ingestion failed for {Url}. Error: {Message}", request.Url, ex.Message);
-            return StatusCode(500, $"Ingestion failed: {ex.Message}");
+            _logger.LogError(ex, "Ingestion start failed");
+            return StatusCode(500, ex.Message);
         }
+    }
+
+    [HttpGet("ingestion/{jobId}")]
+    public async Task<IActionResult> GetIngestionStatus(string jobId)
+    {
+        var job = await _ingestionManager.GetJobAsync(jobId);
+        if (job == null) return NotFound();
+        return Ok(job);
+    }
+
+    [HttpDelete("ingestion/{jobId}")]
+    public async Task<IActionResult> CancelIngestion(string jobId)
+    {
+        await _ingestionManager.CancelJobAsync(jobId);
+        return Ok();
+    }
+
+    [HttpGet("ingestions/active")]
+    public async Task<IActionResult> ListActiveIngestions()
+    {
+        var jobs = await _ingestionManager.ListActiveJobsAsync();
+        return Ok(jobs);
     }
 
     [HttpGet("repository-status")]
