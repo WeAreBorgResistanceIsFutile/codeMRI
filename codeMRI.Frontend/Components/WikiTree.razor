@@ -28,9 +28,34 @@
                         <ul class="list-unstyled ms-1 border-start ps-2" style="border-color: #f1f3f4 !important;">
                             @foreach (var pageRef in wikiSection.PageRefs.Where(p => Match(p)))
                             {
+                                var pageMetadata = GetPageMetadata(pageRef);
                                 <li class="wiki-item @(AppState.CurrentPage?.Title == pageRef ? "active" : "")" 
                                     @onclick="() => LoadPage(pageRef)">
-                                    @pageRef
+                                    <div class="d-flex align-items-start">
+                                        <div class="flex-grow-1">
+                                            <div class="page-title">@pageRef</div>
+                                            @if (pageMetadata != null)
+                                            {
+                                                @if (!string.IsNullOrEmpty(pageMetadata.Description))
+                                                {
+                                                    <div class="page-description text-muted small">
+                                                        @(pageMetadata.Description.Length > 60 
+                                                            ? pageMetadata.Description.Substring(0, 60) + "..." 
+                                                            : pageMetadata.Description)
+                                                    </div>
+                                                }
+                                                @if (pageMetadata.RelevantFiles?.Count > 0)
+                                                {
+                                                    <div class="page-files text-muted small">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
+                                                            <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
+                                                        </svg>
+                                                        @pageMetadata.RelevantFiles.Count file@(pageMetadata.RelevantFiles.Count != 1 ? "s" : "")
+                                                    </div>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
                                 </li>
                             }
                         </ul>
@@ -40,6 +65,42 @@
         }
     </div>
 </div>
+
+<style>
+    .page-title {
+        font-weight: 500;
+    }
+    
+    .page-description {
+        font-size: 0.75rem;
+        line-height: 1.2;
+        margin-top: 2px;
+        opacity: 0.8;
+    }
+    
+    .page-files {
+        font-size: 0.7rem;
+        margin-top: 2px;
+        opacity: 0.7;
+    }
+    
+    .wiki-item {
+        padding: 8px 12px;
+        margin: 2px 0;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .wiki-item:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+    
+    .wiki-item.active {
+        background-color: rgba(103, 58, 183, 0.1);
+        border-left: 3px solid #673ab7;
+    }
+</style>
 
 @code {
     private string searchTerm = "";
@@ -74,6 +135,11 @@
                 s.PageRefs.Any(p => p.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
             );
         }
+    }
+
+    private WikiPage? GetPageMetadata(string pageTitle)
+    {
+        return AppState.Structure?.Pages?.FirstOrDefault(p => p.Title == pageTitle);
     }
 
     private async Task LoadPage(string pageTitle)

@@ -36,4 +36,9 @@ public interface IWikiRepository
     /// Gets a list of all repositories that have been processed/stored.
     /// </summary>
     Task<List<string>> GetAllRepositoriesAsync();
+
+    /// <summary>
+    /// Gets all pages for a repository
+    /// </summary>
+    Task<List<WikiPage>> GetAllPagesAsync(string repoPath);
 }

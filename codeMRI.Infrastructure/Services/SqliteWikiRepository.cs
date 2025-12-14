@@ -247,4 +247,21 @@ public class SqliteWikiRepository : IWikiRepository
         var repos = await connection.QueryAsync<string>("SELECT RepoPath FROM Repositories ORDER BY id DESC");
         return repos.ToList();
     }
+
+    public async Task<List<WikiPage>> GetAllPagesAsync(string repoPath)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId == null) return new List<WikiPage>();
+
+        var jsonPages = await connection.QueryAsync<string>(
+            "SELECT JsonContent FROM WikiPages WHERE RepoId = @RepoId ORDER BY Title",
+            new { RepoId = repoId });
+
+        return jsonPages
+            .Select(json => JsonSerializer.Deserialize<WikiPage>(json))
+            .Where(page => page != null)
+            .Cast<WikiPage>()
+            .ToList();
+    }
 }

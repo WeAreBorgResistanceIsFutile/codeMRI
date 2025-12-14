@@ -1,0 +1,222 @@
+@page "/repositories"
+@using codeMRI.Frontend.Services
+@using codeMRI.Server.Api
+@inject WikiApiClient WikiApi
+@inject AppState AppState
+@inject NavigationManager Navigation
+
+<div class="container-fluid py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10 col-xl-8">
+            <!-- Header -->
+            <div class="text-center mb-5">
+                <div class="d-flex align-items-center justify-content-center mb-3">
+                    <span class="logo-icon me-3">C</span>
+                    <h1 class="display-4 fw-bold mb-0" style="font-family: 'Google Sans', sans-serif;">codeMRI</h1>
+                </div>
+                <p class="lead text-muted">Automated Repository-Level Documentation</p>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="mb-4">
+                <div class="input-group input-group-lg shadow-sm">
+                    <span class="input-group-text bg-white border-end-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                        </svg>
+                    </span>
+                    <input type="text" class="form-control border-start-0 ps-0" 
+                           placeholder="Search repositories..." 
+                           @bind="searchTerm" 
+                           @bind:event="oninput" />
+                </div>
+            </div>
+
+            <!-- Add Repository Button -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h5 class="mb-0">@(FilteredRepositories.Count) Repositories</h5>
+                <button class="btn btn-primary" @onclick="ShowIngestionDialog">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-2" viewBox="0 0 16 16">
+                        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+                    </svg>
+                    Add Repository
+                </button>
+            </div>
+
+            <!-- Loading State -->
+            @if (isLoading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3 text-muted">Loading repositories...</p>
+                </div>
+            }
+            else if (repositories.Count == 0)
+            {
+                <!-- Empty State -->
+                <div class="text-center py-5">
+                    <div class="mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="text-muted" viewBox="0 0 16 16">
+                            <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3.797a1.5 1.5 0 0 1 1.06.44l.415.414A.5.5 0 0 0 8.126 2h5.374A1.5 1.5 0 0 1 15 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-10z"/>
+                        </svg>
+                    </div>
+                    <h4 class="mb-3">No repositories yet</h4>
+                    <p class="text-muted mb-4">Get started by adding your first repository</p>
+                    <button class="btn btn-primary btn-lg" @onclick="ShowIngestionDialog">
+                        Add Repository
+                    </button>
+                </div>
+            }
+            else
+            {
+                <!-- Repository Cards -->
+                <div class="row g-4">
+                    @foreach (var repo in FilteredRepositories)
+                    {
+                        <div class="col-md-6">
+                            <div class="card h-100 shadow-sm hover-lift" style="cursor: pointer; transition: transform 0.2s;" 
+                                 @onclick="() => SelectRepository(repo)">
+                                <div class="card-body">
+                                    <div class="d-flex align-items-start mb-3">
+                                        <div class="flex-grow-1">
+                                            <h5 class="card-title mb-1">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="me-2" viewBox="0 0 16 16">
+                                                    <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3.797a1.5 1.5 0 0 1 1.06.44l.415.414A.5.5 0 0 0 8.126 2h5.374A1.5 1.5 0 0 1 15 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-10z"/>
+                                                </svg>
+                                                @System.IO.Path.GetFileName(repo)
+                                            </h5>
+                                            <p class="text-muted small mb-0">@repo</p>
+                                        </div>
+                                        <span class="badge bg-success">Ingested</span>
+                                    </div>
+                                    <div class="d-flex gap-3 text-muted small">
+                                        <span>
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16">
+                                                <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
+                                            </svg>
+                                            Documentation
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Ingestion Dialog Component -->
+@if (showIngestionDialog)
+{
+    <IngestionDialog OnClose="HideIngestionDialog" OnIngestionComplete="OnIngestionComplete" />
+}
+
+<style>
+    .hover-lift:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+    
+    .logo-icon {
+        display: inline-block;
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px;
+        line-height: 48px;
+        text-align: center;
+        font-weight: bold;
+        font-size: 24px;
+    }
+</style>
+
+@code {
+    private List<string> repositories = new();
+    private bool isLoading = true;
+    private string searchTerm = "";
+    private bool showIngestionDialog = false;
+
+    private List<string> FilteredRepositories =>
+        string.IsNullOrWhiteSpace(searchTerm)
+            ? repositories
+            : repositories.Where(r => r.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            repositories = await WikiApi.GetRepositoriesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching repositories: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ShowIngestionDialog()
+    {
+        showIngestionDialog = true;
+    }
+
+    private void HideIngestionDialog()
+    {
+        showIngestionDialog = false;
+    }
+
+    private async Task OnIngestionComplete(string repoPath)
+    {
+        showIngestionDialog = false;
+        
+        // Refresh repository list
+        repositories = await WikiApi.GetRepositoriesAsync();
+        StateHasChanged();
+        
+        // Navigate to the newly ingested repository
+        await SelectRepository(repoPath);
+    }
+
+    private async Task SelectRepository(string repoPath)
+    {
+        AppState.SetRepoPath(repoPath);
+        AppState.SetBusy(true, "Loading repository...");
+        
+        try
+        {
+            var structure = await WikiApi.GetNavigationAsync(repoPath);
+            AppState.SetStructure(structure);
+            Navigation.NavigateTo("/");
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Structure doesn't exist yet, generate it
+            Console.WriteLine($"No structure found for {repoPath}, generating...");
+            AppState.SetBusy(true, "Generating documentation structure...");
+            
+            try
+            {
+                var structure = await WikiApi.GenerateStructureAsync(repoPath);
+                AppState.SetStructure(structure);
+                Navigation.NavigateTo("/");
+            }
+            catch (Exception genEx)
+            {
+                Console.WriteLine($"Error generating structure: {genEx.Message}");
+                AppState.SetBusy(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading repository: {ex.Message}");
+            AppState.SetBusy(false);
+        }
+    }
+}

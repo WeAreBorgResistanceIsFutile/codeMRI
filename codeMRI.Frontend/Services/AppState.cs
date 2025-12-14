@@ -131,5 +131,15 @@ public class AppState
         return default;
     }
 
+    // --- Repository Metadata ---
+    
+    public RepositoryStatusResponse? RepositoryStatus { get; private set; }
+    
+    public void SetRepositoryStatus(RepositoryStatusResponse? status)
+    {
+        RepositoryStatus = status;
+        NotifyStateChanged();
+    }
+
     private void NotifyStateChanged() => OnChange?.Invoke();
 }

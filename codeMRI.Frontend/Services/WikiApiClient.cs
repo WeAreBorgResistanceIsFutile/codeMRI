@@ -63,4 +63,46 @@ public class WikiApiClient
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();
     }
+
+    public async Task<RepositoryStatusResponse> GetRepositoryStatusAsync(string repoPath)
+    {
+        var encoded = Uri.EscapeDataString(repoPath);
+        return await _http.GetFromJsonAsync<RepositoryStatusResponse>($"api/Wiki/repository-status?repoPath={encoded}")
+               ?? throw new Exception("Failed to get repository status");
+    }
+
+    public async Task<WikiStructure> GetNavigationAsync(string repoPath)
+    {
+        var encoded = Uri.EscapeDataString(repoPath);
+        return await _http.GetFromJsonAsync<WikiStructure>($"api/Wiki/navigation/{encoded}")
+               ?? throw new Exception("Failed to get navigation structure");
+    }
+
+    
+    public async Task<IngestionResult> IngestGitRepositoryAsync(string gitUrl)
+    {
+        var response = await _http.PostAsJsonAsync("api/Wiki/ingest", new { Url = gitUrl });
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<IngestionResult>()
+               ?? throw new Exception("Failed to ingest repository");
+    }
+
+    public async Task<WikiStructure> IngestRepositoryAsync(string repoPath, bool forceRegenerate = false, string? connectionId = null)
+    {
+        var response = await _http.PostAsJsonAsync("api/Wiki/generate-advanced", new StructureRequest 
+        { 
+            RepoPath = repoPath,
+            ForceRegenerate = forceRegenerate,
+            ConnectionId = connectionId
+        });
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<WikiStructure>()
+               ?? throw new Exception("Failed to ingest repository");
+    }
+}
+
+public class IngestionResult
+{
+    public string Path { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 }

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace codeMRI.CLI;
+namespace codeMRI.Infrastructure.Services;
 
 public static class GitHelper
 {
@@ -12,8 +12,6 @@ public static class GitHelper
         }
 
         Directory.CreateDirectory(targetDir);
-
-        Console.WriteLine($"Cloning {gitUrl} to {targetDir}...");
 
         var startInfo = new ProcessStartInfo
         {
@@ -28,13 +26,16 @@ public static class GitHelper
 
         using var process = new Process { StartInfo = startInfo };
         
+        var output = new List<string>();
+        var errors = new List<string>();
+        
         process.OutputDataReceived += (sender, e) => 
         {
-            if (!string.IsNullOrEmpty(e.Data)) Console.WriteLine($"[GIT] {e.Data}");
+            if (!string.IsNullOrEmpty(e.Data)) output.Add(e.Data);
         };
         process.ErrorDataReceived += (sender, e) => 
         {
-             if (!string.IsNullOrEmpty(e.Data)) Console.WriteLine($"[GIT] {e.Data}");
+            if (!string.IsNullOrEmpty(e.Data)) errors.Add(e.Data);
         };
 
         process.Start();
@@ -45,15 +46,18 @@ public static class GitHelper
 
         if (process.ExitCode != 0)
         {
-            throw new Exception($"Git clone failed with exit code {process.ExitCode}");
+            var errorMessage = string.Join("\n", errors);
+            throw new Exception($"Git clone failed with exit code {process.ExitCode}: {errorMessage}");
         }
 
-        Console.WriteLine("Clone successful.");
         return targetDir;
     }
 
     public static bool IsGitUrl(string input)
     {
-        return input.StartsWith("http") || input.StartsWith("git@") || input.EndsWith(".git");
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        return input.StartsWith("http", StringComparison.OrdinalIgnoreCase) || 
+               input.StartsWith("git@") || 
+               input.EndsWith(".git", StringComparison.OrdinalIgnoreCase);
     }
 }

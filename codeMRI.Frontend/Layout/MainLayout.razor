@@ -8,20 +8,20 @@
         <div class="brand">
             <span class="logo-icon">C</span> codeMRI
         </div>
-        <div class="context-pill">
-            @if (!string.IsNullOrEmpty(AppState.RepoPath))
-            {
+        @if (!string.IsNullOrEmpty(AppState.RepoPath))
+        {
+            <div class="context-pill">
                 <span class="repo-icon">📂</span> @AppState.RepoPath
-            }
-            else
-            {
-                <span class="text-muted">Select Repository</span>
-            }
-        </div>
+            </div>
+        }
         <div class="actions">
-             <div class="status-wrapper @(AppState.IsBusy ? "busy" : "")">
+            @if (string.IsNullOrEmpty(AppState.RepoPath))
+            {
+                <span class="text-muted" style="font-size: 0.85rem; margin-right: 12px;">Select Repository</span>
+            }
+            <div class="status-wrapper @(AppState.IsBusy ? "busy" : "")">
                 <div class="status-dot"></div>
-                 @if(AppState.IsBusy) { <span class="status-text ms-2">@AppState.BusyMessage</span> }
+                @if(AppState.IsBusy) { <span class="status-text ms-2">@AppState.BusyMessage</span> }
             </div>
         </div>
     </header>

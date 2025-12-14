@@ -1,0 +1,215 @@
+@using codeMRI.Frontend.Services
+@using codeMRI.Server.Api
+@inject WikiApiClient WikiApi
+@inject WikiHubClient WikiHub
+@inject AppState AppState
+
+<!-- Modal Backdrop -->
+<div class="modal-backdrop fade show" @onclick="Close"></div>
+
+<!-- Modal Dialog -->
+<div class="modal fade show d-block" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title">Add Repository</h5>
+                <button type="button" class="btn-close" @onclick="Close"></button>
+            </div>
+            <div class="modal-body">
+                @if (!isIngesting)
+                {
+                    <!-- Input Form -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Repository Path or Git URL</label>
+                        <input type="text" class="form-control form-control-lg" 
+                               placeholder="e.g., /path/to/local/repo or https://github.com/user/repo" 
+                               @bind="repoInput" />
+                        <div class="form-text">Enter a local repository path or Git URL</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="forceRegenerate" @bind="forceRegenerate">
+                            <label class="form-check-label" for="forceRegenerate">
+                                Force regeneration (ignore cache)
+                            </label>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            @errorMessage
+                        </div>
+                    }
+                }
+                else
+                {
+                    <!-- Progress Display -->
+                    <div class="text-center py-4">
+                        <div class="mb-4">
+                            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                        </div>
+                        
+                        <h5 class="mb-4">Ingesting Repository</h5>
+                        
+                        @if (AppState.CurrentProgress != null)
+                        {
+                            <div class="mb-4">
+                                <div class="progress" style="height: 30px;">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                                         role="progressbar" 
+                                         style="width: @(AppState.CurrentProgress.Percentage)%"
+                                         aria-valuenow="@AppState.CurrentProgress.Percentage" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100">
+                                        <strong>@AppState.CurrentProgress.Percentage%</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-light border" role="alert">
+                                <div class="d-flex align-items-center">
+                                    <div class="flex-shrink-0">
+                                        <span class="badge bg-primary">@AppState.CurrentProgress.Phase</span>
+                                    </div>
+                                    <div class="flex-grow-1 ms-3 text-start">
+                                        <small>@AppState.CurrentProgress.Message</small>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">Initializing...</p>
+                        }
+                    </div>
+
+                    <!-- Agent Dashboard (if available) -->
+                    @if (AppState.ActiveAgents.Any())
+                    {
+                        <div class="border-top pt-3">
+                            <h6 class="mb-3 text-start">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-2" viewBox="0 0 16 16">
+                                    <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+                                    <path fill-rule="evenodd" d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216z"/>
+                                    <path d="M4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/>
+                                </svg>
+                                Active Agents (@AppState.ActiveAgents.Count)
+                            </h6>
+                            <div class="list-group list-group-flush" style="max-height: 200px; overflow-y: auto;">
+                                @foreach (var kvp in AppState.ActiveAgents.Take(5))
+                                {
+                                    var agent = kvp.Value;
+                                    <div class="list-group-item px-0">
+                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <span class="fw-semibold small">@agent.Role</span>
+                                            <span class="badge bg-success bg-opacity-10 text-success">@agent.Status</span>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(agent.TaskId))
+                                        {
+                                            <small class="text-muted d-block">Task: @agent.TaskId</small>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer border-0">
+                @if (!isIngesting)
+                {
+                    <button type="button" class="btn btn-secondary" @onclick="Close">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="StartIngestion" disabled="@string.IsNullOrWhiteSpace(repoInput)">
+                        Start Ingestion
+                    </button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-secondary" @onclick="Close" disabled>
+                        Processing...
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnIngestionComplete { get; set; }
+
+    private string repoInput = "";
+    private bool forceRegenerate = false;
+    private bool isIngesting = false;
+    private string errorMessage = "";
+
+    private async Task Close()
+    {
+        if (!isIngesting)
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+
+    private async Task StartIngestion()
+    {
+        if (string.IsNullOrWhiteSpace(repoInput))
+        {
+            errorMessage = "Please enter a repository path or Git URL";
+            return;
+        }
+
+        isIngesting = true;
+        errorMessage = "";
+        
+        try
+        {
+            // Simple ingestion: clone the Git repo
+            var result = await WikiApi.IngestGitRepositoryAsync(repoInput);
+            
+            // Success! Notify parent component with the repository path
+            await OnIngestionComplete.InvokeAsync(result.Path);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ingestion failed: {ex.Message}";
+            isIngesting = false;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Subscribe to progress updates
+        WikiHub.OnProgress += HandleProgress;
+        
+        // Start SignalR connection
+        try
+        {
+            await WikiHub.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Could not connect to SignalR hub: {ex.Message}");
+        }
+        
+        AppState.OnChange += StateHasChanged;
+    }
+    
+    private void HandleProgress(ProgressInfo info)
+    {
+        AppState.SetProgress(info);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        WikiHub.OnProgress -= HandleProgress;
+        AppState.OnChange -= StateHasChanged;
+    }
+}
+
+@implements IDisposable

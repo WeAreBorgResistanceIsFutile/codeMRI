@@ -47,7 +47,9 @@ public class OllamaLLMService : ILLMClient
         _logger.LogInformation("Sending ChatAsync request to {Url}. Body: {Body}", "/api/chat", requestJson);
 
         const int maxRetries = 3;
-        const int delayMilliseconds = 2000;
+        const int baseDelayMs = 1000; // Base delay of 1 second
+        const int maxDelayMs = 5000;  // Maximum delay of 5 seconds
+        var random = new Random();
 
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
@@ -57,9 +59,13 @@ public class OllamaLLMService : ILLMClient
                 
                 if (IsTransientError(response.StatusCode) && attempt < maxRetries)
                 {
-                    var delay = GetRetryDelay(response, delayMilliseconds, attempt);
-                    _logger.LogWarning("Transient error {StatusCode} on attempt {Attempt}. Retrying in {Delay}ms...", 
-                        response.StatusCode, attempt, delay);
+                    // Calculate delay with exponential backoff + random jitter
+                    var exponentialDelay = baseDelayMs * (1 << (attempt - 1)); // 1s, 2s, 4s
+                    var jitter = random.Next(0, exponentialDelay / 2); // Add random jitter up to 50% of delay
+                    var delay = Math.Min(exponentialDelay + jitter, maxDelayMs);
+                    
+                    _logger.LogWarning("Transient error {StatusCode} on attempt {Attempt}/{MaxRetries}. Retrying in {Delay}ms...", 
+                        response.StatusCode, attempt, maxRetries, delay);
                     await Task.Delay(delay, cancellationToken);
                     continue;
                 }
@@ -76,23 +82,35 @@ public class OllamaLLMService : ILLMClient
             }
             catch (HttpRequestException ex) when (ex.StatusCode.HasValue && IsTransientError(ex.StatusCode.Value) && attempt < maxRetries)
             {
-                 var delay = delayMilliseconds * (1 << (attempt - 1));
-                 _logger.LogWarning(ex, "HTTP Request failed with {StatusCode} on attempt {Attempt}. Retrying in {Delay}ms...", ex.StatusCode, attempt, delay);
+                 // Calculate delay with exponential backoff + random jitter
+                 var exponentialDelay = baseDelayMs * (1 << (attempt - 1));
+                 var jitter = random.Next(0, exponentialDelay / 2);
+                 var delay = Math.Min(exponentialDelay + jitter, maxDelayMs);
+                 
+                 _logger.LogWarning(ex, "HTTP Request failed with {StatusCode} on attempt {Attempt}/{MaxRetries}. Retrying in {Delay}ms...", 
+                     ex.StatusCode, attempt, maxRetries, delay);
                  await Task.Delay(delay, cancellationToken);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < maxRetries)
             {
-                _logger.LogWarning("ChatAsync request timed out on attempt {Attempt}. Retrying in {Delay}ms...", attempt, delayMilliseconds);
-                await Task.Delay(delayMilliseconds, cancellationToken);
+                // Calculate delay with exponential backoff + random jitter for timeout retries
+                var exponentialDelay = baseDelayMs * (1 << (attempt - 1));
+                var jitter = random.Next(0, exponentialDelay / 2);
+                var delay = Math.Min(exponentialDelay + jitter, maxDelayMs);
+                
+                _logger.LogWarning("ChatAsync request timed out on attempt {Attempt}/{MaxRetries}. Retrying in {Delay}ms...", 
+                    attempt, maxRetries, delay);
+                await Task.Delay(delay, cancellationToken);
             }
             catch (OperationCanceledException)
             {
-                _logger.LogWarning("ChatAsync operation canceled or timed out.");
+                _logger.LogWarning("ChatAsync operation canceled or timed out after {MaxRetries} attempts.", maxRetries);
                 throw;
             }
         }
         
-        throw new HttpRequestException("Max retries exceeded for Ollama API.");
+        _logger.LogError("Max retries ({MaxRetries}) exceeded for Ollama API. Stopping retry attempts.", maxRetries);
+        throw new HttpRequestException($"Max retries ({maxRetries}) exceeded for Ollama API. The service may be experiencing issues.");
     }
 
     public async IAsyncEnumerable<string> ChatStreamAsync(string systemPrompt, string userPrompt,
@@ -118,7 +136,9 @@ public class OllamaLLMService : ILLMClient
         var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
 
         const int maxRetries = 3;
-        const int delayMilliseconds = 2000;
+        const int baseDelayMs = 1000;
+        const int maxDelayMs = 5000;
+        var random = new Random();
         
         HttpResponseMessage? response = null;
 
@@ -134,31 +154,51 @@ public class OllamaLLMService : ILLMClient
 
                 response = await _httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                 
-                if ((int)response.StatusCode >= 500 && attempt < maxRetries)
+                if (IsTransientError(response.StatusCode) && attempt < maxRetries)
                 {
-                    _logger.LogWarning("Ollama returned {StatusCode} on stream attempt {Attempt}. Retrying...", response.StatusCode, attempt);
+                    // Calculate delay with exponential backoff + random jitter
+                    var exponentialDelay = baseDelayMs * (1 << (attempt - 1));
+                    var jitter = random.Next(0, exponentialDelay / 2);
+                    var delay = Math.Min(exponentialDelay + jitter, maxDelayMs);
+                    
+                    _logger.LogWarning("Ollama returned {StatusCode} on stream attempt {Attempt}/{MaxRetries}. Retrying in {Delay}ms...", 
+                        response.StatusCode, attempt, maxRetries, delay);
                     response.Dispose();
                     response = null;
-                    await Task.Delay(delayMilliseconds, cancellationToken);
+                    await Task.Delay(delay, cancellationToken);
                     continue;
                 }
                 
                 response.EnsureSuccessStatusCode();
                 break; // Success, exit loop
             }
-            catch (HttpRequestException ex) when ((int?)ex.StatusCode >= 500 && attempt < maxRetries)
+            catch (HttpRequestException ex) when (ex.StatusCode.HasValue && IsTransientError(ex.StatusCode.Value) && attempt < maxRetries)
             {
-                 _logger.LogWarning(ex, "HTTP Stream Request failed with {StatusCode} on attempt {Attempt}. Retrying...", ex.StatusCode, attempt);
-                 await Task.Delay(delayMilliseconds, cancellationToken);
+                 var exponentialDelay = baseDelayMs * (1 << (attempt - 1));
+                 var jitter = random.Next(0, exponentialDelay / 2);
+                 var delay = Math.Min(exponentialDelay + jitter, maxDelayMs);
+                 
+                 _logger.LogWarning(ex, "HTTP Stream Request failed with {StatusCode} on attempt {Attempt}/{MaxRetries}. Retrying in {Delay}ms...", 
+                     ex.StatusCode, attempt, maxRetries, delay);
+                 await Task.Delay(delay, cancellationToken);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < maxRetries)
             {
-                _logger.LogWarning("ChatStreamAsync request timed out on attempt {Attempt}. Retrying in {Delay}ms...", attempt, delayMilliseconds);
-                await Task.Delay(delayMilliseconds, cancellationToken);
+                var exponentialDelay = baseDelayMs * (1 << (attempt - 1));
+                var jitter = random.Next(0, exponentialDelay / 2);
+                var delay = Math.Min(exponentialDelay + jitter, maxDelayMs);
+                
+                _logger.LogWarning("ChatStreamAsync request timed out on attempt {Attempt}/{MaxRetries}. Retrying in {Delay}ms...", 
+                    attempt, maxRetries, delay);
+                await Task.Delay(delay, cancellationToken);
             }
         }
 
-        if (response == null) throw new HttpRequestException("Max retries exceeded for Ollama Streaming API.");
+        if (response == null)
+        {
+            _logger.LogError("Max retries ({MaxRetries}) exceeded for Ollama Streaming API. Stopping retry attempts.", maxRetries);
+            throw new HttpRequestException($"Max retries ({maxRetries}) exceeded for Ollama Streaming API. The service may be experiencing issues.");
+        }
 
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);

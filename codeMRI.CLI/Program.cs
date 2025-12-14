@@ -3,6 +3,7 @@ using System.CommandLine.Invocation;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR.Client;
+using codeMRI.Infrastructure.Services;
 
 namespace codeMRI.CLI;
 

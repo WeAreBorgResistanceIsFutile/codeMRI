@@ -5,6 +5,7 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Server.Api;
 using codeMRI.Server.Hubs;
+using codeMRI.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using AgentMessage = codeMRI.Agents.Models.AgentMessage;
@@ -47,7 +48,12 @@ public class WikiController : ControllerBase
         if (!request.ForceRegenerate)
         {
             var existing = await _wikiRepo.GetStructureAsync(request.RepoPath);
-            if (existing != null) return Ok(existing);
+            if (existing != null)
+            {
+                // Populate pages for navigation
+                existing.Pages = await _wikiRepo.GetAllPagesAsync(request.RepoPath);
+                return Ok(existing);
+            }
         }
         else
         {
@@ -63,6 +69,9 @@ public class WikiController : ControllerBase
         var structure = await _wikiService.GenerateStructureAsync(fileTree, request.ReadmeContent, request.Language);
 
         await _wikiRepo.SaveStructureAsync(request.RepoPath, structure);
+        
+        // Populate pages (will be empty for new structure, but consistent API)
+        structure.Pages = await _wikiRepo.GetAllPagesAsync(request.RepoPath);
 
         return Ok(structure);
     }
@@ -126,6 +135,114 @@ public class WikiController : ControllerBase
         return Ok(repos);
     }
 
+    [HttpPost("ingest")]
+    public async Task<IActionResult> IngestRepository([FromBody] IngestionRequest request)
+    {
+        _logger.LogInformation("IngestRepository called. Request is null: {IsNull}", request == null);
+        
+        if (request != null)
+        {
+            _logger.LogInformation("Request.Url: '{Url}'", request.Url ?? "(null)");
+        }
+        
+        if (string.IsNullOrWhiteSpace(request?.Url))
+        {
+            _logger.LogWarning("URL is required - returning BadRequest");
+            return BadRequest("URL is required.");
+        }
+
+        if (!GitHelper.IsGitUrl(request.Url))
+        {
+            _logger.LogWarning("Invalid Git URL: {Url}", request.Url);
+            return BadRequest("Invalid Git URL.");
+        }
+
+        try
+        {
+            _logger.LogInformation("Starting ingestion for {Url}", request.Url);
+            
+            // Extract a name from the URL
+            var name = Path.GetFileNameWithoutExtension(request.Url);
+            if (string.IsNullOrWhiteSpace(name)) name = "repo_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+
+            _logger.LogInformation("Repository name: {Name}", name);
+
+            // Target path: ../data/repos/{name}
+            var dataDir = Path.GetFullPath("../data/repos");
+            _logger.LogInformation("Data directory: {DataDir}", dataDir);
+            
+            if (!Directory.Exists(dataDir))
+            {
+                _logger.LogInformation("Creating data directory: {DataDir}", dataDir);
+                Directory.CreateDirectory(dataDir);
+            }
+            
+            var targetPath = Path.Combine(dataDir, name);
+            _logger.LogInformation("Target path: {TargetPath}", targetPath);
+
+            // Check if directory already exists
+            if (Directory.Exists(targetPath))
+            {
+                _logger.LogWarning("Repository directory already exists: {TargetPath}", targetPath);
+                Directory.Delete(targetPath, true);
+            }
+
+            // Clone
+            _logger.LogInformation("Cloning repository from {Url} to {TargetPath}", request.Url, targetPath);
+            await GitHelper.CloneRepositoryAsync(request.Url, targetPath);
+            _logger.LogInformation("Repository cloned successfully");
+
+            // Repository will be discovered by GetAllRepositoriesAsync which scans the data directory
+            return Ok(new { Path = targetPath, Name = name });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ingestion failed for {Url}. Error: {Message}", request.Url, ex.Message);
+            return StatusCode(500, $"Ingestion failed: {ex.Message}");
+        }
+    }
+
+    [HttpGet("repository-status")]
+    public async Task<IActionResult> GetRepositoryStatus([FromQuery] string repoPath)
+    {
+        var structure = await _wikiRepo.GetStructureAsync(repoPath);
+        if (structure == null)
+        {
+            return Ok(new RepositoryStatusResponse 
+            { 
+                Exists = false, 
+                Ingested = false 
+            });
+        }
+        
+        // Load pages for accurate count
+        var pages = await _wikiRepo.GetAllPagesAsync(repoPath);
+        
+        return Ok(new RepositoryStatusResponse
+        { 
+            Exists = true, 
+            Ingested = true,
+            Title = structure.Title,
+            PageCount = pages.Count,
+            SectionCount = structure.Sections?.Count ?? 0
+        });
+    }
+
+    [HttpGet("navigation/{*repoPath}")]
+    public async Task<IActionResult> GetNavigation(string repoPath)
+    {
+        var structure = await _wikiRepo.GetStructureAsync(repoPath);
+        if (structure == null)
+        {
+            return NotFound(new { Message = "Repository not found. Please ingest it first." });
+        }
+        
+        // Populate pages for full navigation tree
+        structure.Pages = await _wikiRepo.GetAllPagesAsync(repoPath);
+        
+        return Ok(structure);
+    }
+
     [HttpPost("generate-advanced")]
     public async Task<IActionResult> GenerateAdvancedWiki([FromBody] StructureRequest request)
     {
@@ -133,9 +250,30 @@ public class WikiController : ControllerBase
         Func<AgentMessage, Task>? statusSubscriber = null;
         Func<AgentMessage, Task>? delegationSubscriber = null;
         Func<AgentMessage, Task>? lifecycleSubscriber = null;
+        string? clonedRepoPath = null;
 
         try
         {
+            // Handle Git URL cloning
+            if (GitHelper.IsGitUrl(request.RepoPath))
+            {
+                _logger.LogInformation("Git URL detected, cloning repository: {GitUrl}", request.RepoPath);
+                
+                try
+                {
+                    clonedRepoPath = await GitHelper.CloneRepositoryAsync(request.RepoPath);
+                    _logger.LogInformation("Repository cloned to: {ClonedPath}", clonedRepoPath);
+                    
+                    // Update request to use cloned path
+                    request.RepoPath = clonedRepoPath;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to clone Git repository: {GitUrl}", request.RepoPath);
+                    return BadRequest(new { Error = $"Failed to clone repository: {ex.Message}" });
+                }
+            }
+            
             if (!string.IsNullOrEmpty(request.ConnectionId))
             {
                 // Subscribe to agent status updates
@@ -193,6 +331,9 @@ public class WikiController : ControllerBase
             {
                 await _wikiRepo.SaveStructureAsync(request.RepoPath, structure);
             }
+            
+            // Populate pages for navigation
+            structure.Pages = await _wikiRepo.GetAllPagesAsync(request.RepoPath);
 
             return Ok(structure);
         }
