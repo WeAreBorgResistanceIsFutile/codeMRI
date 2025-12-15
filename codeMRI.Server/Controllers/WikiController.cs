@@ -2,7 +2,6 @@ using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
 using codeMRI.Server.Api;
 using codeMRI.Server.Hubs;
 using codeMRI.Infrastructure.Services;
@@ -45,29 +44,8 @@ public class WikiController : ControllerBase
         _ingestionManager = ingestionManager;
     }
 
-    [HttpPost("structure")]
-    public async Task<IActionResult> GenerateStructure([FromBody] StructureRequest request)
-    {
-        // The legacy structure generation has been removed.
-        // This endpoint now only returns cached structures or redirects to advanced generation.
-        
-        var existing = await _wikiRepo.GetStructureAsync(request.RepoPath);
-        if (existing != null)
-        {
-            // Populate pages for navigation
-            existing.Pages = await _wikiRepo.GetAllPagesAsync(request.RepoPath);
-            return Ok(existing);
-        }
 
-        if (request.ForceRegenerate)
-        {
-            // Redirect to advanced generation endpoint
-            return await GenerateAdvancedWiki(request);
-        }
 
-        // No cached structure and not forcing regeneration
-        return NotFound(new { Error = "No wiki structure found. Use /api/Wiki/generate-advanced to create one." });
-    }
 
 
     [HttpPost("page")]
@@ -127,6 +105,21 @@ public class WikiController : ControllerBase
     {
         var repos = await _wikiRepo.GetAllRepositoriesAsync();
         return Ok(repos);
+    }
+
+    [HttpGet("repositories-summary")]
+    public async Task<IActionResult> GetRepositorySummaries()
+    {
+        var summaries = await _wikiRepo.GetAllRepositorySummariesAsync();
+        var apiSummaries = summaries.Select(s => new codeMRI.Server.Api.RepositorySummary
+        {
+            Path = s.Path,
+            Name = s.Name,
+            IsIngested = s.IsIngested,
+            CreatedAt = s.CreatedAt
+        }).ToList();
+        
+        return Ok(apiSummaries);
     }
 
     [HttpPost("ingest")]
@@ -198,12 +191,15 @@ public class WikiController : ControllerBase
         });
     }
 
-    [HttpGet("navigation/{*repoPath}")]
-    public async Task<IActionResult> GetNavigation(string repoPath)
+    [HttpGet("navigation")]
+    public async Task<IActionResult> GetNavigation([FromQuery] string repoPath)
     {
+        _logger.LogInformation("GetNavigation called with repoPath: '{RepoPath}'", repoPath);
+        
         var structure = await _wikiRepo.GetStructureAsync(repoPath);
         if (structure == null)
         {
+            _logger.LogWarning("No structure found for repoPath: '{RepoPath}'", repoPath);
             return NoContent();
         }
         

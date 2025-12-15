@@ -29,10 +29,6 @@ else
         <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
             <h1 class="h3 m-0">@AppState.CurrentPage.Title</h1>
             <div>
-                <button class="btn btn-sm btn-outline-primary me-2" @onclick="RegeneratePage" disabled="@AppState.IsBusy">
-                    @if (AppState.IsBusy) { <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> }
-                    Regenerate
-                </button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="ClosePage">Close</button>
             </div>
         </div>

@@ -183,25 +183,21 @@ public class DbIngestionManager : IIngestionJobManager
             // Clean up if exists (fresh clone) or we could pull... for now overwrite
             if (Directory.Exists(targetDir)) Directory.Delete(targetDir, true);
 
+
             await GitHelper.CloneRepositoryAsync(repoUrl, targetDir, cts.Token);
             
-            // Update Job with path and real name
+            // Update Job with path (but don't mark as complete yet - that happens after wiki generation)
             using (var connection = new SqliteConnection(_connectionString))
             {
-                var progressJson = JsonSerializer.Serialize(new ProgressInfo { Phase = "Completed", Percentage = 100, Message = "Ingestion complete" });
-                
                 await connection.ExecuteAsync(
                     @"UPDATE IngestionJobs 
-                      SET Status = @Status, 
-                          RepoPath = @RepoPath,
-                          ProgressPercentage = 100,
-                          CurrentPhase = 'Completed',
-                          Message = 'Ingestion complete',
+                      SET RepoPath = @RepoPath,
                           LastUpdated = @LastUpdated
                       WHERE Id = @Id",
-                    new { Status = IngestionStatus.Completed, RepoPath = targetDir, Id = jobId, LastUpdated = DateTime.UtcNow });
+                    new { RepoPath = targetDir, Id = jobId, LastUpdated = DateTime.UtcNow });
             }
             if (await CheckCancellationAsync(jobId)) return;
+
 
             // 2. Orchestration
             await UpdateJobStatusAsync(jobId, IngestionStatus.Analyzing, 10, "Starting analysis...");
@@ -255,9 +251,14 @@ public class DbIngestionManager : IIngestionJobManager
                 Language = "Detected" // Logic to detect language could be added
             };
 
-            await orchestrator.GenerateAdvancedWikiAsync(targetDir, repoInfo, progress, cts.Token);
+            var structure = await orchestrator.GenerateAdvancedWikiAsync(targetDir, repoInfo, progress, cts.Token);
+            
+            // IMPORTANT: Save the generated structure to the repository
+            await wikiRepo.SaveStructureAsync(targetDir, structure);
+            _logger.LogInformation("Saved wiki structure for {RepoPath}", targetDir);
             
             await UpdateJobStatusAsync(jobId, IngestionStatus.Completed, 100, "Ingestion complete");
+
         }
         catch (OperationCanceledException)
         {

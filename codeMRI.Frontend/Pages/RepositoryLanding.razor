@@ -1,5 +1,4 @@
 @page "/repositories"
-@using codeMRI.Frontend.Services
 @using codeMRI.Server.Api
 @inject WikiApiClient WikiApi
 @inject AppState AppState
@@ -77,19 +76,26 @@
                     {
                         <div class="col-md-6">
                             <div class="card h-100 shadow-sm hover-lift border-0" style="cursor: pointer; transition: all 0.2s ease;" 
-                                 @onclick="() => SelectRepository(repo)">
+                                 @onclick="() => SelectRepository(repo.Path)">
                                 <div class="card-body">
                                     <div class="d-flex align-items-start mb-3">
                                         <div class="flex-grow-1 pe-3" style="min-width: 0;">
-                                            <h5 class="card-title mb-1 text-truncate" title="@System.IO.Path.GetFileName(repo)">
+                                            <h5 class="card-title mb-1 text-truncate" title="@repo.Name">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="me-2 text-primary" viewBox="0 0 16 16">
                                                     <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3.797a1.5 1.5 0 0 1 1.06.44l.415.414A.5.5 0 0 0 8.126 2h5.374A1.5 1.5 0 0 1 15 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-10z"/>
                                                 </svg>
-                                                @System.IO.Path.GetFileName(repo)
+                                                @repo.Name
                                             </h5>
-                                            <p class="text-muted small mb-0 text-truncate" title="@repo">@repo</p>
+                                            <p class="text-muted small mb-0 text-truncate" title="@repo.Path">@repo.Path</p>
                                         </div>
-                                        <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 flex-shrink-0">Ingested</span>
+                                        @if (repo.IsIngested)
+                                        {
+                                            <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 flex-shrink-0">Ingested</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 flex-shrink-0">Incomplete</span>
+                                        }
                                     </div>
                                     <div class="d-flex gap-3 text-muted small">
                                         <span class="d-flex align-items-center">
@@ -136,21 +142,22 @@
 </style>
 
 @code {
-    private List<string> repositories = new();
+    private List<RepositorySummary> repositories = new();
     private bool isLoading = true;
     private string searchTerm = "";
     private bool showIngestionDialog = false;
 
-    private List<string> FilteredRepositories =>
+    private List<RepositorySummary> FilteredRepositories =>
         string.IsNullOrWhiteSpace(searchTerm)
             ? repositories
-            : repositories.Where(r => r.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+            : repositories.Where(r => r.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || 
+                                    r.Path.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            repositories = await WikiApi.GetRepositoriesAsync();
+            repositories = await WikiApi.GetRepositorySummariesAsync();
         }
         catch (Exception ex)
         {
@@ -177,7 +184,7 @@
         showIngestionDialog = false;
         
         // Refresh repository list
-        repositories = await WikiApi.GetRepositoriesAsync();
+        repositories = await WikiApi.GetRepositorySummariesAsync();
         StateHasChanged();
         
         // Navigate to the newly ingested repository
@@ -195,22 +202,11 @@
             
             if (structure == null)
             {
-                // Structure doesn't exist yet, generate it
-                Console.WriteLine($"No structure found for {repoPath}, generating...");
-                AppState.SetBusy(true, "Generating documentation structure...");
-                
-                try
-                {
-                    structure = await WikiApi.GenerateStructureAsync(repoPath);
-                    AppState.SetStructure(structure);
-                    AppState.SetBusy(false);
-                    Navigation.NavigateTo("/");
-                }
-                catch (Exception genEx)
-                {
-                    Console.WriteLine($"Error generating structure: {genEx.Message}");
-                    AppState.SetBusy(false);
-                }
+                // Structure doesn't exist but it should
+                Console.WriteLine($"Error: No structure found for {repoPath}");
+                AppState.SetBusy(false);
+                // Optionally show a toast/notification here
+
             }
             else
             {

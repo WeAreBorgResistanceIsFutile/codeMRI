@@ -33,8 +33,12 @@ public class SqliteWikiRepository : IWikiRepository
     public async Task<WikiStructure?> GetStructureAsync(string repoPath)
     {
         using var connection = new SqliteConnection(_connectionString);
+        
         var repoId = await GetRepoIdAsync(connection, repoPath);
-        if (repoId == null) return null;
+        if (repoId == null)
+        {
+            return null;
+        }
 
         var json = await connection.QuerySingleOrDefaultAsync<string>(
             "SELECT JsonContent FROM WikiStructures WHERE RepoId = @RepoId", new { RepoId = repoId });
@@ -253,6 +257,28 @@ public class SqliteWikiRepository : IWikiRepository
         using var connection = new SqliteConnection(_connectionString);
         var repos = await connection.QueryAsync<string>("SELECT RepoPath FROM Repositories ORDER BY id DESC");
         return repos.ToList();
+    }
+
+    public async Task<List<RepositorySummary>> GetAllRepositorySummariesAsync()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var query = @"
+            SELECT r.RepoPath as Path, 
+                   (CASE WHEN w.RepoId IS NOT NULL THEN 1 ELSE 0 END) as IsIngested 
+            FROM Repositories r 
+            LEFT JOIN WikiStructures w ON r.Id = w.RepoId 
+            ORDER BY r.Id DESC";
+
+        var summaries = await connection.QueryAsync<RepositorySummary>(query);
+        
+        var result = summaries.ToList();
+        foreach (var s in result)
+        {
+            s.Name = Path.GetFileName(s.Path);
+            // Timestamps not available in current schema, leaving default
+        }
+        
+        return result;
     }
 
     public async Task<List<WikiPage>> GetAllPagesAsync(string repoPath)

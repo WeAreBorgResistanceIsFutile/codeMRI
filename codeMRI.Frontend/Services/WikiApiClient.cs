@@ -57,6 +57,12 @@ public class WikiApiClient
                 ?? new List<string>();
     }
 
+    public async Task<List<RepositorySummary>> GetRepositorySummariesAsync()
+    {
+         return await _http.GetFromJsonAsync<List<RepositorySummary>>("api/Wiki/repositories-summary") 
+                ?? new List<RepositorySummary>();
+    }
+
     public async Task<string> ChatAsync(List<ChatMessage> history)
     {
         var response = await _http.PostAsJsonAsync("api/Chat", new ChatRequest { History = history });
@@ -74,7 +80,7 @@ public class WikiApiClient
     public async Task<WikiStructure?> GetNavigationAsync(string repoPath)
     {
         var encoded = Uri.EscapeDataString(repoPath);
-        var result = await _http.GetAsync($"api/Wiki/navigation/{encoded}");
+        var result = await _http.GetAsync($"api/Wiki/navigation?repoPath={encoded}");
         
         if (result.StatusCode == System.Net.HttpStatusCode.NoContent)
         {

@@ -41,4 +41,9 @@ public interface IWikiRepository
     /// Gets all pages for a repository
     /// </summary>
     Task<List<WikiPage>> GetAllPagesAsync(string repoPath);
+
+    /// <summary>
+    /// Gets a list of repository summaries including ingestion status
+    /// </summary>
+    Task<List<RepositorySummary>> GetAllRepositorySummariesAsync();
 }

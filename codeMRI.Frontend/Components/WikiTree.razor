@@ -26,14 +26,17 @@
                     <li class="mb-3">
                         <div class="section-title">@wikiSection.Title</div>
                         <ul class="list-unstyled ms-1 border-start ps-2" style="border-color: #f1f3f4 !important;">
-                            @foreach (var pageRef in wikiSection.PageRefs.Where(p => Match(p)))
+                            @foreach (var pageId in wikiSection.PageRefs)
                             {
-                                var pageMetadata = GetPageMetadata(pageRef);
-                                <li class="wiki-item @(AppState.CurrentPage?.Title == pageRef ? "active" : "")" 
-                                    @onclick="() => LoadPage(pageRef)">
+                                var pageMetadata = GetPageById(pageId);
+                                if (pageMetadata == null) continue;
+                                if (!Match(pageMetadata.Title)) continue;
+                                
+                                <li class="wiki-item @(AppState.CurrentPage?.Id == pageId ? "active" : "")" 
+                                    @onclick="() => LoadPage(pageId)">
                                     <div class="d-flex align-items-start">
                                         <div class="flex-grow-1">
-                                            <div class="page-title">@pageRef</div>
+                                            <div class="page-title">@pageMetadata.Title</div>
                                             @if (pageMetadata != null)
                                             {
                                                 @if (!string.IsNullOrEmpty(pageMetadata.Description))
@@ -137,45 +140,53 @@
         }
     }
 
-    private WikiPage? GetPageMetadata(string pageTitle)
+    private WikiPage? GetPageById(string pageId)
+    {
+        return AppState.Structure?.Pages?.FirstOrDefault(p => p.Id == pageId);
+    }
+    
+    private WikiPage? GetPageByTitle(string pageTitle)
     {
         return AppState.Structure?.Pages?.FirstOrDefault(p => p.Title == pageTitle);
     }
 
-    private async Task LoadPage(string pageTitle)
+    private async Task LoadPage(string pageId)
     {
         if (AppState.IsBusy) return;
 
-        // Check cache first
-        var cachedPage = GetPageMetadata(pageTitle);
-        if (cachedPage != null && !string.IsNullOrEmpty(cachedPage.Content))
+        // Get page from structure
+        var page = GetPageById(pageId);
+        if (page == null) return;
+        
+        // If page has content, display it immediately
+        if (!string.IsNullOrEmpty(page.Content))
         {
-            AppState.SetCurrentPage(cachedPage);
+            AppState.SetCurrentPage(page);
             return;
         }
 
-        AppState.SetBusy(true, $"Loading '{pageTitle}'...");
+        // If no content, fetch/generate it
+        AppState.SetBusy(true, $"Loading '{page.Title}'...");
         
         try
         {
-            var relevantFiles = cachedPage?.RelevantFiles ?? new List<string>();
-            var page = await WikiApi.GeneratePageAsync(AppState.RepoPath, pageTitle, relevantFiles);
+            var fetchedPage = await WikiApi.GeneratePageAsync(AppState.RepoPath, page.Title, page.RelevantFiles);
             
             // Update cache
             if (AppState.Structure?.Pages != null)
             {
-                var index = AppState.Structure.Pages.FindIndex(p => p.Title == page.Title);
+                var index = AppState.Structure.Pages.FindIndex(p => p.Id == pageId);
                 if (index != -1)
                 {
-                    AppState.Structure.Pages[index] = page;
+                    AppState.Structure.Pages[index] = fetchedPage;
                 }
                 else
                 {
-                    AppState.Structure.Pages.Add(page);
+                    AppState.Structure.Pages.Add(fetchedPage);
                 }
             }
             
-            AppState.SetCurrentPage(page);
+            AppState.SetCurrentPage(fetchedPage);
         }
         catch (Exception ex)
         {
