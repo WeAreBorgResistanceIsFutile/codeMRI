@@ -185,7 +185,7 @@ body {
 .content-pane {
     background-color: #ffffff;
     overflow: hidden;
-    /* Scroll handled within components */
+    /* Children handle their own scrolling */
     display: flex;
     /* Allow children to fill */
     flex-direction: column;
@@ -285,9 +285,11 @@ body {
     max-width: 960px;
     margin: 0 auto;
     width: 100%;
-    /* Ensure it fills */
     box-sizing: border-box;
-    height: 100%;
+    flex: 1;
+    /* Grow to fill available space */
+    min-height: 0;
+    /* Critical for flexbox scrolling */
     overflow-y: auto;
 }
 
