@@ -180,7 +180,6 @@ body {
     border-right: none;
     border-left: 1px solid var(--border-color);
     background-color: #ffffff;
-    padding-bottom: 40px;
 }
 
 .content-pane {
