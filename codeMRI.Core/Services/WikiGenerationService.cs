@@ -34,7 +34,7 @@ public class WikiGenerationService : IWikiGenerationService
     }
 
     public async Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths,
-        Dictionary<string, string> fileContents, string language = "English", string? repoPath = null)
+        Dictionary<string, string> fileContents, string language = "English", string? repoPath = null, string? remoteUrl = null, string? branch = null)
     {
         // If no files provided, try to find them using the dependency graph (CodeWiki structural approach)
         if (filePaths == null || filePaths.Count == 0)
@@ -145,14 +145,22 @@ public class WikiGenerationService : IWikiGenerationService
         foreach (var path in filePaths)
             if (fileContents.ContainsKey(path))
             {
-                contextBuilder.AppendLine($"File: {path}");
+                var displayPath = (!string.IsNullOrEmpty(repoPath) && Path.IsPathRooted(path))
+                    ? Path.GetRelativePath(repoPath, path)
+                    : path;
+                contextBuilder.AppendLine($"File: {displayPath}");
                 contextBuilder.AppendLine("```");
                 contextBuilder.AppendLine(fileContents[path]);
                 contextBuilder.AppendLine("```");
                 contextBuilder.AppendLine();
             }
 
-        var prompt = PromptTemplates.PagePrompt(pageTitle, filePaths, language);
+        var relativeFilePaths = filePaths.Select(p => 
+            (!string.IsNullOrEmpty(repoPath) && Path.IsPathRooted(p)) 
+                ? Path.GetRelativePath(repoPath, p) 
+                : p).ToList();
+
+        var prompt = PromptTemplates.PagePrompt(pageTitle, relativeFilePaths, language);
         var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + contextBuilder;
 
         var content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
@@ -239,7 +247,7 @@ public class WikiGenerationService : IWikiGenerationService
         // Use pageTitle as sourceComponentId context if possible, or a safe fallback
         var pageId = Guid.NewGuid().ToString();
         content = _referenceManagementService.EnrichContentWithLinks(content, pageTitle); // Using title as ID proxy for now
-        content = CleanLLMPageContent(content, pageTitle, filePaths);
+        content = CleanLLMPageContent(content, pageTitle, filePaths, repoPath, remoteUrl, branch);
 
         return new WikiPage
         {
@@ -254,7 +262,7 @@ public class WikiGenerationService : IWikiGenerationService
     /// Post-processes the LLM-generated content to remove unwanted preambles and ensure
     /// the relevant files <details> block is at the very end.
     /// </summary>
-    private string CleanLLMPageContent(string llmContent, string pageTitle, List<string> filePaths)
+    private string CleanLLMPageContent(string llmContent, string pageTitle, List<string> filePaths, string? repoPath = null, string? remoteUrl = null, string? branch = null)
     {
         var cleanedContent = llmContent.Trim();
 
@@ -309,7 +317,28 @@ public class WikiGenerationService : IWikiGenerationService
         sb.AppendLine();
         foreach(var path in filePaths)
         {
-            sb.AppendLine($"- {path}");
+            var displayPath = path;
+            if (!string.IsNullOrEmpty(repoPath) && Path.IsPathRooted(path))
+            {
+                 try 
+                 {
+                     displayPath = Path.GetRelativePath(repoPath, path);
+                 } 
+                 catch {}
+            }
+
+            if (!string.IsNullOrEmpty(remoteUrl) && !string.IsNullOrEmpty(branch))
+            {
+                 // Remote link: {remoteUrl}/blob/{branch}/{path}
+                 // Ensure path is relative and clean
+                 var cleanPath = displayPath.Replace("\\", "/").TrimStart('/');
+                 var link = $"{remoteUrl.TrimEnd('/')}/blob/{branch}/{cleanPath}";
+                 sb.AppendLine($"- [{displayPath}]({link})");
+            }
+            else
+            {
+                sb.AppendLine($"- {displayPath}");
+            }
         }
         sb.AppendLine("</details>");
 
@@ -327,7 +356,9 @@ public class WikiGenerationService : IWikiGenerationService
         Dictionary<string, string> fileContents,
         string language = "English",
         string? repoPath = null,
-        AudienceType audience = AudienceType.Developer)
+        AudienceType audience = AudienceType.Developer,
+        string? remoteUrl = null,
+        string? branch = null)
     {
         var filePaths = module.Components.ToList();
         
@@ -376,7 +407,12 @@ public class WikiGenerationService : IWikiGenerationService
         var contextBuilder = new StringBuilder();
         foreach (var kv in availableFiles)
         {
-            contextBuilder.AppendLine($"File: {kv.Key}");
+            var displayPath = kv.Key;
+            if (!string.IsNullOrEmpty(repoPath) && Path.IsPathRooted(kv.Key))
+            {
+                 try { displayPath = Path.GetRelativePath(repoPath, kv.Key); } catch {}
+            }
+            contextBuilder.AppendLine($"File: {displayPath}");
             contextBuilder.AppendLine("```");
             contextBuilder.AppendLine(kv.Value);
             contextBuilder.AppendLine("```");
@@ -431,7 +467,7 @@ public class WikiGenerationService : IWikiGenerationService
 
         // Enrich with cross-links and clean up
         content = _referenceManagementService.EnrichContentWithLinks(content, module.Name);
-        content = CleanLLMPageContent(content, module.Name, filePaths);
+        content = CleanLLMPageContent(content, module.Name, filePaths, repoPath, remoteUrl, branch);
 
         return new WikiPage
         {

@@ -9,7 +9,7 @@ public interface IWikiGenerationService
     /// Generates a wiki page for the given title using file paths and contents.
     /// Uses the legacy PagePrompt for backward compatibility.
     /// </summary>
-    Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths, Dictionary<string, string> fileContents, string language = "English", string? repoPath = null);
+    Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths, Dictionary<string, string> fileContents, string language = "English", string? repoPath = null, string? remoteUrl = null, string? branch = null);
 
     /// <summary>
     /// Generates a wiki page using the enhanced prompt with full module context.
@@ -22,7 +22,9 @@ public interface IWikiGenerationService
         Dictionary<string, string> fileContents,
         string language = "English",
         string? repoPath = null,
-        AudienceType audience = AudienceType.Developer);
+        AudienceType audience = AudienceType.Developer,
+        string? remoteUrl = null,
+        string? branch = null);
 
     /// <summary>
     /// Generates a parent/overview page by synthesizing child pages.

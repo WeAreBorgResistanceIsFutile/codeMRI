@@ -154,7 +154,7 @@ public class WikiGenerationServiceTests
              Title = module.Name,
              Content = "# Test Module\n\nThis is a test module overview."
         };
-        _mockSynthesisService.Setup(x => x.SynthesizeParentPageAsync(module, childPages, "English"))
+        _mockSynthesisService.Setup(x => x.SynthesizeParentPageAsync(module, childPages, "English", AudienceType.Developer))
             .ReturnsAsync(synthesizedPage);
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c!);
@@ -178,7 +178,7 @@ public class WikiGenerationServiceTests
             Times.Once);
         
         // Verify delegation to synthesis service
-        _mockSynthesisService.Verify(x => x.SynthesizeParentPageAsync(module, childPages, "English"), Times.Once);
+        _mockSynthesisService.Verify(x => x.SynthesizeParentPageAsync(module, childPages, "English", AudienceType.Developer), Times.Once);
     }
 
     [Test]

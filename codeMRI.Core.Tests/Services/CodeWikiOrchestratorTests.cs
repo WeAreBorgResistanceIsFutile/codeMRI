@@ -111,12 +111,12 @@ public class CodeWikiOrchestratorTests
         
         // Verify GeneratePageAsync was NOT called
         _mockWikiGenerationService.Verify(
-            s => s.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>()),
+            s => s.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()),
             Times.Never);
             
         // Verify Synthesis was NOT called
         _mockSynthesisService.Verify(
-            s => s.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>()),
+            s => s.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>()),
             Times.Never);
     }
 
@@ -158,7 +158,7 @@ public class CodeWikiOrchestratorTests
 
         // Mock Generation
         _mockWikiGenerationService
-             .Setup(s => s.GeneratePageAsync(moduleName, It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>()))
+             .Setup(s => s.GeneratePageAsync(moduleName, It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
              .ReturnsAsync(new WikiPage { Id = "new-id", Title = moduleName, Content = "Generated Content" });
 
         // Act
@@ -170,7 +170,7 @@ public class CodeWikiOrchestratorTests
         
         // Verify GeneratePageAsync WAS called
         _mockWikiGenerationService.Verify(
-            s => s.GeneratePageAsync(moduleName, It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>()),
+            s => s.GeneratePageAsync(moduleName, It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()),
             Times.Once);
             
         // Verify SavePageAsync was called

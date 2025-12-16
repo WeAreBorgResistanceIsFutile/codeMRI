@@ -23,6 +23,8 @@ public class RepositoryInfo
     public int LinesOfCode { get; set; }
     public int ComponentCount { get; set; }
     public string Description { get; set; } = string.Empty;
+    public string Url { get; set; } = string.Empty;
+    public string Branch { get; set; } = string.Empty;
 }
 
 public class EvaluationRubric : RubricNode

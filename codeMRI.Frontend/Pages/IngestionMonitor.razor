@@ -348,11 +348,22 @@
 
     private async Task CancelJob(string jobId)
     {
-        if (await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to cancel this ingestion?"))
+        // Pause timer while dialog is open to prevent UI updates interfering with the dialog
+        timer?.Change(Timeout.Infinite, Timeout.Infinite);
+        
+        try
         {
-            await WikiApi.CancelIngestionAsync(jobId);
-            // Immediate refresh
-            await LoadJobs();
+            if (await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to cancel this ingestion?"))
+            {
+                await WikiApi.CancelIngestionAsync(jobId);
+                // Immediate refresh
+                await LoadJobs();
+            }
+        }
+        finally
+        {
+            // Resume timer
+            timer?.Change(2000, 2000);
         }
     }
 

@@ -94,7 +94,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // Scale Content Generation (Global 20% to 90%: Start=20, Width=70)
         await _progressService.WithScalingAsync(20, 70, async () => 
         {
-             await GenerateContentForModulesAsync(moduleTree.Root, structure, repositoryPath, dependencyGraph, progressState, new ConcurrentDictionary<string, byte>(), cancellationToken);
+             await GenerateContentForModulesAsync(moduleTree.Root, structure, repositoryPath, repositoryInfo, dependencyGraph, progressState, new ConcurrentDictionary<string, byte>(), cancellationToken);
         });
 
         // 4. Evaluation (The Judge)
@@ -159,6 +159,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         ModuleNode module, 
         WikiStructure structure, 
         string repoPath,
+        RepositoryInfo repoInfo,
         EnhancedDependencyGraph graph,
         ProgressState progressState,
         ConcurrentDictionary<string, byte> visitedIds,
@@ -169,7 +170,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // Recursively process children first (Bottom-Up)
         // Parallelize children processing
         var childTasks = module.Children.Select(child => 
-            GenerateContentForModulesAsync(child, structure, repoPath, graph, progressState, visitedIds, cancellationToken));
+            GenerateContentForModulesAsync(child, structure, repoPath, repoInfo, graph, progressState, visitedIds, cancellationToken));
         
         await Task.WhenAll(childTasks);
 
@@ -251,7 +252,9 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                      filePaths, 
                      fileContents,
                      "English",
-                     repoPath
+                     repoPath,
+                     repoInfo.Url,
+                     repoInfo.Branch
                  );
             }
             else

@@ -93,14 +93,16 @@ public class DocumentationGenerationPipelineTests
         _mockWikiGenService.Setup(x => x.GenerateParentPageAsync(
                 It.IsAny<ModuleNode>(),
                 It.IsAny<List<WikiPage>>(),
-                It.IsAny<string>()))
+                It.IsAny<string>(),
+                It.IsAny<AudienceType>()))
             .ReturnsAsync(new WikiPage { Title = "GenericDoc" });
 
         // Specific setup for Root verification
         _mockWikiGenService.Setup(x => x.GenerateParentPageAsync(
                 It.Is<ModuleNode>(n => n.Name == "Root"),
                 It.Is<List<WikiPage>>(l => l.Any(p => p.Title == "ChildDoc")), // Ensure child page is passed
-                It.IsAny<string>()))
+                It.IsAny<string>(),
+                It.IsAny<AudienceType>()))
             .ReturnsAsync(parentWikiPage);
 
         // Mock Final Synthesis (Step 4)
@@ -122,6 +124,7 @@ public class DocumentationGenerationPipelineTests
         _mockWikiGenService.Verify(x => x.GenerateParentPageAsync(
             It.Is<ModuleNode>(n => n.Name == "Root"),
             It.Is<List<WikiPage>>(l => l.Count > 0),
-            It.IsAny<string>()), Times.Once);
+            It.IsAny<string>(),
+            It.IsAny<AudienceType>()), Times.Once);
     }
 }

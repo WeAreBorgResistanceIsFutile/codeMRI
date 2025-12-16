@@ -245,10 +245,14 @@ public class DbIngestionManager : IIngestionJobManager
                 }
             });
 
+            var branchName = await GitHelper.GetCurrentBranch(targetDir);
+
             var repoInfo = new RepositoryInfo 
             { 
                 Name = Path.GetFileName(targetDir),
-                Language = "Detected" // Logic to detect language could be added
+                Language = "Detected", // Logic to detect language could be added
+                Url = repoUrl,
+                Branch = branchName
             };
 
             var structure = await orchestrator.GenerateAdvancedWikiAsync(targetDir, repoInfo, progress, cts.Token);

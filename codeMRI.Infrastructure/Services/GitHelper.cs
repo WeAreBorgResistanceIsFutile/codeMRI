@@ -60,4 +60,37 @@ public static class GitHelper
                input.StartsWith("git@") || 
                input.EndsWith(".git", StringComparison.OrdinalIgnoreCase);
     }
+
+    public static async Task<string> GetCurrentBranch(string repoPath)
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "rev-parse --abbrev-ref HEAD",
+                WorkingDirectory = repoPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new Process { StartInfo = startInfo };
+            process.Start();
+            
+            var output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+
+            if (process.ExitCode == 0)
+            {
+                return output.Trim();
+            }
+        }
+        catch 
+        {
+            // Ignore errors, return empty
+        }
+        return string.Empty;
+    }
 }

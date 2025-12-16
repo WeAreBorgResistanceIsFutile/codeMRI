@@ -52,6 +52,11 @@ public class WikiGenerationServiceAudienceTests
         var fileContents = new Dictionary<string, string> { { "File.cs", "content" } };
         
         _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, List<ChatMessage>, string?, CancellationToken>((sys, prompt, hist, model, token) => 
+            {
+                TestContext.WriteLine($"Generated System Prompt: {sys}");
+                TestContext.WriteLine($"Generated User Prompt: {prompt}");
+            })
             .ReturnsAsync("# TestModule\nUser guide content");
             
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
