@@ -32,47 +32,87 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
         mermaid.initialize({ startOnLoad: false });
-        
+
         window.renderMermaidDiagrams = async () => {
             console.log("Starting renderMermaidDiagrams...");
-            const elements = document.querySelectorAll('code.language-mermaid, div.mermaid, pre > code.language-mermaid');
-            console.log(`Found ${elements.length} potential mermaid elements.`);
-            
-            for (const element of elements) {
-                // Skip if already rendered
-                if (element.getAttribute('data-processed')) {
-                    console.log("Skipping already processed element.");
-                    continue;
-                }
-                
-                // If it's a code block, we might need to unwrap it or just read text
-                let content = element.textContent;
-                console.log("Processing element with content length:", content.length);
-                
-                // Create a container for the svg
+
+            // First, try to find properly fenced code blocks
+            const codeElements = document.querySelectorAll('pre code.language-mermaid:not([data-processed])');
+            console.log(`Found ${codeElements.length} fenced mermaid code blocks.`);
+
+            for (const element of codeElements) {
+                element.setAttribute('data-processed', 'true');
+                let content = element.textContent.trim();
+                console.log("Processing fenced mermaid diagram with content length:", content.length);
+
                 const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
                 const container = document.createElement('div');
                 container.id = id;
-                container.className = 'mermaid';
-                
-                // Replace the original element with the container (or insert after)
-                // For code blocks inside pre, we usually want to replace the pre
-                if (element.tagName === 'CODE' && element.parentElement.tagName === 'PRE') {
-                    console.log("Replacing PRE/CODE block.");
-                    element.parentElement.replaceWith(container);
+                container.className = 'mermaid-diagram';
+                container.style.margin = '1rem 0';
+
+                const preElement = element.parentElement;
+                if (preElement && preElement.tagName === 'PRE') {
+                    preElement.replaceWith(container);
                 } else {
-                    console.log("Replacing element directly.");
                     element.replaceWith(container);
                 }
-                
+
                 try {
                     const { svg } = await mermaid.render(id, content);
                     container.innerHTML = svg;
-                    container.setAttribute('data-processed', 'true');
-                    console.log(`Successfully rendered diagram ${id}`);
+                    console.log(`Successfully rendered fenced diagram ${id}`);
                 } catch (error) {
                     console.error('Mermaid rendering failed:', error);
-                    container.innerHTML = '<p style="color:red">Failed to render diagram</p><pre>' + content + '</pre>';
+                    container.innerHTML = '<p style="color:red; font-size: 0.9rem;">Failed to render Mermaid diagram</p><pre style="background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto;"><code>' + content + '</code></pre>';
+                }
+            }
+
+            // Second, look for plain text mermaid diagrams in the markdown content
+            // These appear when markdown doesn't have proper fenced code blocks
+            const markdownContent = document.querySelector('.markdown-content');
+            if (markdownContent) {
+                const walker = document.createTreeWalker(
+                    markdownContent,
+                    NodeFilter.SHOW_TEXT,
+                    null,
+                    false
+                );
+
+                const textNodes = [];
+                let node;
+                while (node = walker.nextNode()) {
+                    const text = node.textContent.trim();
+                    // Check if this text node contains mermaid diagram syntax
+                    if (text.match(/^(graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie|gitGraph|flowchart)\s/)) {
+                        textNodes.push(node);
+                    }
+                }
+
+                console.log(`Found ${textNodes.length} plain text mermaid diagrams.`);
+
+                for (const textNode of textNodes) {
+                    const content = textNode.textContent.trim();
+                    console.log("Processing plain text mermaid diagram with content length:", content.length);
+
+                    const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+                    const container = document.createElement('div');
+                    container.id = id;
+                    container.className = 'mermaid-diagram';
+                    container.style.margin = '1rem 0';
+
+                    // Replace the text node with our container
+                    textNode.parentNode.insertBefore(container, textNode);
+                    textNode.remove();
+
+                    try {
+                        const { svg } = await mermaid.render(id, content);
+                        container.innerHTML = svg;
+                        console.log(`Successfully rendered plain text diagram ${id}`);
+                    } catch (error) {
+                        console.error('Mermaid rendering failed:', error);
+                        container.innerHTML = '<p style="color:red; font-size: 0.9rem;">Failed to render Mermaid diagram</p><pre style="background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto;"><code>' + content + '</code></pre>';
+                    }
                 }
             }
         };
