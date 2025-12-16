@@ -326,7 +326,8 @@ public class WikiGenerationService : IWikiGenerationService
         ModulePageContext context,
         Dictionary<string, string> fileContents,
         string language = "English",
-        string? repoPath = null)
+        string? repoPath = null,
+        AudienceType audience = AudienceType.Developer)
     {
         var filePaths = module.Components.ToList();
         
@@ -382,14 +383,27 @@ public class WikiGenerationService : IWikiGenerationService
             contextBuilder.AppendLine();
         }
 
-        // Use the enhanced prompt with module context
-        var prompt = PromptTemplates.EnhancedPagePrompt(module, relatedPages, context, language);
+        // Use the enhanced prompt with module context based on audience
+        string prompt;
+        if (audience != AudienceType.Developer)
+        {
+             // For User/DevOps, use the specific prompt template
+             // Note: availableFiles contains the source content we want to pass
+             var sourceContent = availableFiles.ToDictionary(k => k.Key, v => v.Value);
+             prompt = PromptTemplates.UserGuidePagePrompt(module, context, sourceContent, audience, language);
+        }
+        else
+        {
+             prompt = PromptTemplates.EnhancedPagePrompt(module, relatedPages, context, language);
+        }
         var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + contextBuilder;
 
         var content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
 
-        // Generate diagrams if available
-        try
+        // Generate diagrams if available and audience is Developer
+        if (audience == AudienceType.Developer)
+        {
+            try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), cts.Token);
@@ -413,6 +427,7 @@ public class WikiGenerationService : IWikiGenerationService
         {
             _logger.LogError(ex, "Failed to generate diagrams for module {ModuleName}: {Message}", module.Name, ex.Message);
         }
+        }
 
         // Enrich with cross-links and clean up
         content = _referenceManagementService.EnrichContentWithLinks(content, module.Name);
@@ -428,15 +443,17 @@ public class WikiGenerationService : IWikiGenerationService
     }
 
     public async Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages,
-        string language = "English")
+        string language = "English", AudienceType audience = AudienceType.Developer)
     {
 
         // 1. Delegate synthesis to the specialized service
-        var page = await _synthesisService.SynthesizeParentPageAsync(module, childPages, language);
+        var page = await _synthesisService.SynthesizeParentPageAsync(module, childPages, language, audience);
         var content = page.Content;
 
-        // 2. Generate Architecture Diagram
-        try
+        // 2. Generate Architecture Diagram (Developer only)
+        if (audience == AudienceType.Developer)
+        {
+            try
         {
             var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), CancellationToken.None);
             if (graph.NodeCount > 0)
@@ -457,6 +474,7 @@ public class WikiGenerationService : IWikiGenerationService
         {
             // Log error but don't fail the page generation
             _logger.LogError(ex, "Failed to generate architecture diagram for module {ModuleName}: {Message}", module.Name, ex.Message);
+            }
         }
 
         // Enrich with links

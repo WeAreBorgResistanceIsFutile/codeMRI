@@ -13,7 +13,7 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
     }
 
     public async Task<WikiPage> SynthesizeParentPageAsync(ModuleNode module, List<WikiPage> childPages,
-        string language = "English")
+        string language = "English", AudienceType audience = AudienceType.Developer)
     {
         // If no children, perform a simple generation
         if (childPages == null || !childPages.Any())
@@ -55,15 +55,27 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
         // Estimate cross-module dependencies (simplified - could be enhanced with graph data)
         var estimatedCrossModuleDeps = childPages.Count > 1 ? childPages.Count * 2 : 0;
 
-        // Use the new ParentPageSynthesisPrompt from PromptTemplates
-        var prompt = PromptTemplates.ParentPageSynthesisPrompt(
-            module,
-            childPages,
-            estimatedCrossModuleDeps,
-            language);
+        string prompt;
+        if (audience != AudienceType.Developer)
+        {
+            prompt = PromptTemplates.UserGuideSynthesisPrompt(
+                module,
+                childPages ?? new List<WikiPage>(),
+                audience,
+                language);
+        }
+        else
+        {
+            // Use the new ParentPageSynthesisPrompt from PromptTemplates
+            prompt = PromptTemplates.ParentPageSynthesisPrompt(
+                module,
+                childPages,
+                estimatedCrossModuleDeps,
+                language);
+        }
 
         var overviewContent = await _llmClient.ChatAsync(
-            "You are a technical documentation expert and software architect.", 
+            "You are a technical documentation expert.", 
             prompt,
             new List<ChatMessage>());
 

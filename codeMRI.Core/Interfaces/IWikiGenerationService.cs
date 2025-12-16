@@ -21,10 +21,11 @@ public interface IWikiGenerationService
         ModulePageContext context,
         Dictionary<string, string> fileContents,
         string language = "English",
-        string? repoPath = null);
+        string? repoPath = null,
+        AudienceType audience = AudienceType.Developer);
 
     /// <summary>
     /// Generates a parent/overview page by synthesizing child pages.
     /// </summary>
-    Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages, string language = "English");
+    Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages, string language = "English", AudienceType audience = AudienceType.Developer);
 }

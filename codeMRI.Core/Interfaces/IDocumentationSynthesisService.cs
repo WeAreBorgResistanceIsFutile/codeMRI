@@ -4,5 +4,5 @@ namespace codeMRI.Core.Interfaces;
 
 public interface IDocumentationSynthesisService
 {
-    Task<WikiPage> SynthesizeParentPageAsync(ModuleNode module, List<WikiPage> childPages, string language = "English");
+    Task<WikiPage> SynthesizeParentPageAsync(ModuleNode module, List<WikiPage> childPages, string language = "English", AudienceType audience = AudienceType.Developer);
 }

@@ -48,10 +48,16 @@
             </div>
         </aside>
 
+        <!-- Resizer Left -->
+        <div class="resizer-handle resizer-left" onmousedown="startResize('left')"></div>
+
         <!-- Center: Content -->
         <section class="content-pane">
             @Body
         </section>
+
+        <!-- Resizer Right -->
+        <div class="resizer-handle resizer-right" onmousedown="startResize('right')"></div>
 
         <!-- Right: Assistant -->
         <aside class="sidebar-pane right-pane">

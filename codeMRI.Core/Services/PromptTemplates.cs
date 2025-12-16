@@ -142,6 +142,88 @@ public static class PromptTemplates
 
     #endregion
 
+    #region User/DevOps Documentation Prompts
+
+    /// <summary>
+    /// Generates a user-focused guide prompt for a module.
+    /// Focuses on capabilities, configuration, and operations rather than code structure.
+    /// </summary>
+    public static string UserGuidePagePrompt(
+        ModuleNode module,
+        ModulePageContext context,
+        Dictionary<string, string> sourceContent,
+        AudienceType audience,
+        string language)
+    {
+        return $"""
+            You are a Technical Writer creating documentation for {audience} audience.
+            
+            ## Context
+            - Module Name: {module.Name}
+            - System Role: part of {module.Level} level components
+            
+            ## Instructions
+            Write a user-friendly guide covering the following aspects based ONLY on the source code provided:
+            1. **Overview**: What is this component and what problem does it solve? (No code jargon)
+            2. **Key Capabilities**: specific features available to the user/admin.
+            3. **Configuration**: Look for environment variables, config files, or settings classes. specific flags.
+            4. **Operational Requirements**: External dependencies (DBs, APIs) found in connection strings or clients.
+            5. **Troubleshooting**: Common error messages or failure scenarios visible in exceptions/logging.
+
+            STRICT RULES:
+            - Tone: Professional, concise, actionable.
+            - NO class diagrams.
+            - NO code metrics (cohesion/coupling).
+            - NO architectural pattern discussions unless relevant to deployment.
+            - Focus on "How to use/deploy/configure" vs "How it works internally".
+            - Use {language} language.
+
+            Output ONLY the markdown content starting with # {module.Name}
+            """;
+    }
+
+    /// <summary>
+    /// Generates a high-level system overview prompt for User/DevOps audience.
+    /// </summary>
+    public static string UserGuideSynthesisPrompt(
+        ModuleNode parentModule,
+        List<WikiPage> childPages,
+        AudienceType audience,
+        string language)
+    {
+        var childSummaries = childPages
+             .Select(p => new
+             {
+                 Title = p.Title,
+                 Summary = ExtractFirstParagraph(p.Content)
+             });
+
+        var childSummariesJson = JsonSerializer.Serialize(childSummaries,
+            new JsonSerializerOptions { WriteIndented = true });
+
+        return $"""
+            Synthesize a System Overview for "{parentModule.Name}" for a {audience} audience.
+
+            ## Component Summaries
+            {childSummariesJson}
+
+            ## Instructions
+            1. **System Overview**: What is the complete system? What value does it deliver?
+            2. **Deployment Architecture**: How do these components fit together in a deployment?
+            3. **Integration Points**: External APIs or systems involved.
+            4. **Getting Started**: Steps to deploy, configure, or run the system.
+
+            STRICT RULES:
+            - Focus on value proposition and operations.
+            - Ignore internal code structure/refactoring details.
+            - Use {language} language.
+
+            Output ONLY the markdown content starting with # {parentModule.Name}
+            """;
+    }
+
+    #endregion
+
     #region Enhanced RAG System Prompt
 
     /// <summary>
