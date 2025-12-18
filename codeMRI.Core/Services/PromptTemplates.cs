@@ -76,11 +76,10 @@ public static class PromptTemplates
             - Only document what exists in the SOURCE FILES CONTENT below
             - Do NOT invent classes, methods, or features
             - Do NOT add conversational filler (e.g., "Here is the page...")
+            - Do NOT include source file lists or citations sections (these will be added automatically)
             - Use {language} for all content
             
             Output ONLY the markdown content starting with # {module.Name}
-            
-            At the VERY END of the page, include a <details> block listing ALL source files used.
             """;
     }
 
@@ -266,11 +265,10 @@ public static class PromptTemplates
             - Structure the response exactly with the headers above.
             - Only document what exists in the SOURCE FILES CONTENT below.
             - Do NOT invent features.
+            - Do NOT include source file lists or citations sections (these will be added automatically)
             - Use {language} language.
             
             Output ONLY the markdown content starting with # {module.Name}
-            
-            At the VERY END of the page, include a <details> block listing ALL source files used.
             """;
     }
 
@@ -509,15 +507,7 @@ public static class PromptTemplates
                - Do not hallucinate connections or classes that are not present in the source.
                - STRICT vertical orientation (graph TD).
             5. **Tables:** Use Markdown tables for summaries.
-            6. **Source Citations:** Cite specific source files for every significant piece of info.
-            
-            Closing:
-            At the VERY END of the page, include a `<details>` block listing ALL source files used, formatted as:
-            <details>
-            <summary>Relevant source files</summary>
-
-            {string.Join("\n", filePaths.Select(p => $"- {p}"))}
-            </details>
+            6. **Source Citations:** Reference information from the source files, but do NOT include a source file list (this will be added automatically).
 
             IMPORTANT: Generate the content in {language} language.
             """;

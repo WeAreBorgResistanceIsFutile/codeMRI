@@ -270,6 +270,14 @@ public class DbIngestionManager : IIngestionJobManager
             await wikiRepo.SaveStructureAsync(targetDir, structure);
             _logger.LogInformation("Saved wiki structure for {RepoPath}", targetDir);
             
+            // Save the remote URL for re-ingestion
+            // Only save if it's a remote URL (not a local directory path)
+            if (GitHelper.IsGitUrl(repoUrl) && !Directory.Exists(repoUrl))
+            {
+                await wikiRepo.SetRepositoryRemoteUrlAsync(targetDir, repoUrl);
+                _logger.LogInformation("Saved remote URL {RemoteUrl} for repository {RepoPath}", repoUrl, targetDir);
+            }
+            
             await UpdateJobStatusAsync(jobId, IngestionStatus.Completed, 100, "Ingestion complete");
 
         }
