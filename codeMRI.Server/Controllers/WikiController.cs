@@ -115,7 +115,8 @@ public class WikiController : ControllerBase
             Path = s.Path,
             Name = s.Name,
             IsIngested = s.IsIngested,
-            CreatedAt = s.CreatedAt
+            CreatedAt = s.CreatedAt,
+            RemoteUrl = s.RemoteUrl
         }).ToList();
         
         return Ok(apiSummaries);
@@ -226,6 +227,7 @@ public class WikiController : ControllerBase
         Func<AgentMessage, Task>? delegationSubscriber = null;
         Func<AgentMessage, Task>? lifecycleSubscriber = null;
         string? clonedRepoPath = null;
+        string? originalUrl = null;
 
         _telemetryService.TrackAgentActivity("System", $"GenerateAdvancedWiki requested for {request.RepoPath}");
 
@@ -234,6 +236,7 @@ public class WikiController : ControllerBase
             // Handle Git URL cloning
             if (GitHelper.IsGitUrl(request.RepoPath))
             {
+                originalUrl = request.RepoPath;
                 _logger.LogInformation("Git URL detected, cloning repository: {GitUrl}", request.RepoPath);
                 
                 try
@@ -243,6 +246,9 @@ public class WikiController : ControllerBase
                     
                     // Update request to use cloned path
                     request.RepoPath = clonedRepoPath;
+                    
+                    // Persist the remote URL
+                    await _wikiRepo.SetRepositoryRemoteUrlAsync(request.RepoPath, originalUrl);
                 }
                 catch (Exception ex)
                 {
@@ -281,10 +287,14 @@ public class WikiController : ControllerBase
             }
 
             // Construct RepositoryInfo from request and filesystem
+            var currentBranch = await GitHelper.GetCurrentBranch(request.RepoPath);
+            
             var repoInfo = new RepositoryInfo
             {
                 Name = Path.GetFileName(request.RepoPath),
                 Language = request.Language,
+                Url = originalUrl ?? string.Empty,
+                Branch = currentBranch,
                 // Estimation
                 LinesOfCode = 0,
                 ComponentCount = 0

@@ -115,7 +115,8 @@ public class CodeWikiOrchestratorProgressTests
             It.IsAny<string>(), 
             It.IsAny<AudienceType>(),
             It.IsAny<string>(), 
-            It.IsAny<string>()))
+            It.IsAny<string>(),
+            It.IsAny<List<string>?>()))
             .ReturnsAsync(new WikiPage { Id = "page1", Title = "Page 1" });
             
         _mockSynthesisService.Setup(s => s.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>()))

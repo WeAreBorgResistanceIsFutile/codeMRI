@@ -338,7 +338,8 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                      repoPath,
                      audience,
                      repoInfo.Url,
-                     repoInfo.Branch
+                     repoInfo.Branch,
+                     filePaths
                  );
             }
             else

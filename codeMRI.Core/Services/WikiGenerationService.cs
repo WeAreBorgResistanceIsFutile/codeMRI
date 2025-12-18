@@ -378,9 +378,11 @@ public class WikiGenerationService : IWikiGenerationService
         string? repoPath = null,
         AudienceType audience = AudienceType.Developer,
         string? remoteUrl = null,
-        string? branch = null)
+        string? branch = null,
+        List<string>? explicitFilePaths = null)
     {
-        var filePaths = module.Components.ToList();
+        // Use explicit file paths if provided (preferred for accurate linking), otherwise fallback to component IDs
+        var filePaths = explicitFilePaths ?? module.Components.ToList();
         
         // Ensure we have file contents for all components
         foreach (var componentId in module.Components)

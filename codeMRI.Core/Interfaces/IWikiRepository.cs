@@ -46,4 +46,9 @@ public interface IWikiRepository
     /// Gets a list of repository summaries including ingestion status
     /// </summary>
     Task<List<RepositorySummary>> GetAllRepositorySummariesAsync();
+
+    /// <summary>
+    /// Updates the remote URL for a repository
+    /// </summary>
+    Task SetRepositoryRemoteUrlAsync(string repoPath, string remoteUrl);
 }

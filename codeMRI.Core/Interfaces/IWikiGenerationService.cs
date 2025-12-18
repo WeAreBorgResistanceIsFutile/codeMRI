@@ -24,7 +24,8 @@ public interface IWikiGenerationService
         string? repoPath = null,
         AudienceType audience = AudienceType.Developer,
         string? remoteUrl = null,
-        string? branch = null);
+        string? branch = null,
+        List<string>? explicitFilePaths = null);
 
     /// <summary>
     /// Generates a parent/overview page by synthesizing child pages.

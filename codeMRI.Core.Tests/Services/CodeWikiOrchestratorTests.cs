@@ -114,7 +114,7 @@ public class CodeWikiOrchestratorTests
         
         // Verify GeneratePageAsync was NOT called
         _mockWikiGenerationService.Verify(
-            s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>()),
+            s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<string>?>()),
             Times.Never);
             
         // Verify Synthesis was NOT called
@@ -161,7 +161,7 @@ public class CodeWikiOrchestratorTests
 
         // Mock Generation
         _mockWikiGenerationService
-             .Setup(s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>()))
+             .Setup(s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<string>?>()))
              .ReturnsAsync(new WikiPage { Id = "new-id", Title = moduleName, Content = "Generated Content" });
 
         // Act
@@ -173,7 +173,7 @@ public class CodeWikiOrchestratorTests
         
         // Verify GeneratePageAsync WAS called
         _mockWikiGenerationService.Verify(
-            s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>()),
+            s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<string>?>()),
             Times.Once);
             
         // Verify SavePageAsync was called
@@ -219,8 +219,8 @@ public class CodeWikiOrchestratorTests
 
         // Mock Generation
         _mockWikiGenerationService
-             .Setup(s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<AudienceType>(), repoInfo.Url, repoInfo.Branch))
-             .ReturnsAsync((ModuleNode m, List<WikiPage>? r, ModulePageContext ctx, Dictionary<string, string> fc, string l, string? rp, AudienceType a, string? remote, string? branch) => 
+             .Setup(s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<AudienceType>(), repoInfo.Url, repoInfo.Branch, It.IsAny<List<string>?>()))
+             .ReturnsAsync((ModuleNode m, List<WikiPage>? r, ModulePageContext ctx, Dictionary<string, string> fc, string l, string? rp, AudienceType a, string? remote, string? branch, List<string>? filePaths) => 
                 new WikiPage { Id = $"id_{m.Name}", Title = m.Name, Content = $"Content for {m.Name}" });
 
         _mockSynthesisService

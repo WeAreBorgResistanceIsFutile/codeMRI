@@ -197,7 +197,8 @@ public class SqliteWikiRepository : IWikiRepository
         connection.Execute(@"
             CREATE TABLE IF NOT EXISTS Repositories (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                RepoPath TEXT NOT NULL UNIQUE
+                RepoPath TEXT NOT NULL UNIQUE,
+                RemoteUrl TEXT
             );
 
             CREATE TABLE IF NOT EXISTS WikiStructures (
@@ -230,6 +231,16 @@ public class SqliteWikiRepository : IWikiRepository
 
         // Enable foreign keys
         connection.Execute("PRAGMA foreign_keys = ON;");
+
+        // Migration: Add RemoteUrl if missing
+        try 
+        {
+            connection.Execute("ALTER TABLE Repositories ADD COLUMN RemoteUrl TEXT");
+        }
+        catch 
+        {
+            // Ignore if column already exists
+        }
     }
 
     private async Task<int> GetOrCreateRepoIdAsync(IDbConnection connection, string repoPath)
@@ -264,6 +275,7 @@ public class SqliteWikiRepository : IWikiRepository
         using var connection = new SqliteConnection(_connectionString);
         var query = @"
             SELECT r.RepoPath as Path, 
+                   r.RemoteUrl,
                    (CASE WHEN w.RepoId IS NOT NULL THEN 1 ELSE 0 END) as IsIngested 
             FROM Repositories r 
             LEFT JOIN WikiStructures w ON r.Id = w.RepoId 
@@ -296,5 +308,13 @@ public class SqliteWikiRepository : IWikiRepository
             .Where(page => page != null)
             .Cast<WikiPage>()
             .ToList();
+    }
+
+    public async Task SetRepositoryRemoteUrlAsync(string repoPath, string remoteUrl)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetOrCreateRepoIdAsync(connection, repoPath);
+        await connection.ExecuteAsync("UPDATE Repositories SET RemoteUrl = @RemoteUrl WHERE Id = @Id", 
+            new { RemoteUrl = remoteUrl, Id = repoId });
     }
 }
