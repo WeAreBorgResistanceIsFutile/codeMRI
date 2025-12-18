@@ -72,7 +72,25 @@ public class OllamaLLMService : ILLMClient
 
                 response.EnsureSuccessStatusCode();
 
-                var result = await response.Content.ReadFromJsonAsync<OllamaChatResponse>(cancellationToken: cancellationToken);
+                var contentString = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (string.IsNullOrWhiteSpace(contentString))
+                {
+                    _logger.LogError("Ollama returned an empty response for ChatAsync. Status Code: {StatusCode}", response.StatusCode);
+                    throw new HttpRequestException($"Ollama returned an empty response. Status Code: {response.StatusCode}");
+                }
+
+                OllamaChatResponse? result;
+                try
+                {
+                    result = JsonSerializer.Deserialize<OllamaChatResponse>(contentString);
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogError(ex, "Failed to deserialize Ollama response: {Content}", 
+                        contentString.Length > 1000 ? contentString.Substring(0, 1000) + "..." : contentString);
+                    throw;
+                }
+
                 var responseContent = result?.Message?.Content ?? string.Empty;
                 
                 _logger.LogInformation("Received ChatAsync response. Content length: {Length}", responseContent.Length);

@@ -123,7 +123,64 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // For now, we return the judged structure (results could be appended to metadata)
         
         _progressService.Report(new ProgressInfo { Phase = "Complete", Message = "Documentation generated successfully.", Percentage = 100 });
+        
+        // Final structural refinements
+        SortAndPruneStructure(structure);
+        
         return structure;
+    }
+
+    private void SortAndPruneStructure(WikiStructure structure)
+    {
+        if (structure?.Sections == null) return;
+
+        // Perform recursive pruning and sorting
+        PruneAndSortSections(structure.Sections);
+    }
+
+    private void PruneAndSortSections(List<WikiSection> sections)
+    {
+        for (int i = sections.Count - 1; i >= 0; i--)
+        {
+            var section = sections[i];
+
+            // 1. Recursive call for subsections
+            if (section.SubSections != null && section.SubSections.Count > 0)
+            {
+                PruneAndSortSections(section.SubSections);
+            }
+
+            // 2. Pruning: If section name is effectively the same as child page/section, simplify
+            // Check if it's a "wrapper" section with one page or one subsection of the same name
+            bool isRedundant = false;
+            if (section.PageRefs.Count == 1 && (section.SubSections == null || section.SubSections.Count == 0))
+            {
+                // Note: We don't have easy access to page titles here without the structure.
+                // However, we can use the module name logic or simply look at the structure.
+                // For now, let's keep it simple: if it's a leaf section, it's just a grouping.
+            }
+        }
+
+        // 3. Sorting logic
+        sections.Sort((a, b) =>
+        {
+            int GetPriority(string title)
+            {
+                var t = title.ToLowerInvariant();
+                if (t.Contains("overview")) return 1;
+                if (t.Contains("application")) return 2;
+                if (t.Contains("domain")) return 3;
+                if (t.Contains("repository")) return 10;
+                if (t.Contains("others")) return 11;
+                return 5; // Default middle
+            }
+
+            int pA = GetPriority(a.Title);
+            int pB = GetPriority(b.Title);
+
+            if (pA != pB) return pA.CompareTo(pB);
+            return string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase);
+        });
     }
 
     private class ProgressState

@@ -340,8 +340,9 @@ public class WikiGenerationService : IWikiGenerationService
             {
                  // Remote link: {remoteUrl}/blob/{branch}/{path}
                  // Ensure path is relative and clean
+                 var cleanRemoteUrl = remoteUrl.EndsWith(".git") ? remoteUrl.Substring(0, remoteUrl.Length - 4) : remoteUrl;
                  var cleanPath = displayPath.Replace("\\", "/").TrimStart('/');
-                 var link = $"{remoteUrl.TrimEnd('/')}/blob/{branch}/{cleanPath}";
+                 var link = $"{cleanRemoteUrl.TrimEnd('/')}/blob/{branch}/{cleanPath}";
                  sb.AppendLine($"- [{displayPath}]({link})");
             }
             else
