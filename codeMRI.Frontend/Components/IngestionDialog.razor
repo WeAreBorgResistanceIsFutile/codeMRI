@@ -24,7 +24,7 @@
                         <label class="form-label fw-semibold">Repository Git URL</label>
                         <input type="text" class="form-control form-control-lg" 
                                placeholder="e.g., https://github.com/user/repo" 
-                               @bind="repoInput" />
+                               @bind="repoInput" @bind:event="oninput" />
                         <div class="form-text">Enter a public Git repository URL.</div>
                     </div>
 
@@ -237,3 +237,11 @@
     
     [Inject] IJSRuntime? JSRuntime { get; set; }
 }
+
+<style>
+    .form-control::placeholder {
+        color: #6c757d;
+        opacity: 0.5;
+        font-weight: 300;
+    }
+</style>
