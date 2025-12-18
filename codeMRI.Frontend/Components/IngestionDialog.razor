@@ -99,14 +99,20 @@
                 {
                      <div class="text-center"><small>Loading...</small></div>
                 }
-                else if (!activeJobs.Any(j => currentJob == null || j.Id != currentJob.Id))
+                else if (!activeJobs.Any(j => (currentJob == null || j.Id != currentJob.Id) && 
+                                             j.Status != IngestionStatus.Completed && 
+                                             j.Status != IngestionStatus.Failed && 
+                                             j.Status != IngestionStatus.Cancelled))
                 {
-                     <div class="text-center text-muted"><small>No other active ingestions.</small></div>
+                     <div class="text-center text-muted"><small>No other truly active ingestions.</small></div>
                 }
                 else
                 {
                     <div class="list-group list-group-flush small" style="max-height: 200px; overflow-y: auto;">
-                        @foreach (var job in activeJobs.Where(j => currentJob == null || j.Id != currentJob.Id))
+                        @foreach (var job in activeJobs.Where(j => (currentJob == null || j.Id != currentJob.Id) && 
+                                                                j.Status != IngestionStatus.Completed && 
+                                                                j.Status != IngestionStatus.Failed && 
+                                                                j.Status != IngestionStatus.Cancelled))
                         {
                             <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
