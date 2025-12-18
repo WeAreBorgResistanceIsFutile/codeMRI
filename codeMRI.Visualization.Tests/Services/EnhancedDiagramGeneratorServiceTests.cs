@@ -1,5 +1,8 @@
 using codeMRI.Core.Models;
+using codeMRI.Core.Models;
+using codeMRI.Core.Interfaces;
 using codeMRI.Visualization.Services;
+using Moq;
 
 namespace codeMRI.Visualization.Tests.Services;
 
@@ -9,7 +12,8 @@ public class EnhancedDiagramGeneratorServiceTests
     [SetUp]
     public void Setup()
     {
-        _generator = new DiagramGeneratorService(new HttpClient());
+        var mockLlm = new Mock<ILLMClient>();
+        _generator = new DiagramGeneratorService(new HttpClient(), mockLlm.Object);
         _testGraph = CreateTestGraph();
     }
 

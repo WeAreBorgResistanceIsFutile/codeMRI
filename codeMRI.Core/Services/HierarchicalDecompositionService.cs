@@ -221,14 +221,23 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             // For now, purely directory based is a strong signal for Feature grouping.
             
             // Clean up name
-            var name = group.Key.Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
-            
-            // Clean up potentially unsafe characters or ".." if path is outside repo (unlikely but safe to handle)
-            name = name.Replace("..", "Parent"); 
-            
-            if (string.IsNullOrEmpty(name) || name == ".") name = "Root";
-            
-            clusters[$"Dir_{name}"] = group.Select(n => n.ComponentId).ToList();
+            var rawName = group.Key;
+            if (string.IsNullOrEmpty(rawName) || rawName == "." || rawName == "Root")
+            {
+                rawName = "Root";
+            }
+            else
+            {
+                // Replace path separators and underscores with spaces, then capitalize
+                rawName = rawName.Replace(Path.DirectorySeparatorChar, ' ')
+                                 .Replace(Path.AltDirectorySeparatorChar, ' ')
+                                 .Replace('_', ' ');
+                
+                // Title Case / Capitalization
+                rawName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(rawName.ToLower());
+            }
+
+            clusters[rawName] = group.Select(n => n.ComponentId).ToList();
         }
 
         return clusters;

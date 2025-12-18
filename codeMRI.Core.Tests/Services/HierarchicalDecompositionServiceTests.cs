@@ -167,13 +167,13 @@ public class HierarchicalDecompositionServiceTests
         var result = await _service.DecomposeHierarchicallyAsync(repoPath);
 
         // Assert
-        // The module name should come from "Src/FeatureA", converted to "Src_FeatureA"
+        // The module name should come from "Src/FeatureA", converted to "Src Featurea"
         // It definitely should NOT contain the temp path root.
         
-        var module = result.Nodes.Values.FirstOrDefault(n => n.Name.Contains("Src_FeatureA"));
+        var module = result.Nodes.Values.FirstOrDefault(n => n.Name.Contains("Src Featurea"));
         
-        Assert.That(module, Is.Not.Null, "Should have created a module for Src_FeatureA");
+        Assert.That(module, Is.Not.Null, "Should have created a module for Src Featurea");
         Assert.That(module.Name, Does.Not.Contain("TestRepo"), "Module name should be relative, not containing repo root");
-        Assert.That(module.Name, Is.EqualTo("Dir_Src_FeatureA"));
+        Assert.That(module.Name, Is.EqualTo("Src Featurea"));
     }
 }

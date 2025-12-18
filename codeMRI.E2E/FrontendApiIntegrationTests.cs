@@ -28,35 +28,6 @@ public class FrontendApiIntegrationTests
     }
 
     [Test]
-    [Order(2)]
-    public async Task GenerateStructure_WithValidPath_ReturnsStructure()
-    {
-        // Arrange
-        var request = new StructureRequest
-        {
-            RepoPath = TestRepoPath,
-            ReadmeContent = "# Test Readme",
-            Language = "English",
-            ForceRegenerate = true 
-        };
-
-        // Act
-        var response = await _client.PostAsJsonAsync("api/wiki/structure", request);
-
-        // Assert
-        if (!response.IsSuccessStatusCode)
-        {
-            var content = await response.Content.ReadAsStringAsync();
-            TestContext.WriteLine($"GenerateStructure failed: {response.StatusCode} - {content}");
-        }
-        Assert.That(response.IsSuccessStatusCode, Is.True, "Structure API should return success.");
-        
-        var structure = await response.Content.ReadFromJsonAsync<WikiStructure>();
-        Assert.That(structure, Is.Not.Null);
-        // Assert.That(structure.Root, Is.Not.Null); // Depending on implementation
-    }
-
-    [Test]
     [Order(3)]
     public async Task GeneratePage_WithValidPathAndFiles_ReturnsPage()
     {

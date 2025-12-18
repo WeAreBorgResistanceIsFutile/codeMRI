@@ -288,6 +288,12 @@ public class WikiGenerationService : IWikiGenerationService
         cleanedContent = System.Text.RegularExpressions.Regex.Replace(cleanedContent, detailsPattern, "", 
             System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline).Trim();
 
+        // 1.1 Remove LLM-generated "Source Files Used", "Citations", etc. sections
+        // Catch variations like "## Source Files Used", "### Source Files", "- Source Files:", etc.
+        var listPattern = @"(?m)^(?:\s*|#+\s+)(?:Source Files|Files Used|Relevant Files|Citations).*?(\n\s*(?:-|\d+\.)\s+.*)+";
+        cleanedContent = System.Text.RegularExpressions.Regex.Replace(cleanedContent, listPattern, "",
+             System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline).Trim();
+
         // 2. Remove all main title headers (H1) that resemble the page title
         // This handles "# Title", "#Title", " # Title" etc.
         var titlePattern = @"^\s*#\s*" + System.Text.RegularExpressions.Regex.Escape(pageTitle) + @"\s*$";
@@ -315,7 +321,10 @@ public class WikiGenerationService : IWikiGenerationService
         sb.AppendLine("<details>");
         sb.AppendLine("<summary>Relevant source files</summary>");
         sb.AppendLine();
-        foreach(var path in filePaths)
+        
+        // Construct display paths and links
+        var uniqueFiles = filePaths.Distinct().ToList();
+        foreach(var path in uniqueFiles)
         {
             var displayPath = path;
             if (!string.IsNullOrEmpty(repoPath) && Path.IsPathRooted(path))
@@ -402,6 +411,59 @@ public class WikiGenerationService : IWikiGenerationService
                 RelevantFiles = filePaths
             };
         }
+        
+        // 2. Ingest Human Context (READMEs and docs/)
+        var humanContextBuilder = new StringBuilder();
+        if (!string.IsNullOrEmpty(repoPath))
+        {
+             try
+             {
+                 // Determine search paths: module root and docs/ subfolder
+                 // We need to find the physical path of the module.
+                 // Heuristic: Take the path of the first component.
+                 var firstComponentPath = filePaths.FirstOrDefault();
+                 if (!string.IsNullOrEmpty(firstComponentPath))
+                 {
+                     var fullComponentPath = Path.Combine(repoPath, firstComponentPath.TrimStart('/', '\\'));
+                     var moduleDir = Path.GetDirectoryName(fullComponentPath);
+                     
+                     if (!string.IsNullOrEmpty(moduleDir) && Directory.Exists(moduleDir))
+                     {
+                         // Find all markdown files in the module directory matching README* or just *.md
+                         // For better context, we include all .md files in root of module and docs/ folder.
+                         
+                         var mdFiles = Directory.GetFiles(moduleDir, "*.md", SearchOption.TopDirectoryOnly).ToList();
+                         
+                         var docsDir = Path.Combine(moduleDir, "docs");
+                         if (Directory.Exists(docsDir))
+                         {
+                             mdFiles.AddRange(Directory.GetFiles(docsDir, "*.md", SearchOption.AllDirectories));
+                         }
+                         
+                         foreach (var mdFile in mdFiles)
+                         {
+                             // Limit file size to avoid blowing context
+                             var fileInfo = new FileInfo(mdFile);
+                             if (fileInfo.Length > 20000) continue; // Skip large files
+                             
+                             var relativePath = Path.GetRelativePath(repoPath, mdFile);
+                             string mdContent = await File.ReadAllTextAsync(mdFile);
+                             
+                             humanContextBuilder.AppendLine($"Documentation File: {relativePath}");
+                             humanContextBuilder.AppendLine("---START---");
+                             humanContextBuilder.AppendLine(mdContent);
+                             humanContextBuilder.AppendLine("---END---");
+                             humanContextBuilder.AppendLine();
+                         }
+                     }
+                 }
+             }
+             catch (Exception ex)
+             {
+                 _logger.LogWarning(ex, "Failed to ingest markdown context for module {ModuleName}", module.Name);
+             }
+        }
+        string humanContext = humanContextBuilder.ToString();
 
         // Build source files context
         var contextBuilder = new StringBuilder();
@@ -421,12 +483,16 @@ public class WikiGenerationService : IWikiGenerationService
 
         // Use the enhanced prompt with module context based on audience
         string prompt;
-        if (audience != AudienceType.Developer)
+        if (audience == AudienceType.All)
+        {
+             // Comprehensive prompt for all audiences
+             prompt = PromptTemplates.ComprehensivePagePrompt(module, relatedPages, context, language, humanContext);
+        }
+        else if (audience != AudienceType.Developer)
         {
              // For User/DevOps, use the specific prompt template
-             // Note: availableFiles contains the source content we want to pass
              var sourceContent = availableFiles.ToDictionary(k => k.Key, v => v.Value);
-             prompt = PromptTemplates.UserGuidePagePrompt(module, context, sourceContent, audience, language);
+             prompt = PromptTemplates.UserGuidePagePrompt(module, context, sourceContent, audience, language, humanContext);
         }
         else
         {
@@ -436,25 +502,39 @@ public class WikiGenerationService : IWikiGenerationService
 
         var content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
 
-        // Generate diagrams if available and audience is Developer
-        if (audience == AudienceType.Developer)
+        // Generate diagrams if available
+        try
         {
-            try
-        {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            // We pass empty list to BuildGraphAsync to infer from repo if needed, but typically it needs components. 
+            // In the original code it passed empty list.
             var graph = await _graphService.BuildGraphAsync(new List<CodeComponent>(), cts.Token);
             
             if (graph.NodeCount > 0)
             {
-                var entryPointId = FindEntryPointForPage(module.Name, filePaths, graph);
-                if (!string.IsNullOrEmpty(entryPointId))
+                if (audience == AudienceType.Developer || audience == AudienceType.All)
                 {
-                    // Add component diagram
-                    var componentDiagram = await _diagramGenerator.GenerateComponentDiagramAsync(graph, entryPointId);
-                    if (!string.IsNullOrWhiteSpace(componentDiagram) && componentDiagram.Contains("classDiagram"))
+                    var entryPointId = FindEntryPointForPage(module.Name, filePaths, graph);
+                    if (!string.IsNullOrEmpty(entryPointId))
                     {
-                        content += "\n\n## Component Diagram\n\n";
-                        content += "```mermaid\n" + componentDiagram + "\n```\n";
+                        // Add component diagram
+                        var componentDiagram = await _diagramGenerator.GenerateComponentDiagramAsync(graph, entryPointId);
+                        if (!string.IsNullOrWhiteSpace(componentDiagram) && componentDiagram.Contains("classDiagram"))
+                        {
+                            content += "\n\n## Component Diagram\n\n";
+                            content += "```mermaid\n" + componentDiagram + "\n```\n";
+                        }
+                    }
+                }
+                
+                if (audience != AudienceType.Developer || audience == AudienceType.All)
+                {
+                    // For User/DevOps or All, generate high-level Deployment/Context diagram
+                    var deploymentDiagram = await _diagramGenerator.GenerateDeploymentDiagramAsync(module, graph);
+                    if (!string.IsNullOrWhiteSpace(deploymentDiagram) && deploymentDiagram.Contains("C4Context"))
+                    {
+                        content += "\n\n## System Context Diagram\n\n";
+                        content += "```mermaid\n" + deploymentDiagram + "\n```\n";
                     }
                 }
             }
@@ -462,7 +542,6 @@ public class WikiGenerationService : IWikiGenerationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to generate diagrams for module {ModuleName}: {Message}", module.Name, ex.Message);
-        }
         }
 
         // Enrich with cross-links and clean up

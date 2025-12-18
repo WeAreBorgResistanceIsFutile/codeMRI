@@ -1,5 +1,6 @@
 using System.Text;
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Services; // For PromptTemplates
 using codeMRI.Core.Models;
 
 namespace codeMRI.Visualization.Services;
@@ -10,10 +11,44 @@ namespace codeMRI.Visualization.Services;
 public class DiagramGeneratorService : IDiagramGenerator
 {
     private readonly HttpClient _httpClient;
+    private readonly ILLMClient _llmClient;
 
-    public DiagramGeneratorService(HttpClient httpClient)
+    public DiagramGeneratorService(HttpClient httpClient, ILLMClient llmClient)
     {
         _httpClient = httpClient;
+        _llmClient = llmClient;
+    }
+
+    public async Task<string> GenerateDeploymentDiagramAsync(ModuleNode module, EnhancedDependencyGraph graph)
+    {
+        var prompt = PromptTemplates.DeploymentDiagramPrompt(module, graph, "English");
+        
+        // We use a safe fallback model if _documentationModel is not available, or just use the default.
+        // Assuming ILLMClient handles model selection or we pass null.
+        // We need to provide a model name if ChatAsync requires it. 
+        // WikiGenerationService uses "_documentationModel" configuration.
+        // Here we might just pass null to use default.
+        
+        var content = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>(), null);
+        
+        // Extract mermaid code block
+        return ExtractMermaidCode(content);
+    }
+
+    private string ExtractMermaidCode(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return string.Empty;
+        
+        // Find start of mermaid block
+        var startIdx = content.IndexOf("```mermaid", StringComparison.OrdinalIgnoreCase);
+        if (startIdx == -1) return content; // Return raw if no block found
+        
+        startIdx += "```mermaid".Length;
+        
+        var endIdx = content.IndexOf("```", startIdx, StringComparison.OrdinalIgnoreCase);
+        if (endIdx == -1) return content.Substring(startIdx).Trim();
+        
+        return content.Substring(startIdx, endIdx - startIdx).Trim();
     }
 
     public Task<string> GenerateArchitectureDiagramAsync(ModuleTree moduleTree, EnhancedDependencyGraph graph)

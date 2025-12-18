@@ -103,11 +103,20 @@ public class CodeWikiOrchestratorProgressTests
         _mockRubricService.Setup(x => x.GenerateRubricAsync(It.IsAny<WikiStructure>(), repoInfo, It.IsAny<CancellationToken>()))
                           .ReturnsAsync(rubric);
 
-        _mockWikiGenerationService.Setup(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
-                                  .ReturnsAsync(new WikiPage { Id = "p1", Title = "Child" });
-        
-        _mockSynthesisService.Setup(x => x.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>()))
-                             .ReturnsAsync(new WikiPage { Id = "p2", Title = "Root" });
+        _mockWikiGenerationService.Setup(s => s.GenerateEnhancedPageAsync(
+            It.IsAny<ModuleNode>(), 
+            It.IsAny<List<WikiPage>?>(), 
+            It.IsAny<ModulePageContext>(), 
+            It.IsAny<Dictionary<string, string>>(), 
+            It.IsAny<string>(), 
+            It.IsAny<string>(), 
+            It.IsAny<AudienceType>(),
+            It.IsAny<string>(), 
+            It.IsAny<string>()))
+            .ReturnsAsync(new WikiPage { Id = "page1", Title = "Page 1" });
+            
+        _mockSynthesisService.Setup(s => s.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>()))
+            .ReturnsAsync(new WikiPage { Id = "parent", Title = "Parent" });
 
         _mockJudgeService.Setup(x => x.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(), It.IsAny<List<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                          .ReturnsAsync(new List<RequirementAssessment>());

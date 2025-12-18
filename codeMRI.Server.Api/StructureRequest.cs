@@ -1,5 +1,13 @@
 namespace codeMRI.Server.Api;
 
+public enum AudienceType
+{
+    Developer,
+    User,
+    DevOps,
+    All
+}
+
 public class StructureRequest
 {
     public string RepoPath { get; set; } = string.Empty;
@@ -8,4 +16,5 @@ public class StructureRequest
     public bool ForceRegenerate { get; set; } = false;
     public bool SkipPersistence { get; set; } = false;
     public string? ConnectionId { get; set; }
+    public AudienceType Audience { get; set; } = AudienceType.Developer;
 }

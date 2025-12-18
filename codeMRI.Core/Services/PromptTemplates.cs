@@ -1,5 +1,6 @@
 using System.Text.Json;
 using codeMRI.Core.Interfaces;
+using System.Text;
 using codeMRI.Core.Models;
 
 namespace codeMRI.Core.Services;
@@ -151,24 +152,38 @@ public static class PromptTemplates
     public static string UserGuidePagePrompt(
         ModuleNode module,
         ModulePageContext context,
-        Dictionary<string, string> sourceContent,
+        Dictionary<string, string> sourceFiles,
         AudienceType audience,
-        string language)
+        string language,
+        string? humanContext = null)
     {
+        var role = audience == AudienceType.DevOps ? "DevOps Engineer" : "Technical Writer";
+        var audienceDesc = audience == AudienceType.DevOps ? "System Administrators and DevOps" : "End Users and Non-Technical Stakeholders";
+        
+        var sb = new StringBuilder();
+        sb.AppendLine($"You are an expert {role} writing documentation for {audienceDesc}.");
+        sb.AppendLine($"Your goal is to write a clear, actionable guide for the module '{module.Name}'.");
+        sb.AppendLine();
+        
+        if (!string.IsNullOrEmpty(humanContext))
+        {
+            sb.AppendLine("## EXISTING HUMAN CONTEXT");
+            sb.AppendLine("The following documentation was written by humans. Use it to understand the high-level purpose and conceptual details. Prioritize this context over inferred details.");
+            sb.AppendLine(humanContext);
+            sb.AppendLine("## END HUMAN CONTEXT");
+            sb.AppendLine();
+        }
+        
+        sb.AppendLine("## INSTRUCTIONS");
+        sb.AppendLine("Write a user-friendly guide covering the following aspects based ONLY on the source code provided:");
+        sb.AppendLine("1. **Overview**: What is this component and what problem does it solve? (No code jargon)");
+        sb.AppendLine("2. **Key Capabilities**: specific features available to the user/admin.");
+        sb.AppendLine("3. **Configuration**: Look for environment variables, config files, or settings classes. specific flags.");
+        sb.AppendLine("4. **Operational Requirements**: External dependencies (DBs, APIs) found in connection strings or clients.");
+        sb.AppendLine("5. **Troubleshooting**: Common error messages or failure scenarios visible in exceptions/logging.");
+
         return $"""
-            You are a Technical Writer creating documentation for {audience} audience.
-            
-            ## Context
-            - Module Name: {module.Name}
-            - System Role: part of {module.Level} level components
-            
-            ## Instructions
-            Write a user-friendly guide covering the following aspects based ONLY on the source code provided:
-            1. **Overview**: What is this component and what problem does it solve? (No code jargon)
-            2. **Key Capabilities**: specific features available to the user/admin.
-            3. **Configuration**: Look for environment variables, config files, or settings classes. specific flags.
-            4. **Operational Requirements**: External dependencies (DBs, APIs) found in connection strings or clients.
-            5. **Troubleshooting**: Common error messages or failure scenarios visible in exceptions/logging.
+            {sb}
 
             STRICT RULES:
             - Tone: Professional, concise, actionable.
@@ -179,6 +194,83 @@ public static class PromptTemplates
             - Use {language} language.
 
             Output ONLY the markdown content starting with # {module.Name}
+            """;
+    }
+
+    /// <summary>
+    /// Generates a comprehensive prompt covering Developer, User, and DevOps perspectives.
+    /// </summary>
+    public static string ComprehensivePagePrompt(
+        ModuleNode module,
+        List<WikiPage>? relatedPages,
+        ModulePageContext context,
+        string language,
+        string? humanContext = null)
+    {
+        var relatedSummaries = relatedPages?
+            .Select(p => $"- **{p.Title}**: {ExtractFirstParagraph(p.Content)}")
+            .Take(5)
+            .ToList() ?? new List<string>();
+
+        var dependenciesList = context.Dependencies?
+            .Select(d => $"- {d}")
+            .Take(10)
+            .ToList() ?? new List<string>();
+        
+        var sb = new StringBuilder();
+        sb.AppendLine($"You are an expert Technical Writer, Software Architect, and DevOps Engineer.");
+        sb.AppendLine($"Your goal is to write a COMPLETE documentation suite for the module '{module.Name}' that serves all stakeholders.");
+        sb.AppendLine();
+        
+        if (!string.IsNullOrEmpty(humanContext))
+        {
+            sb.AppendLine("## EXISTING HUMAN CONTEXT");
+            sb.AppendLine("Use this human-written context to improved accuracy:");
+            sb.AppendLine(humanContext);
+            sb.AppendLine("## END HUMAN CONTEXT");
+            sb.AppendLine();
+        }
+        
+        sb.AppendLine("## INSTRUCTIONS");
+        sb.AppendLine("Write a comprehensive page with the following sections:");
+        sb.AppendLine();
+        sb.AppendLine("### 1. Overview (For Everyone)");
+        sb.AppendLine("- High-level purpose of the module.");
+        sb.AppendLine("- Key problems it solves.");
+        sb.AppendLine("- Primary capabilities.");
+        sb.AppendLine();
+        sb.AppendLine("### 2. User Guide (For End Users)");
+        sb.AppendLine("- How to use the features.");
+        sb.AppendLine("- Configuration options (user-facing).");
+        sb.AppendLine("- Common use cases.");
+        sb.AppendLine();
+        sb.AppendLine("### 3. Technical Architecture (For Developers)");
+        sb.AppendLine($"- Architectural Pattern: {module.Metadata.GetValueOrDefault("ArchitecturalPattern", "Not identified")}");
+        sb.AppendLine($"- Metrics: Cohesion ({module.QualityMetrics.Cohesion:F2}), Coupling ({module.QualityMetrics.Coupling:F2}), Complexity ({module.ComplexityScore:F1})");
+        sb.AppendLine("- Class/Component structure and key relationships.");
+        sb.AppendLine("- Important public interfaces.");
+        sb.AppendLine("- Mermaid Component Diagram (graph TD).");
+        sb.AppendLine();
+        sb.AppendLine("### 4. Operations & Deployment (For DevOps)");
+        sb.AppendLine("- External dependencies (DBs, APIs, Queues) based on: " + (dependenciesList.Any() ? string.Join(", ", dependenciesList) : "None detected") + ".");
+        sb.AppendLine("- Configuration (Env vars, settings files).");
+        sb.AppendLine("- Troubleshooting and Logs.");
+        sb.AppendLine();
+        sb.AppendLine("### 5. API Reference (If applicable)");
+        sb.AppendLine("- Key endpoints or methods.");
+        
+        return $"""
+            {sb}
+
+            STRICT RULES:
+            - Structure the response exactly with the headers above.
+            - Only document what exists in the SOURCE FILES CONTENT below.
+            - Do NOT invent features.
+            - Use {language} language.
+            
+            Output ONLY the markdown content starting with # {module.Name}
+            
+            At the VERY END of the page, include a <details> block listing ALL source files used.
             """;
     }
 
@@ -216,6 +308,60 @@ public static class PromptTemplates
             STRICT RULES:
             - Focus on value proposition and operations.
             - Ignore internal code structure/refactoring details.
+            - Use {language} language.
+
+            Output ONLY the markdown content starting with # {parentModule.Name}
+            """;
+    }
+
+    /// <summary>
+    /// Generates a comprehensive system overview prompt covering all audiences.
+    /// </summary>
+    public static string ComprehensiveParentPageSynthesisPrompt(
+        ModuleNode parentModule,
+        List<WikiPage> childPages,
+        int crossModuleDependencies,
+        string language)
+    {
+        var childSummaries = childPages
+             .Select(p => new
+             {
+                 Title = p.Title,
+                 Summary = ExtractFirstParagraph(p.Content)
+             });
+
+        var childSummariesJson = JsonSerializer.Serialize(childSummaries,
+            new JsonSerializerOptions { WriteIndented = true });
+
+        return $"""
+            Synthesize a Comprehensive System Overview for "{parentModule.Name}".
+            
+            ## Component Summaries
+            {childSummariesJson}
+            
+            ## Architecture Insights
+            - **Detected Pattern**: {parentModule.Metadata.GetValueOrDefault("ArchitecturalPattern", "Mixed")}
+            - **Cross-Module Dependencies**: {crossModuleDependencies} connections
+            - **Complexity**: {parentModule.ComplexityScore:F1}
+
+            ## Instructions
+            Create a master overview page with the following sections:
+
+            ### 1. System Abstract
+            - High-level purpose and value proposition.
+            
+            ### 2. User & Operations Overview
+            - System capabilities.
+            - Deployment Architecture.
+            - External Integration Points.
+            
+            ### 3. Technical Architecture
+            - Module collaboration and design patterns.
+            - Cross-cutting concerns.
+            - Architecture Diagrams reference (if applicable).
+            
+            STRICT RULES:
+            - Synthesize information from child components.
             - Use {language} language.
 
             Output ONLY the markdown content starting with # {parentModule.Name}
@@ -420,6 +566,53 @@ public static class PromptTemplates
     }
 
     #endregion
+
+    /// <summary>
+    /// Generates a C4 Context diagram using Mermaid syntax.
+    /// </summary>
+    public static string DeploymentDiagramPrompt(
+        ModuleNode module,
+        EnhancedDependencyGraph graph,
+        string language)
+    {
+        return $@"
+You are a Software Architect specializing in C4 Model diagrams.
+Your task is to generate a C4 System Context diagram using Mermaid C4 syntax (C4Context).
+
+## INPUT CONTEXT
+Module: {module.Name}
+Dependencies: The module has {graph.EdgeCount} dependencies detected in the code.
+
+## INSTRUCTIONS
+1. Analyze the implied system boundaries based on typical dependencies:
+   - Database connections (SQL, Mongo, Postgres) -> External System containers.
+   - External APIs (Stripe, Twilio, AWS) -> External System containers.
+   - Message Queues (RabbitMQ, Kafka) -> External System containers.
+   - Frontend/Clients -> Person actors.
+2. Create a C4 Context diagram that shows the System (this module/repo) in the center and its relationships to these external systems and users.
+3. Use strict Mermaid C4 syntax (`C4Context`).
+4. Keep it high-level. Do NOT include internal classes or minor components. Focus on the ""Big Picture"".
+
+## EXAMPLE OUTPUT
+```mermaid
+C4Context
+    title System Context diagram for Internet Banking System
+    Person(customer, ""Banking Customer"", ""A customer of the bank."")
+    System(banking_system, ""Internet Banking System"", ""Allows customers to view information about their bank accounts."")
+    System_Ext(mail_system, ""E-mail System"", ""The internal Microsoft Exchange e-mail system."")
+    System_Ext(mainframe, ""Mainframe Banking System"", ""Stores all of the core banking information."")
+
+    Rel(customer, banking_system, ""Uses"")
+    Rel(banking_system, mail_system, ""Sends e-mails"", ""SMTP"")
+    Rel(banking_system, mainframe, ""Uses"")
+```
+
+## OUTPUT FORMAT
+Return ONLY the Mermaid code block.
+Start with ```mermaid and end with ```.
+Use the language '{language}' for labels if possible.
+";
+    }
 }
 
 #region Supporting Models

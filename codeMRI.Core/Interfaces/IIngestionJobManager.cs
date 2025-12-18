@@ -9,7 +9,7 @@ public interface IIngestionJobManager
     /// <summary>
     /// Starts a new ingestion job for the given Git URL.
     /// </summary>
-    Task<IngestionJob> StartJobAsync(string repoUrl, bool forceRegenerate, string? connectionId = null);
+    Task<IngestionJob> StartJobAsync(string repoUrl, bool forceRegenerate, AudienceType audience = AudienceType.Developer, string? connectionId = null);
 
     /// <summary>
     /// Gets the current status of a job.

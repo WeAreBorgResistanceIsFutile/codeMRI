@@ -133,7 +133,9 @@ public class WikiController : ControllerBase
 
         try
         {
-            var job = await _ingestionManager.StartJobAsync(request.Url, true, null); // We might want ConnectionId here if we update the request model
+            // Cast API AudienceType to Core AudienceType
+            var coreAudience = (codeMRI.Core.Models.AudienceType)(int)request.Audience;
+            var job = await _ingestionManager.StartJobAsync(request.Url, true, coreAudience, null); // We might want ConnectionId here if we update the request model
             return Ok(new { JobId = job.Id, Status = job.Status.ToString() });
         }
         catch (Exception ex)
@@ -291,7 +293,8 @@ public class WikiController : ControllerBase
             var structure = await _orchestrator.GenerateAdvancedWikiAsync(
                 request.RepoPath,
                 repoInfo,
-                progress);
+                progress,
+                default);
 
             if (!request.SkipPersistence)
             {

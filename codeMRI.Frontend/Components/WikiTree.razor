@@ -23,53 +23,80 @@
             <ul class="list-unstyled">
                 @foreach (var wikiSection in FilteredSections)
                 {
-                    <li class="mb-3">
-                        <div class="section-title">@wikiSection.Title</div>
-                        <ul class="list-unstyled ms-1 border-start ps-2" style="border-color: #f1f3f4 !important;">
-                            @foreach (var pageId in wikiSection.PageRefs)
-                            {
-                                var pageMetadata = GetPageById(pageId);
-                                if (pageMetadata == null) continue;
-                                if (!Match(pageMetadata.Title)) continue;
-                                
-                                <li class="wiki-item @(AppState.CurrentPage?.Id == pageId ? "active" : "")" 
-                                    @onclick="() => LoadPage(pageId)">
-                                    <div class="d-flex align-items-start">
-                                        <div class="flex-grow-1">
-                                            <div class="page-title">@pageMetadata.Title</div>
-                                            @if (pageMetadata != null)
-                                            {
-                                                @if (!string.IsNullOrEmpty(pageMetadata.Description))
-                                                {
-                                                    <div class="page-description text-muted small">
-                                                        @(pageMetadata.Description.Length > 60 
-                                                            ? pageMetadata.Description.Substring(0, 60) + "..." 
-                                                            : pageMetadata.Description)
-                                                    </div>
-                                                }
-                                                @if (pageMetadata.RelevantFiles?.Count > 0)
-                                                {
-                                                    <div class="page-files text-muted small">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
-                                                            <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
-                                                        </svg>
-                                                        @pageMetadata.RelevantFiles.Count file@(pageMetadata.RelevantFiles.Count != 1 ? "s" : "")
-                                                    </div>
-                                                }
-                                            }
-                                        </div>
-                                    </div>
-                                </li>
-                            }
-                        </ul>
-                    </li>
+                    @RenderSection(wikiSection)
                 }
             </ul>
         }
     </div>
 </div>
 
+@{
+    RenderFragment RenderSection(WikiSection currentSection) => __builder =>
+    {
+        var hasPages = currentSection.PageRefs.Any();
+        var hasSubSections = currentSection.SubSections.Any();
+        
+        if (!hasPages && !hasSubSections) return;
+
+        <li class="mb-2">
+            <div class="section-title">@currentSection.Title</div>
+            <ul class="list-unstyled ms-1 border-start ps-2" style="border-color: #f1f3f4 !important;">
+                @foreach (var pageId in currentSection.PageRefs)
+                {
+                    var pageMetadata = GetPageById(pageId);
+                    if (pageMetadata == null) continue;
+                    if (!Match(pageMetadata.Title)) continue;
+                    
+                    <li class="wiki-item @(AppState.CurrentPage?.Id == pageId ? "active" : "")" 
+                        @onclick="() => LoadPage(pageId)">
+                        <div class="d-flex align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="page-title">@pageMetadata.Title</div>
+                                @if (pageMetadata != null)
+                                {
+                                    @if (!string.IsNullOrEmpty(pageMetadata.Description))
+                                    {
+                                        <div class="page-description text-muted small">
+                                            @(pageMetadata.Description.Length > 60 
+                                                ? pageMetadata.Description.Substring(0, 60) + "..." 
+                                                : pageMetadata.Description)
+                                        </div>
+                                    }
+                                    @if (pageMetadata.RelevantFiles?.Count > 0)
+                                    {
+                                        <div class="page-files text-muted small">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
+                                                <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
+                                            </svg>
+                                            @pageMetadata.RelevantFiles.Count file@(pageMetadata.RelevantFiles.Count != 1 ? "s" : "")
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </li>
+                }
+
+                @foreach (var subSection in currentSection.SubSections)
+                {
+                    @RenderSection(subSection)
+                }
+            </ul>
+        </li>
+    };
+}
+
 <style>
+    .section-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #5f6368;
+        margin-top: 8px;
+        margin-bottom: 4px;
+        letter-spacing: 0.5px;
+    }
+    
     .page-title {
         font-weight: 500;
     }
@@ -133,11 +160,19 @@
             if (string.IsNullOrWhiteSpace(searchTerm))
                 return AppState.Structure.Sections;
 
-            return AppState.Structure.Sections.Where(s => 
-                s.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-                s.PageRefs.Any(p => p.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
-            );
+            return AppState.Structure.Sections.Where(s => IsSectionMatch(s));
         }
+    }
+
+    private bool IsSectionMatch(WikiSection section)
+    {
+        if (section.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)) return true;
+        if (section.PageRefs.Any(p => {
+            var page = GetPageById(p);
+            return page != null && page.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
+        })) return true;
+        
+        return section.SubSections.Any(ss => IsSectionMatch(ss));
     }
 
     private WikiPage? GetPageById(string pageId)

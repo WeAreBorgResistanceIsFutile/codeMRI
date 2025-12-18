@@ -42,7 +42,7 @@ public class ASTServiceClient : IASTServiceClient
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            MaxDepth = 256
+            MaxDepth = 64
         };
     }
 

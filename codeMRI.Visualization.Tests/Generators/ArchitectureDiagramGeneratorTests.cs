@@ -1,5 +1,7 @@
 using codeMRI.Core.Models;
 using codeMRI.Visualization.Services;
+using Moq;
+using codeMRI.Core.Interfaces;
 
 namespace codeMRI.Visualization.Tests.Generators;
 
@@ -9,10 +11,15 @@ public class ArchitectureDiagramGeneratorTests
     [SetUp]
     public void Setup()
     {
-        _generator = new DiagramGeneratorService(new HttpClient());
+        var mockLlm = new Mock<ILLMClient>();
+        _generator = new DiagramGeneratorService(new HttpClient(), mockLlm.Object);
+        _testGraph = new EnhancedDependencyGraph();
+        _testTree = new ModuleTree();
     }
 
     private DiagramGeneratorService _generator;
+    private EnhancedDependencyGraph _testGraph;
+    private ModuleTree _testTree;
 
     [Test]
     public async Task GenerateArchitectureDiagramAsync_ShouldReturnMermaidGraph_ForSimpleTree()

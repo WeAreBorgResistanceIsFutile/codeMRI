@@ -111,7 +111,7 @@ public class CodeWikiOrchestratorTests
         
         // Verify GeneratePageAsync was NOT called
         _mockWikiGenerationService.Verify(
-            s => s.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()),
+            s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>()),
             Times.Never);
             
         // Verify Synthesis was NOT called
@@ -158,7 +158,7 @@ public class CodeWikiOrchestratorTests
 
         // Mock Generation
         _mockWikiGenerationService
-             .Setup(s => s.GeneratePageAsync(moduleName, It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
+             .Setup(s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>()))
              .ReturnsAsync(new WikiPage { Id = "new-id", Title = moduleName, Content = "Generated Content" });
 
         // Act
@@ -170,10 +170,68 @@ public class CodeWikiOrchestratorTests
         
         // Verify GeneratePageAsync WAS called
         _mockWikiGenerationService.Verify(
-            s => s.GeneratePageAsync(moduleName, It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()),
+            s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>()),
             Times.Once);
             
         // Verify SavePageAsync was called
         _mockWikiRepo.Verify(r => r.SavePageAsync(repoPath, It.Is<WikiPage>(p => p.Title == moduleName)), Times.Once);
+    }
+
+    [Test]
+    public async Task GenerateAdvancedWikiAsync_ShouldBuildHierarchicalSections_WhenModuleTreeIsNested()
+    {
+        // Arrange
+        var repoPath = "/test/repo";
+        var repoInfo = new RepositoryInfo { Name = "TestRepo", Url = "https://github.com/test", Branch = "main" };
+        
+        var childModule = new ModuleNode
+        {
+            Id = "child",
+            Name = "ChildModule",
+            IsLeaf = true,
+            Components = new HashSet<string> { "comp2" }
+        };
+
+        var rootModule = new ModuleNode
+        {
+            Id = "root",
+            Name = "RootModule",
+            IsLeaf = false,
+            Children = new List<ModuleNode> { childModule }
+        };
+
+        var moduleTree = new ModuleTree { Root = rootModule };
+
+        _mockDecompositionService
+            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(moduleTree);
+
+        _mockRubricService
+            .Setup(s => s.GenerateRubricAsync(It.IsAny<WikiStructure>(), repoInfo, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EvaluationRubric());
+            
+        _mockJudgeService
+            .Setup(s => s.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(), It.IsAny<List<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<RequirementAssessment>());
+
+        // Mock Generation
+        _mockWikiGenerationService
+             .Setup(s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(), It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(), It.IsAny<AudienceType>(), repoInfo.Url, repoInfo.Branch))
+             .ReturnsAsync((ModuleNode m, List<WikiPage>? r, ModulePageContext ctx, Dictionary<string, string> fc, string l, string? rp, AudienceType a, string? remote, string? branch) => 
+                new WikiPage { Id = $"id_{m.Name}", Title = m.Name, Content = $"Content for {m.Name}" });
+
+        _mockSynthesisService
+            .Setup(s => s.SynthesizeParentPageAsync(rootModule, It.IsAny<List<WikiPage>>(), "English", AudienceType.All))
+            .ReturnsAsync(new WikiPage { Id = "id_RootModule", Title = "RootModule", Content = "Synthesized Content" });
+
+        // Act
+        var structure = await _orchestrator.GenerateAdvancedWikiAsync(repoPath, repoInfo);
+
+        // Assert
+        Assert.That(structure.Sections.Count, Is.EqualTo(1), "Only root section should be in the top-level list");
+        var rootSection = structure.Sections.First();
+        Assert.That(rootSection.Title, Is.EqualTo("RootModule"));
+        Assert.That(rootSection.SubSections.Count, Is.EqualTo(1), "Root section should have one sub-section");
+        Assert.That(rootSection.SubSections.First().Title, Is.EqualTo("ChildModule"));
     }
 }

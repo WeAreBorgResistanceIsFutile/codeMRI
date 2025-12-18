@@ -63,8 +63,16 @@ public class DbIngestionManager : IIngestionJobManager
                 WorkerId TEXT,
                 CreatedAt TEXT,
                 LastUpdated TEXT,
-                Error TEXT
+                Error TEXT,
+                Audience INTEGER DEFAULT 0
             )");
+            
+            // Migration: Check if Audience column exists, if not add it
+            var audienceExists = connection.ExecuteScalar<int>("SELECT COUNT(*) FROM pragma_table_info('IngestionJobs') WHERE name='Audience'");
+            if (audienceExists == 0)
+            {
+                connection.Execute("ALTER TABLE IngestionJobs ADD COLUMN Audience INTEGER DEFAULT 0");
+            }
             
         // Sanitize data (fix previous string enums)
         try 
@@ -81,7 +89,7 @@ public class DbIngestionManager : IIngestionJobManager
         catch { /* Ignore if fails, e.g. type mismatch in where clause if strict */ }
     }
 
-    public async Task<IngestionJob> StartJobAsync(string repoUrl, bool forceRegenerate, string? connectionId = null)
+    public async Task<IngestionJob> StartJobAsync(string repoUrl, bool forceRegenerate, AudienceType audience, string? connectionId = null)
     {
         // 1. Check if active job exists for this URL
         using var connection = new SqliteConnection(_connectionString);
@@ -101,16 +109,17 @@ public class DbIngestionManager : IIngestionJobManager
             RepoUrl = repoUrl,
             Status = IngestionStatus.Queued,
             WorkerId = Environment.MachineName,
-            RepoName = Path.GetFileNameWithoutExtension(repoUrl) // Preliminary name
+            RepoName = Path.GetFileNameWithoutExtension(repoUrl), // Preliminary name
+            Audience = audience
         };
 
         await connection.ExecuteAsync(@"
-            INSERT INTO IngestionJobs (Id, RepoUrl, RepoPath, RepoName, Status, ProgressPercentage, CurrentPhase, Message, WorkerId, CreatedAt, LastUpdated, Error)
-            VALUES (@Id, @RepoUrl, @RepoPath, @RepoName, @Status, @ProgressPercentage, @CurrentPhase, @Message, @WorkerId, @CreatedAt, @LastUpdated, @Error)",
+            INSERT INTO IngestionJobs (Id, RepoUrl, RepoPath, RepoName, Status, ProgressPercentage, CurrentPhase, Message, WorkerId, CreatedAt, LastUpdated, Error, Audience)
+            VALUES (@Id, @RepoUrl, @RepoPath, @RepoName, @Status, @ProgressPercentage, @CurrentPhase, @Message, @WorkerId, @CreatedAt, @LastUpdated, @Error, @Audience)",
             job);
 
         // 3. Spawn background execution
-        _ = Task.Run(() => RunJobAsync(job.Id, repoUrl, forceRegenerate, connectionId));
+        _ = Task.Run(() => RunJobAsync(job.Id, repoUrl, forceRegenerate, audience, connectionId));
 
         return job;
     }
@@ -146,7 +155,7 @@ public class DbIngestionManager : IIngestionJobManager
         });
     }
 
-    private async Task RunJobAsync(string jobId, string repoUrl, bool forceRegenerate, string? connectionId)
+    private async Task RunJobAsync(string jobId, string repoUrl, bool forceRegenerate, AudienceType audience, string? connectionId)
     {
         _logger.LogInformation("Starting background processing for job {JobId}", jobId);
         

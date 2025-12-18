@@ -28,4 +28,5 @@ public class IngestionJob
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
     public string? Error { get; set; }
+    public AudienceType Audience { get; set; } = AudienceType.Developer;
 }

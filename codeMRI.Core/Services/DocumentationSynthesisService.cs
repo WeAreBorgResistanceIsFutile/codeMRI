@@ -56,7 +56,15 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
         var estimatedCrossModuleDeps = childPages.Count > 1 ? childPages.Count * 2 : 0;
 
         string prompt;
-        if (audience != AudienceType.Developer)
+        if (audience == AudienceType.All)
+        {
+             prompt = PromptTemplates.ComprehensiveParentPageSynthesisPrompt(
+                module,
+                childPages,
+                estimatedCrossModuleDeps,
+                language);
+        }
+        else if (audience != AudienceType.Developer)
         {
             prompt = PromptTemplates.UserGuideSynthesisPrompt(
                 module,

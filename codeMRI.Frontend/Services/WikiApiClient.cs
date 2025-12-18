@@ -30,7 +30,8 @@ public class WikiApiClient
         { 
             RepoPath = repoPath,
             ForceRegenerate = true, 
-            ConnectionId = connectionId
+            ConnectionId = connectionId,
+            Audience = AudienceType.Developer // Default for now, or update signature if needed
         });
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<WikiStructure>() 
@@ -94,9 +95,10 @@ public class WikiApiClient
     }
 
     
-    public async Task<IngestionJob> StartIngestionAsync(string gitUrl)
+    public async Task<IngestionJob> StartIngestionAsync(string gitUrl, AudienceType audience = AudienceType.Developer)
     {
-        var response = await _http.PostAsJsonAsync("api/Wiki/ingest", new { Url = gitUrl });
+        var request = new IngestionRequest { Url = gitUrl, Audience = audience };
+        var response = await _http.PostAsJsonAsync("api/Wiki/ingest", request);
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<StartIngestionResponse>()
                ?? throw new Exception("Failed to start ingestion");

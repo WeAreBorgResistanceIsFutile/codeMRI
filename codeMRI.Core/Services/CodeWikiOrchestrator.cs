@@ -50,8 +50,12 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         string repositoryPath,
         RepositoryInfo repositoryInfo,
         IProgress<ProgressInfo>? progress = null,
+
         CancellationToken cancellationToken = default)
     {
+        // Force AudienceType to All for comprehensive documentation
+        var audience = AudienceType.All;
+
         // 0. Initialize Progress Sservice
         if (progress != null) _progressService.SetHandler(p => progress.Report(p));
 
@@ -94,7 +98,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // Scale Content Generation (Global 20% to 90%: Start=20, Width=70)
         await _progressService.WithScalingAsync(20, 70, async () => 
         {
-             await GenerateContentForModulesAsync(moduleTree.Root, structure, repositoryPath, repositoryInfo, dependencyGraph, progressState, new ConcurrentDictionary<string, byte>(), cancellationToken);
+             await GenerateContentForModulesAsync(moduleTree.Root, structure, repositoryPath, repositoryInfo, dependencyGraph, progressState, new ConcurrentDictionary<string, byte>(), cancellationToken, audience);
         });
 
         // 4. Evaluation (The Judge)
@@ -146,13 +150,24 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         {
             Title = $"{repoInfo.Name} Documentation",
             Description = $"Automatically generated documentation for {repoInfo.Name}",
-            Sections = new List<WikiSection>(), // Modules will form sections
+            Sections = new List<WikiSection>(),
             Pages = new List<WikiPage>()
         };
 
-        // Recursive conversion handled during content generation or here?
-        // Let's create a skeleton first.
+        // We will build the hierarchy recursively in GenerateContentForModulesAsync
         return structure;
+    }
+
+    private WikiSection CreateSectionForModule(ModuleNode module, WikiPage? page)
+    {
+        var section = new WikiSection
+        {
+            Id = $"section_{module.Id}",
+            Title = module.Name,
+            PageRefs = page != null ? new List<string> { page.Id } : new List<string>()
+        };
+
+        return section;
     }
 
     private async Task GenerateContentForModulesAsync(
@@ -163,14 +178,15 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         EnhancedDependencyGraph graph,
         ProgressState progressState,
         ConcurrentDictionary<string, byte> visitedIds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        AudienceType audience)
     {
         if (!visitedIds.TryAdd(module.Id, 0)) return;
 
         // Recursively process children first (Bottom-Up)
         // Parallelize children processing
         var childTasks = module.Children.Select(child => 
-            GenerateContentForModulesAsync(child, structure, repoPath, repoInfo, graph, progressState, visitedIds, cancellationToken));
+            GenerateContentForModulesAsync(child, structure, repoPath, repoInfo, graph, progressState, visitedIds, cancellationToken, audience));
         
         await Task.WhenAll(childTasks);
 
@@ -247,12 +263,14 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                      }
                  }
                  
-                 page = await _wikiGenerationService.GeneratePageAsync(
-                     module.Name, 
-                     filePaths, 
+                 page = await _wikiGenerationService.GenerateEnhancedPageAsync(
+                     module, 
+                     null, // relatedPages 
+                     new ModulePageContext(), // Empty context as placeholder or we should build it 
                      fileContents,
                      "English",
                      repoPath,
+                     audience,
                      repoInfo.Url,
                      repoInfo.Branch
                  );
@@ -271,7 +289,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                         .ToList();
                 }
 
-                page = await _synthesisService.SynthesizeParentPageAsync(module, childPages);
+                page = await _synthesisService.SynthesizeParentPageAsync(module, childPages, "English", audience);
             }
 
             lock (structure.Pages)
@@ -281,15 +299,25 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
             
             await _wikiRepo.SavePageAsync(repoPath, page);
             
-            // Add to sections structure (naive mapping)
-            var section = new WikiSection
+            // Build the section for this module
+            var section = CreateSectionForModule(module, page);
+            
+            // Link to children sections
+            lock (structure.Pages) // Using structure.Pages lock as a general synchronization object for structure assembly
             {
-                Id = $"section_{module.Id}",
-                Title = module.Name,
-                PageRefs = new List<string> { page.Id }
-            };
-            lock (structure.Sections)
-            {
+                // Find all sections created for children
+                var childSections = structure.Sections
+                    .Where(s => module.Children.Any(c => $"section_{c.Id}" == s.Id))
+                    .ToList();
+                
+                section.SubSections.AddRange(childSections);
+                
+                // Remove child sections from root if they were added there (they shouldn't be yet in this bottom-up approach)
+                foreach(var cs in childSections)
+                {
+                    structure.Sections.Remove(cs);
+                }
+
                 structure.Sections.Add(section);
             }
 

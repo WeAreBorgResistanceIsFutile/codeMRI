@@ -2,6 +2,7 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using NUnit.Framework;
 
@@ -13,6 +14,7 @@ public class HierarchicalDecompositionProgressTests
     private Mock<ILogger<HierarchicalDecompositionService>> _loggerMock;
     private Mock<IEnhancedDependencyGraphService> _graphServiceMock;
     private Mock<IArchitecturalPatternService> _patternServiceMock;
+
     private IProgressService _progressService;
     private HierarchicalDecompositionService _service;
 
@@ -22,6 +24,7 @@ public class HierarchicalDecompositionProgressTests
         _loggerMock = new Mock<ILogger<HierarchicalDecompositionService>>();
         _graphServiceMock = new Mock<IEnhancedDependencyGraphService>();
         _patternServiceMock = new Mock<IArchitecturalPatternService>();
+
         _progressService = new ProgressService();
 
         _service = new HierarchicalDecompositionService(

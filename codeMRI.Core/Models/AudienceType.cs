@@ -4,5 +4,6 @@ public enum AudienceType
 {
     Developer,
     User,
-    DevOps
+    DevOps,
+    All
 }

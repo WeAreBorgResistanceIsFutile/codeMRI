@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Linq;
 using System;
 using System.Net.Http;
+using Moq;
 
 namespace codeMRI.Visualization.Tests.Services
 {
@@ -21,7 +22,8 @@ namespace codeMRI.Visualization.Tests.Services
         public void Setup()
         {
             // Using a dummy HttpClient as it is required by the constructor but not used in logic
-            _service = new DiagramGeneratorService(new HttpClient());
+            var mockLlm = new Mock<ILLMClient>();
+            _service = new DiagramGeneratorService(new HttpClient(), mockLlm.Object);
             _graph = new EnhancedDependencyGraph();
             _moduleTree = new ModuleTree();
         }
