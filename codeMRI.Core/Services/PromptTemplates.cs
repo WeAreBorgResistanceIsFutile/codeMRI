@@ -525,6 +525,33 @@ public static class PromptTemplates
 
     #endregion
 
+    #region Chunked Processing Prompts
+
+    /// <summary>
+    /// Generates a prompt for processing a chunk of text while considering previous findings.
+    /// </summary>
+    public static string ChunkedFindingsPrompt(int chunkIndex, int totalChunks, string previousFindings, string currentChunk)
+    {
+        return $"""
+            Processing chunk {chunkIndex + 1} of {totalChunks}.
+            
+            ## Previous Findings
+            {(string.IsNullOrEmpty(previousFindings) ? "None so far." : previousFindings)}
+            
+            ## New Chunk Content
+            ```
+            {currentChunk}
+            ```
+            
+            ## Instructions
+            Continue the analysis based on this new chunk. 
+            Synthesize what you've found so far with the information in this new chunk.
+            Your output should be an updated set of findings/documentation.
+            """;
+    }
+
+    #endregion
+
     #region Helper Methods
 
     /// <summary>

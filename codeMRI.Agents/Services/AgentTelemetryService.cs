@@ -1,4 +1,4 @@
-using codeMRI.Agents.Interfaces;
+using codeMRI.Core.Interfaces;
 using codeMRI.Agents.Models;
 using Microsoft.Extensions.Logging;
 
@@ -65,14 +65,68 @@ public class AgentTelemetryService : IAgentTelemetryService
             metadata ?? new Dictionary<string, object>());
     }
 
-    private Task LogMessageAsync(AgentMessage message)
+    private async Task LogMessageAsync(AgentMessage message)
     {
         _logger.LogDebug(
             "Message Bus Event: {MessageType} from {SenderId} at {Timestamp}",
             message.MessageType,
             message.SenderId,
             message.Timestamp);
-        
-        return Task.CompletedTask;
+
+        try
+        {
+            switch (message.MessageType)
+            {
+                case AgentMessageTypes.AgentStatus:
+                    if (message.Content is { } statusContent)
+                    {
+                        var content = statusContent.ToString() ?? "";
+                        TrackAgentActivity(message.SenderId, content);
+                    }
+                    break;
+
+                case AgentMessageTypes.TaskDelegated:
+                    // Using dynamic or manual parsing for simplicity in this implementation
+                    var delegatedJson = System.Text.Json.JsonSerializer.Serialize(message.Content);
+                    var delegatedData = System.Text.Json.JsonSerializer.Deserialize<DelegationTelemetryData>(delegatedJson);
+                    if (delegatedData != null)
+                    {
+                        TrackDelegation(delegatedData.FromAgent, delegatedData.ToAgent, delegatedData.Reason, delegatedData.TaskId);
+                    }
+                    break;
+
+                case AgentMessageTypes.TaskStarted:
+                case AgentMessageTypes.TaskCompleted:
+                case AgentMessageTypes.TaskFailed:
+                    var lifecycleJson = System.Text.Json.JsonSerializer.Serialize(message.Content);
+                    var lifecycleData = System.Text.Json.JsonSerializer.Deserialize<LifecycleTelemetryData>(lifecycleJson);
+                    if (lifecycleData != null)
+                    {
+                        bool success = message.MessageType != AgentMessageTypes.TaskFailed;
+                        TrackTaskLifecycle(lifecycleData.TaskId, lifecycleData.Role, message.MessageType, success);
+                    }
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error processing telemetry message of type {MessageType}", message.MessageType);
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private class DelegationTelemetryData
+    {
+        public string TaskId { get; set; } = "";
+        public string FromAgent { get; set; } = "";
+        public string ToAgent { get; set; } = "";
+        public string Reason { get; set; } = "";
+    }
+
+    private class LifecycleTelemetryData
+    {
+        public string TaskId { get; set; } = "";
+        public string Role { get; set; } = "";
     }
 }

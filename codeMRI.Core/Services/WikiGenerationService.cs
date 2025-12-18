@@ -161,9 +161,19 @@ public class WikiGenerationService : IWikiGenerationService
                 : p).ToList();
 
         var prompt = PromptTemplates.PagePrompt(pageTitle, relativeFilePaths, language);
-        var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + contextBuilder;
+        var sourceFilesContent = contextBuilder.ToString();
 
-        var content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
+        string content;
+        // Use findings-based chunking if the content is very large (approx > 3000 tokens)
+        if (sourceFilesContent.Length > 12000)
+        {
+            content = await _llmClient.ChatWithFindingsAsync("", prompt, sourceFilesContent, _documentationModel);
+        }
+        else
+        {
+            var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent;
+            content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
+        }
 
         // Generate enhanced interactive diagrams if we have a dependency graph
         try
@@ -499,9 +509,18 @@ public class WikiGenerationService : IWikiGenerationService
         {
              prompt = PromptTemplates.EnhancedPagePrompt(module, relatedPages, context, language);
         }
-        var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + contextBuilder;
-
-        var content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
+        var sourceFilesContent = contextBuilder.ToString();
+        string content;
+        // Use findings-based chunking if the content is very large (approx > 3000 tokens)
+        if (sourceFilesContent.Length > 12000)
+        {
+            content = await _llmClient.ChatWithFindingsAsync("", prompt, sourceFilesContent, _documentationModel);
+        }
+        else
+        {
+            var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent;
+            content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
+        }
 
         // Generate diagrams if available
         try

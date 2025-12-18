@@ -131,6 +131,33 @@ public class OllamaLLMService : ILLMClient
         throw new HttpRequestException($"Max retries ({maxRetries}) exceeded for Ollama API. The service may be experiencing issues.");
     }
 
+    public async Task<string> ChatWithFindingsAsync(string systemPrompt, string basePrompt, string largeContent,
+        string? model = null, CancellationToken cancellationToken = default)
+    {
+        // Calculate chunk size (approx 60% of context size to leave room for findings and prompts)
+        int maxTokens = _settings.ContextSize;
+        int chunkTokens = (int)(maxTokens * 0.6);
+        int chunkSize = chunkTokens * 4; // Approx 4 chars per token
+        int overlap = chunkSize / 10;    // 10% overlap
+
+        var chunks = codeMRI.Core.Utils.TextSplitter.Split(largeContent, chunkSize, overlap);
+        string findings = string.Empty;
+
+        _logger.LogInformation("Processing large content in {Count} chunks.", chunks.Count);
+
+        for (int i = 0; i < chunks.Count; i++)
+        {
+            var userPrompt = codeMRI.Core.Services.PromptTemplates.ChunkedFindingsPrompt(i, chunks.Count, findings, chunks[i]);
+            var combinedUserPrompt = basePrompt + "\n\n" + userPrompt;
+
+            _logger.LogInformation("Processing chunk {Index} of {Total}...", i + 1, chunks.Count);
+            
+            findings = await ChatAsync(systemPrompt, combinedUserPrompt, new List<ChatMessage>(), model, cancellationToken);
+        }
+
+        return findings;
+    }
+
     public async IAsyncEnumerable<string> ChatStreamAsync(string systemPrompt, string userPrompt,
         List<ChatMessage> history, string? model = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)

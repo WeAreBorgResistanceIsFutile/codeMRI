@@ -17,6 +17,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private readonly IWikiGenerationService _wikiGenerationService;
     private readonly IWikiRepository _wikiRepo;
     private readonly IProgressService _progressService; // Added field
+    private readonly IAgentTelemetryService _telemetryService;
     private readonly string _judgeModel; // Changed from List<string> _judgeModels
     private readonly SemaphoreSlim _semaphore;
 
@@ -29,6 +30,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IDocumentationSynthesisService synthesisService,
         IWikiRepository wikiRepo,
         IProgressService progressService, // Added parameter
+        IAgentTelemetryService telemetryService,
         IOptions<CodeWikiOptions> options,
         ILogger<CodeWikiOrchestrator> logger,
         string judgeModel = "default") // Changed from List<string>? judgeModels = null
@@ -41,6 +43,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _synthesisService = synthesisService;
         _wikiRepo = wikiRepo;
         _progressService = progressService; // Initialized new field
+        _telemetryService = telemetryService;
         _logger = logger;
         _judgeModel = judgeModel; // Initialized new field
         _semaphore = new SemaphoreSlim(options.Value.MaxDegreeOfParallelism);
@@ -60,10 +63,12 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         if (progress != null) _progressService.SetHandler(p => progress.Report(p));
 
         _logger.LogInformation("Starting CodeWiki Advanced Workflow for {Repo}", repositoryPath);
+        _telemetryService.TrackAgentActivity("Orchestrator", $"Starting CodeWiki Advanced Workflow for {repositoryPath}");
 
         // 1. Hierarchical Decomposition
         _progressService.Report(new ProgressInfo { Phase = "Decomposition", Message = "Analyzing repository structure...", Percentage = 0 });
         _logger.LogInformation("Phase 1: Hierarchical Decomposition");
+        _telemetryService.TrackAgentActivity("Orchestrator", "Phase 1: Hierarchical Decomposition");
 
         ModuleTree moduleTree = null!;
         EnhancedDependencyGraph dependencyGraph = null!;
@@ -85,11 +90,13 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // 2. Rubric Generation
         _progressService.Report(new ProgressInfo { Phase = "Rubric Generation", Message = "Generating evaluation rubric...", Percentage = 15 });
         _logger.LogInformation("Phase 2: Rubric Generation");
+        _telemetryService.TrackAgentActivity("Orchestrator", "Phase 2: Rubric Generation");
         var rubric = await _rubricService.GenerateRubricAsync(structure, repositoryInfo, cancellationToken);
         
         // 3. Draft Generation (Content)
         _progressService.Report(new ProgressInfo { Phase = "Content Generation", Message = "Drafting wiki content...", Percentage = 20 });
         _logger.LogInformation("Phase 3: Content Drafting");
+        _telemetryService.TrackAgentActivity("Orchestrator", "Phase 3: Content Drafting");
         
         // Count total modules for progress calculation
         int totalModules = CountModules(moduleTree.Root, new HashSet<string>());
@@ -104,6 +111,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // 4. Evaluation (The Judge)
         _progressService.Report(new ProgressInfo { Phase = "Evaluation", Message = "Evaluating documentation quality...", Percentage = 90 });
         _logger.LogInformation("Phase 4: Evaluation");
+        _telemetryService.TrackAgentActivity("Orchestrator", "Phase 4: Evaluation");
         var requirements = ExtractRequirements(rubric);
         // Use configured judge models
         var judgeModelsList = new List<string> { _judgeModel };
@@ -123,6 +131,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // For now, we return the judged structure (results could be appended to metadata)
         
         _progressService.Report(new ProgressInfo { Phase = "Complete", Message = "Documentation generated successfully.", Percentage = 100 });
+        _telemetryService.TrackAgentActivity("Orchestrator", "CodeWiki Advanced Workflow completed");
         
         // Final structural refinements
         SortAndPruneStructure(structure);

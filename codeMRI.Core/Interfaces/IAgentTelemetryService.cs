@@ -1,4 +1,4 @@
-namespace codeMRI.Agents.Interfaces;
+namespace codeMRI.Core.Interfaces;
 
 /// <summary>
 /// Service for tracking and logging agent activities, metrics, and telemetry

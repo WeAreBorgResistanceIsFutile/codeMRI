@@ -64,10 +64,13 @@ public class ComponentIdentificationService : IComponentIdentificationService
 
         structure.FileExtensions = files
             .GroupBy(f => Path.GetExtension(f).ToLowerInvariant())
-            .Where(g => _languagePatterns.ContainsKey(g.Key))
+            .Where(g => _languagePatterns.ContainsKey(g.Key) || IsInfrastructureFile(g.Key))
             .ToDictionary(g => g.Key, g => g.Count());
 
-        structure.Language = structure.FileExtensions.OrderByDescending(kvp => kvp.Value).FirstOrDefault().Key switch
+        structure.Language = structure.FileExtensions
+            .Where(kvp => _languagePatterns.ContainsKey(kvp.Key))
+            .OrderByDescending(kvp => kvp.Value)
+            .FirstOrDefault().Key switch
         {
             ".cs" => "C#",
             ".java" => "Java",
@@ -85,7 +88,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
     {
         var components = new List<CodeComponent>();
         var files = Directory.GetFiles(repositoryPath, "*.*", SearchOption.AllDirectories)
-            .Where(f => IsSourceFile(f) && !IsIgnoredPath(f))
+            .Where(f => (IsSourceFile(f) || IsInfrastructureFile(f)) && !IsIgnoredPath(f))
             .ToList();
 
         int totalDocs = files.Count;
@@ -105,6 +108,23 @@ public class ComponentIdentificationService : IComponentIdentificationService
                }); 
             }
 
+            if (IsInfrastructureFile(file))
+            {
+                var fileName = Path.GetFileName(file);
+                components.Add(new CodeComponent
+                {
+                    Id = $"INFRA_{fileName}_{processed}",
+                    Name = fileName,
+                    Type = "Configuration",
+                    FilePath = file,
+                    Language = "Infrastructure",
+                    LineCount = File.Exists(file) ? File.ReadLines(file).Count() : 0,
+                    ComplexityScore = 0,
+                    Description = $"Project infrastructure/configuration file: {fileName}"
+                });
+                continue;
+            }
+
             var fileComponents = await AnalyzeFileAsync(file);
             components.AddRange(fileComponents);
         }
@@ -119,7 +139,10 @@ public class ComponentIdentificationService : IComponentIdentificationService
         var componentMap = components.ToDictionary(c => c.Id, c => c);
 
         foreach (var component in components)
+        {
+            if (component.Type == "Configuration") continue;
             await AnalyzeComponentDependencies(component, relationships, componentMap);
+        }
 
         // Identify entry points (zero in-degree components)
         relationships.EntryPoints = IdentifyEntryPoints(components, relationships);
@@ -129,7 +152,11 @@ public class ComponentIdentificationService : IComponentIdentificationService
 
     private List<string> IdentifyEntryPoints(List<CodeComponent> components, ComponentRelationships relationships)
     {
-        var componentIds = components.Select(c => c.Id).ToHashSet();
+        var componentIds = components
+            .Where(c => c.Type != "Configuration")
+            .Select(c => c.Id)
+            .ToHashSet();
+        
         var dependentComponents = relationships.Dependencies
             .Select(d => d.ToComponent)
             .ToHashSet();
@@ -149,6 +176,8 @@ public class ComponentIdentificationService : IComponentIdentificationService
 
     private bool IsLikelyEntryPoint(CodeComponent component)
     {
+        if (component.Type == "Configuration") return false;
+
         var entryPointPatterns = new[]
         {
             "main", "program", "startup", "entry", "init",
@@ -390,6 +419,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
         foreach (var otherComponent in componentMap.Values)
         {
             if (otherComponent.Id == component.Id) continue;
+            if (otherComponent.Type == "Configuration") continue; // Configuration files shouldn't be dependency targets
 
             // Use word boundary regex to avoid partial matches
             var pattern = $@"\b{Regex.Escape(otherComponent.Name)}\b";
@@ -562,6 +592,51 @@ public class ComponentIdentificationService : IComponentIdentificationService
     {
         var extension = Path.GetExtension(filePath).ToLowerInvariant();
         return _languagePatterns.ContainsKey(extension);
+    }
+
+    private bool IsInfrastructureFile(string path)
+    {
+        var fileName = Path.GetFileName(path).ToLowerInvariant();
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+
+        // General/Generic
+        var infraFiles = new HashSet<string> { 
+            ".gitignore", ".dockerignore", "dockerfile", "docker-compose.yml", 
+            ".env", ".env.example", "license", "readme.md", "contributing.md", "changelog.md" 
+        };
+        if (infraFiles.Contains(fileName)) return true;
+
+        // JS/TS
+        var jsInfra = new HashSet<string> { 
+            "package.json", "package-lock.json", "tsconfig.json", "jsconfig.json", 
+            "eslint.config.js" 
+        };
+        if (jsInfra.Contains(fileName)) return true;
+        if (fileName.StartsWith(".eslintrc") || fileName.StartsWith(".prettierrc")) return true;
+
+        // C#
+        if (extension == ".sln" || extension == ".csproj") return true;
+        var csInfra = new HashSet<string> { "appsettings.json", "nuget.config", "packages.config" };
+        if (csInfra.Contains(fileName)) return true;
+
+        // Java
+        var javaInfra = new HashSet<string> { "pom.xml", "build.gradle", "settings.gradle", "gradlew", "gradlew.bat" };
+        if (javaInfra.Contains(fileName)) return true;
+
+        // Python
+        var pyInfra = new HashSet<string> { "requirements.txt", "setup.py", "pyproject.toml", "pipfile", "pipfile.lock" };
+        if (pyInfra.Contains(fileName)) return true;
+
+        // C/C++
+        if (fileName == "makefile" || fileName == "cmakelists.txt" || fileName == "conanfile.txt" || fileName == "vcpkg.json") return true;
+
+        // Go
+        if (fileName == "go.mod" || fileName == "go.sum") return true;
+
+        // Rust
+        if (fileName == "cargo.toml" || fileName == "cargo.lock") return true;
+
+        return false;
     }
 
     private bool IsIgnoredPath(string path)

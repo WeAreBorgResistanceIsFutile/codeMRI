@@ -1,4 +1,3 @@
-using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
@@ -136,6 +135,14 @@ public class WikiController : ControllerBase
             // Cast API AudienceType to Core AudienceType
             var coreAudience = (codeMRI.Core.Models.AudienceType)(int)request.Audience;
             var job = await _ingestionManager.StartJobAsync(request.Url, true, coreAudience, null); // We might want ConnectionId here if we update the request model
+            
+            _telemetryService.TrackAgentActivity("System", $"Started ingestion job {job.Id} for {request.Url}", new Dictionary<string, object> 
+            { 
+                ["JobId"] = job.Id, 
+                ["Url"] = request.Url,
+                ["Audience"] = request.Audience.ToString()
+            });
+
             return Ok(new { JobId = job.Id, Status = job.Status.ToString() });
         }
         catch (Exception ex)
@@ -219,6 +226,8 @@ public class WikiController : ControllerBase
         Func<AgentMessage, Task>? delegationSubscriber = null;
         Func<AgentMessage, Task>? lifecycleSubscriber = null;
         string? clonedRepoPath = null;
+
+        _telemetryService.TrackAgentActivity("System", $"GenerateAdvancedWiki requested for {request.RepoPath}");
 
         try
         {
@@ -304,6 +313,7 @@ public class WikiController : ControllerBase
             // Populate pages for navigation
             structure.Pages = await _wikiRepo.GetAllPagesAsync(request.RepoPath);
 
+            _telemetryService.TrackAgentActivity("System", $"GenerateAdvancedWiki completed for {request.RepoPath}");
             return Ok(structure);
         }
         finally

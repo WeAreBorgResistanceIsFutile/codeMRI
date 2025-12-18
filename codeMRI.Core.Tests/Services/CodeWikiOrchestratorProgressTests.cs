@@ -20,6 +20,7 @@ public class CodeWikiOrchestratorProgressTests
     private Mock<IWikiRepository> _mockWikiRepo;
     private Mock<ILogger<CodeWikiOrchestrator>> _mockLogger;
     private Mock<IProgressService> _mockProgressService;
+    private Mock<IAgentTelemetryService> _mockTelemetryService;
     private CodeWikiOrchestrator _orchestrator;
 
     [SetUp]
@@ -34,6 +35,7 @@ public class CodeWikiOrchestratorProgressTests
         _mockWikiRepo = new Mock<IWikiRepository>();
         _mockLogger = new Mock<ILogger<CodeWikiOrchestrator>>();
         _mockProgressService = new Mock<IProgressService>();
+        _mockTelemetryService = new Mock<IAgentTelemetryService>();
         var mockOptions = new Mock<IOptions<CodeWikiOptions>>();
         mockOptions.Setup(o => o.Value).Returns(new CodeWikiOptions { MaxDegreeOfParallelism = 1 });
         
@@ -54,6 +56,7 @@ public class CodeWikiOrchestratorProgressTests
             _mockSynthesisService.Object,
             _mockWikiRepo.Object,
             _mockProgressService.Object,
+            _mockTelemetryService.Object,
             mockOptions.Object,
             _mockLogger.Object
         );

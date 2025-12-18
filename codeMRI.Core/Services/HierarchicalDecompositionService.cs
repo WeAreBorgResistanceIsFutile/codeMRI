@@ -133,6 +133,18 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         var clusters = new Dictionary<string, List<string>>();
         var assignedNodes = new HashSet<string>();
 
+        // 0. Group Infrastructure/Configuration files first
+        var infraNodes = graph.GetNodes()
+            .Where(n => n.Metadata.Type == "Configuration")
+            .Select(n => n.ComponentId)
+            .ToList();
+
+        if (infraNodes.Any())
+        {
+            clusters["Project Infrastructure"] = infraNodes;
+            foreach (var n in infraNodes) assignedNodes.Add(n);
+        }
+
         // 0. Analyze Graph for SCCs (Cyclic Dependencies)
         try
         {

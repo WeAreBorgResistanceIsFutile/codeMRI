@@ -33,7 +33,6 @@ public class WireUp
         services.AddSingleton<ICSharpParser, RoslynCSharpParser>();
         services.AddSingleton<AgentMessageBus>();
         services.AddSingleton<IAgentTelemetryService, AgentTelemetryService>();
-        services.AddSingleton<AgentMessageBusProgressBridge>();
         services.AddScoped<DelegationService>();
         services.AddScoped<IAgent, AnalyzerAgent>();
         services.AddScoped<IAgent, DocumenterAgent>();
@@ -85,6 +84,7 @@ public class WireUp
                 sp.GetRequiredService<IDocumentationSynthesisService>(),
                 sp.GetRequiredService<IWikiRepository>(),
                 sp.GetRequiredService<IProgressService>(), // Added
+                sp.GetRequiredService<IAgentTelemetryService>(),
                 sp.GetRequiredService<IOptions<CodeWikiOptions>>(),
                 sp.GetRequiredService<ILogger<CodeWikiOrchestrator>>(),
                 // Use configured Judge model, or fall back to DocumentationModel, then to "llama3"

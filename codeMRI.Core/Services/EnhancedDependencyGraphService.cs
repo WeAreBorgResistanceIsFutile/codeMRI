@@ -55,7 +55,7 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
             cancellationToken.ThrowIfCancellationRequested();
 
             // Enrich with AST Service if possible
-            if (!string.IsNullOrEmpty(component.FilePath) && File.Exists(component.FilePath))
+            if (component.Type != "Configuration" && !string.IsNullOrEmpty(component.FilePath) && File.Exists(component.FilePath))
                 try
                 {
                     var code = await File.ReadAllTextAsync(component.FilePath, cancellationToken);

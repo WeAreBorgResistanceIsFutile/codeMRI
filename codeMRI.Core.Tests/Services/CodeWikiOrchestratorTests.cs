@@ -20,6 +20,7 @@ public class CodeWikiOrchestratorTests
     private Mock<IWikiRepository> _mockWikiRepo;
     private Mock<ILogger<CodeWikiOrchestrator>> _mockLogger;
     private Mock<IProgressService> _mockProgressService;
+    private Mock<IAgentTelemetryService> _mockTelemetryService;
     private CodeWikiOrchestrator _orchestrator;
 
     [SetUp]
@@ -34,6 +35,7 @@ public class CodeWikiOrchestratorTests
         _mockWikiRepo = new Mock<IWikiRepository>();
         _mockLogger = new Mock<ILogger<CodeWikiOrchestrator>>();
         _mockProgressService = new Mock<IProgressService>();
+        _mockTelemetryService = new Mock<IAgentTelemetryService>();
         
         // Ensure WithScalingAsync executes the passed operation
         _mockProgressService
@@ -60,6 +62,7 @@ public class CodeWikiOrchestratorTests
             _mockSynthesisService.Object,
             _mockWikiRepo.Object,
             _mockProgressService.Object,
+            _mockTelemetryService.Object,
             mockOptions.Object,
             _mockLogger.Object
         );

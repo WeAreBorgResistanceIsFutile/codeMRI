@@ -423,4 +423,41 @@ public class WikiGenerationServiceTests
             It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), 
             It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Test]
+    public async Task GeneratePageAsync_ShouldUseChatWithFindingsAsync_WhenContentIsLarge()
+    {
+        // Arrange
+        var pageTitle = "LargeController";
+        var fileName = "LargeController.cs";
+        var filePaths = new List<string> { fileName };
+        
+        // Create large content (> 12000 chars)
+        var largeContent = new string('a', 13000);
+        var fileContents = new Dictionary<string, string> { { fileName, largeContent } };
+
+        _mockLlmClient.Setup(x => x.ChatWithFindingsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("# LargeController\n\nDocumentation for large controller.");
+        
+        _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnhancedDependencyGraph());
+        _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns<string, string>((c, id) => c);
+
+        // Act
+        var result = await _service.GeneratePageAsync(pageTitle, filePaths, fileContents);
+
+        // Assert
+        Assert.That(result.Title, Is.EqualTo(pageTitle));
+        _mockLlmClient.Verify(x => x.ChatWithFindingsAsync(
+            It.IsAny<string>(), 
+            It.IsAny<string>(), 
+            It.Is<string>(c => c.Contains(largeContent)), 
+            It.IsAny<string?>(), 
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _mockLlmClient.Verify(x => x.ChatAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), 
+            It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }
