@@ -140,6 +140,7 @@
 @code {
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<string> OnIngestionComplete { get; set; }
+    [Parameter] public string DefaultValue { get; set; } = "";
 
     private string repoInput = "";
     private AudienceType selectedAudience = AudienceType.All;
@@ -150,6 +151,11 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (!string.IsNullOrEmpty(DefaultValue))
+        {
+            repoInput = DefaultValue;
+        }
+
         await LoadActiveJobs();
         // Simple polling for the list update
         _pollingTimer = new System.Threading.Timer(async _ => await InvokeAsync(LoadActiveJobs), null, 2000, 2000);

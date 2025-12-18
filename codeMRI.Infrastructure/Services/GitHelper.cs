@@ -56,9 +56,26 @@ public static class GitHelper
     public static bool IsGitUrl(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return false;
-        return input.StartsWith("http", StringComparison.OrdinalIgnoreCase) || 
-               input.StartsWith("git@") || 
-               input.EndsWith(".git", StringComparison.OrdinalIgnoreCase);
+        
+        // Check for common remote Git patterns
+        if (input.StartsWith("http", StringComparison.OrdinalIgnoreCase) || 
+            input.StartsWith("git@") || 
+            input.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Check if it's a valid local directory (allowing re-ingestion from local path)
+        try
+        {
+            if (Directory.Exists(input))
+            {
+                return true;
+            }
+        }
+        catch { /* Ignore invalid path syntax */ }
+
+        return false;
     }
 
     public static async Task<string> GetCurrentBranch(string repoPath)
