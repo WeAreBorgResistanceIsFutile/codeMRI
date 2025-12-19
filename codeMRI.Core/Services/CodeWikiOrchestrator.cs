@@ -18,6 +18,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private readonly IWikiRepository _wikiRepo;
     private readonly IProgressService _progressService; // Added field
     private readonly IAgentTelemetryService _telemetryService;
+    private readonly IDelegationService _delegationService;
     private readonly string _judgeModel; // Changed from List<string> _judgeModels
     private readonly SemaphoreSlim _semaphore;
 
@@ -31,6 +32,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IWikiRepository wikiRepo,
         IProgressService progressService, // Added parameter
         IAgentTelemetryService telemetryService,
+        IDelegationService delegationService,
         IOptions<CodeWikiOptions> options,
         ILogger<CodeWikiOrchestrator> logger,
         string judgeModel = "default") // Changed from List<string>? judgeModels = null
@@ -44,6 +46,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _wikiRepo = wikiRepo;
         _progressService = progressService; // Initialized new field
         _telemetryService = telemetryService;
+        _delegationService = delegationService;
         _logger = logger;
         _judgeModel = judgeModel; // Initialized new field
         _semaphore = new SemaphoreSlim(options.Value.MaxDegreeOfParallelism);
@@ -84,6 +87,10 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         var components = await _graphService.GetComponentsAsync(repositoryPath, cancellationToken);
         dependencyGraph = await _graphService.BuildGraphAsync(components, cancellationToken);
         
+        // Update repository info with counts from decomposition
+        repositoryInfo.ComponentCount = components.Count;
+        repositoryInfo.LinesOfCode = moduleTree.GetAllLeaves().Sum(l => l.ComplexityScore * 10); // Simple heuristic: 1 complexity ~ 10 LOC
+
         // Convert to initial WikiStructure
         var structure = ConvertToWikiStructure(moduleTree, repositoryInfo);
 
@@ -194,7 +201,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
 
     private class ProgressState
     {
-        public int Total { get; set; }
+        public int Total; // Field for Interlocked
         public int Processed; // Field for Interlocked
     }
 
@@ -220,20 +227,48 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
             Pages = new List<WikiPage>()
         };
 
-        // We will build the hierarchy recursively in GenerateContentForModulesAsync
+        // Build the hierarchy recursively from the module tree
+        if (tree.Root != null && tree.Root.Children.Any())
+        {
+            // If the root has a generic name and children, maybe we only want children?
+            // But for consistency with the tests, we should include the root if it's the main entry point.
+            // Actually, the test expects the rootModule (ID="root") to be the first section.
+            structure.Sections.Add(ConvertModuleToSection(tree.Root));
+        }
+
         return structure;
     }
 
-    private WikiSection CreateSectionForModule(ModuleNode module, WikiPage? page)
+    private WikiSection ConvertModuleToSection(ModuleNode node)
     {
         var section = new WikiSection
         {
-            Id = $"section_{module.Id}",
-            Title = module.Name,
-            PageRefs = page != null ? new List<string> { page.Id } : new List<string>()
+            Id = $"section_{node.Id}",
+            Title = node.Name,
+            PageRefs = new List<string>(), // Will be populated during content generation
+            SubSections = new List<WikiSection>()
         };
 
+        foreach (var child in node.Children)
+        {
+            section.SubSections.Add(ConvertModuleToSection(child));
+        }
+
         return section;
+    }
+
+    private WikiSection? FindSectionById(List<WikiSection> sections, string id)
+    {
+        if (sections == null) return null;
+
+        foreach (var section in sections)
+        {
+            if (section.Id == id) return section;
+            var found = FindSectionById(section.SubSections, id);
+            if (found != null) return found;
+        }
+
+        return null;
     }
 
     private async Task GenerateContentForModulesAsync(
@@ -285,6 +320,46 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                 
                 UpdateProgress(progressState, module.Name);
                 return;
+            }
+
+            // Dynamic delegation: check if this leaf module needs to be subdivided
+            if (module.IsLeaf)
+            {
+                var delegationDecision = _delegationService.EvaluateDelegation(module, graph, GetModuleDepth(module));
+                if (delegationDecision.ShouldDelegate)
+                {
+                    _logger.LogInformation(
+                        "Delegating module {ModuleName}: {Reason}",
+                        module.Name, delegationDecision.Description);
+                    
+                    _telemetryService.TrackDelegation(
+                        "Orchestrator",
+                        "Orchestrator-SubModule",
+                        delegationDecision.Description,
+                        module.Id);
+                    
+                    // Perform delegation (subdivide the module)
+                    var subModules = await _delegationService.DelegateModuleAsync(module, graph, cancellationToken);
+                    
+                    // Update progress total since we added new modules
+                    Interlocked.Add(ref progressState.Total, subModules.Count);
+                    
+                    // Release semaphore during recursive processing
+                    _semaphore.Release();
+                    try
+                    {
+                        // Process new sub-modules recursively (they are now children of this module)
+                        var subTasks = subModules.Select(subModule =>
+                            GenerateContentForModulesAsync(subModule, structure, repoPath, repoInfo, graph, progressState, visitedIds, cancellationToken, audience));
+                        await Task.WhenAll(subTasks);
+                    }
+                    finally
+                    {
+                        await _semaphore.WaitAsync(cancellationToken);
+                    }
+                    
+                    // Module is no longer a leaf, fall through to parent page synthesis
+                }
             }
 
             // Generate content for this module
@@ -366,26 +441,23 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
             
             await _wikiRepo.SavePageAsync(repoPath, page);
             
-            // Build the section for this module
-            var section = CreateSectionForModule(module, page);
+            // Update the section for this module
+            var sectionId = $"section_{module.Id}";
+            var section = FindSectionById(structure.Sections, sectionId);
             
-            // Link to children sections
-            lock (structure.Pages) // Using structure.Pages lock as a general synchronization object for structure assembly
+            if (section != null)
             {
-                // Find all sections created for children
-                var childSections = structure.Sections
-                    .Where(s => module.Children.Any(c => $"section_{c.Id}" == s.Id))
-                    .ToList();
-                
-                section.SubSections.AddRange(childSections);
-                
-                // Remove child sections from root if they were added there (they shouldn't be yet in this bottom-up approach)
-                foreach(var cs in childSections)
+                lock (section)
                 {
-                    structure.Sections.Remove(cs);
+                    if (page != null && !section.PageRefs.Contains(page.Id))
+                    {
+                        section.PageRefs.Add(page.Id);
+                    }
                 }
-
-                structure.Sections.Add(section);
+            }
+            else
+            {
+                _logger.LogWarning("Section {SectionId} not found in structure during content generation", sectionId);
             }
 
             UpdateProgress(progressState, module.Name);
@@ -421,5 +493,20 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         }
         Visit(rubric);
         return list;
+    }
+
+    /// <summary>
+    /// Calculates the depth of a module in the hierarchy (root = 0)
+    /// </summary>
+    private static int GetModuleDepth(ModuleNode module)
+    {
+        var depth = 0;
+        var current = module.Parent;
+        while (current != null)
+        {
+            depth++;
+            current = current.Parent;
+        }
+        return depth;
     }
 }

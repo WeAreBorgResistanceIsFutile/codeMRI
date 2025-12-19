@@ -343,4 +343,34 @@ public class RubricGenerationServiceTests
         var clarityReqCast = (RubricRequirement)clarityRequirement;
         Assert.That(clarityReqCast.Description, Does.Contain("clear, concise, and free of jargon"));
     }
+
+    [Test]
+    public async Task GenerateRubricAsync_ShouldHandleDirtyJson()
+    {
+        // Arrange
+        var dirtyJson = @"
+Here is the rubric you requested:
+```json
+{
+    ""title"": ""Dirty JSON Test"",
+    ""weight"": 1.0,
+    ""children"": []
+}
+```
+I hope this helps!
+";
+        
+        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(dirtyJson);
+
+        var structure = new WikiStructure();
+        var repoInfo = new RepositoryInfo();
+
+        // Act
+        var rubric = await _service.GenerateRubricAsync(structure, repoInfo);
+
+        // Assert
+        Assert.That(rubric, Is.Not.Null);
+        Assert.That(rubric.Title, Is.EqualTo("Dirty JSON Test"));
+    }
 }

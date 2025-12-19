@@ -75,8 +75,20 @@ public class OllamaLLMService : ILLMClient
                 var contentString = await response.Content.ReadAsStringAsync(cancellationToken);
                 if (string.IsNullOrWhiteSpace(contentString))
                 {
-                    _logger.LogError("Ollama returned an empty response for ChatAsync. Status Code: {StatusCode}", response.StatusCode);
-                    throw new HttpRequestException($"Ollama returned an empty response. Status Code: {response.StatusCode}");
+                    if (attempt < maxRetries)
+                    {
+                        var exponentialDelay = baseDelayMs * (1 << (attempt - 1));
+                        var jitter = random.Next(0, exponentialDelay / 2);
+                        var delay = Math.Min(exponentialDelay + jitter, maxDelayMs);
+                        
+                        _logger.LogWarning("Ollama returned an empty response on attempt {Attempt}/{MaxRetries}. Retrying in {Delay}ms...", 
+                            attempt, maxRetries, delay);
+                        await Task.Delay(delay, cancellationToken);
+                        continue;
+                    }
+
+                    _logger.LogError("Ollama returned an empty response for ChatAsync after {MaxRetries} attempts. Status Code: {StatusCode}", maxRetries, response.StatusCode);
+                    throw new HttpRequestException($"Ollama returned an empty response after {maxRetries} attempts. Status Code: {response.StatusCode}");
                 }
 
                 OllamaChatResponse? result;

@@ -21,6 +21,7 @@ public class CodeWikiOrchestratorTests
     private Mock<ILogger<CodeWikiOrchestrator>> _mockLogger;
     private Mock<IProgressService> _mockProgressService;
     private Mock<IAgentTelemetryService> _mockTelemetryService;
+    private Mock<IDelegationService> _mockDelegationService;
     private CodeWikiOrchestrator _orchestrator;
 
     [SetUp]
@@ -36,6 +37,12 @@ public class CodeWikiOrchestratorTests
         _mockLogger = new Mock<ILogger<CodeWikiOrchestrator>>();
         _mockProgressService = new Mock<IProgressService>();
         _mockTelemetryService = new Mock<IAgentTelemetryService>();
+        _mockDelegationService = new Mock<IDelegationService>();
+        
+        // Setup delegation to always return no delegation needed
+        _mockDelegationService
+            .Setup(d => d.EvaluateDelegation(It.IsAny<ModuleNode>(), It.IsAny<EnhancedDependencyGraph>(), It.IsAny<int>()))
+            .Returns(DelegationDecision.NoDelegation());
         
         // Ensure WithScalingAsync executes the passed operation
         _mockProgressService
@@ -63,6 +70,7 @@ public class CodeWikiOrchestratorTests
             _mockWikiRepo.Object,
             _mockProgressService.Object,
             _mockTelemetryService.Object,
+            _mockDelegationService.Object,
             mockOptions.Object,
             _mockLogger.Object
         );
@@ -236,5 +244,57 @@ public class CodeWikiOrchestratorTests
         Assert.That(rootSection.Title, Is.EqualTo("RootModule"));
         Assert.That(rootSection.SubSections.Count, Is.EqualTo(1), "Root section should have one sub-section");
         Assert.That(rootSection.SubSections.First().Title, Is.EqualTo("ChildModule"));
+    }
+
+    [Test]
+    public async Task GenerateAdvancedWikiAsync_ShouldUpdateRepositoryInfo()
+    {
+        // Arrange
+        var repoPath = "/test/repo";
+        var repoInfo = new RepositoryInfo 
+        { 
+            Name = "TestRepo", 
+            ComponentCount = 0, 
+            LinesOfCode = 0 
+        };
+        
+        var moduleTree = new ModuleTree
+        {
+            Root = new ModuleNode
+            {
+                Id = "root",
+                Name = "Root",
+                IsLeaf = true,
+                ComplexityScore = 10,
+                Components = new HashSet<string> { "comp1" }
+            }
+        };
+
+        _mockDecompositionService
+            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(moduleTree);
+
+        _mockGraphService
+            .Setup(g => g.GetComponentsAsync(repoPath, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CodeComponent> { new CodeComponent { Id = "comp1" } });
+
+        _mockRubricService
+            .Setup(s => s.GenerateRubricAsync(It.IsAny<WikiStructure>(), repoInfo, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EvaluationRubric());
+            
+        _mockJudgeService
+            .Setup(s => s.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(), It.IsAny<List<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<RequirementAssessment>());
+
+        _mockWikiRepo
+            .Setup(r => r.GetPageByTitleAsync(repoPath, It.IsAny<string>()))
+            .ReturnsAsync(new WikiPage { Id = "id", Title = "Root" });
+
+        // Act
+        await _orchestrator.GenerateAdvancedWikiAsync(repoPath, repoInfo);
+
+        // Assert
+        Assert.That(repoInfo.ComponentCount, Is.EqualTo(1));
+        Assert.That(repoInfo.LinesOfCode, Is.EqualTo(100)); // 10 complexity * 10
     }
 }
