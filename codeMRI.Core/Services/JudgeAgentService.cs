@@ -46,7 +46,8 @@ public class JudgeAgentService : IJudgeAgent
                 Score = 0.0,  // Not used when EvaluationFailed is true
                 Reasoning = string.Empty,
                 EvaluationFailed = true,
-                FailureReason = $"Error evaluating requirement: {ex.Message}"
+                FailureReason = $"Error evaluating requirement: {ex.Message}",
+                Uncertainty = 0.0
             };
         }
     }
@@ -90,7 +91,8 @@ public class JudgeAgentService : IJudgeAgent
             {
                 RequirementId = requirementId,
                 Score = 0.5,
-                Reasoning = "No response provided"
+                Reasoning = "No response provided",
+                Uncertainty = 0.0
             };
         }
 
@@ -110,7 +112,8 @@ public class JudgeAgentService : IJudgeAgent
                 {
                     RequirementId = requirementId,
                     Score = Math.Clamp(percentage / 100.0, 0.0, 1.0),
-                    Reasoning = trimmedResponse
+                    Reasoning = trimmedResponse,
+                    Uncertainty = 0.0
                 };
             }
         }
@@ -127,7 +130,8 @@ public class JudgeAgentService : IJudgeAgent
                 {
                     RequirementId = requirementId,
                     Score = Math.Clamp(decimalScore, 0.0, 1.0),
-                    Reasoning = trimmedResponse
+                    Reasoning = trimmedResponse,
+                    Uncertainty = 0.0
                 };
             }
         }
@@ -143,7 +147,8 @@ public class JudgeAgentService : IJudgeAgent
                 {
                     RequirementId = requirementId,
                     Score = Math.Clamp(contextScore, 0.0, 1.0),
-                    Reasoning = trimmedResponse
+                    Reasoning = trimmedResponse,
+                    Uncertainty = 0.0
                 };
             }
         }
@@ -161,7 +166,8 @@ public class JudgeAgentService : IJudgeAgent
                     {
                         RequirementId = requirementId,
                         Score = Math.Clamp(standaloneScore, 0.0, 1.0),
-                        Reasoning = trimmedResponse
+                        Reasoning = trimmedResponse,
+                        Uncertainty = 0.0
                     };
                 }
             }
@@ -180,7 +186,8 @@ public class JudgeAgentService : IJudgeAgent
             {
                 RequirementId = requirementId,
                 Score = 1.0,
-                Reasoning = ExtractReasoning(trimmedResponse, "yes")
+                Reasoning = ExtractReasoning(trimmedResponse, "yes"),
+                Uncertainty = 0.0
             };
         }
 
@@ -194,7 +201,8 @@ public class JudgeAgentService : IJudgeAgent
             {
                 RequirementId = requirementId,
                 Score = 0.0,
-                Reasoning = ExtractReasoning(trimmedResponse, "no")
+                Reasoning = ExtractReasoning(trimmedResponse, "no"),
+                Uncertainty = 0.0
             };
         }
 
@@ -203,7 +211,8 @@ public class JudgeAgentService : IJudgeAgent
         {
             RequirementId = requirementId,
             Score = 0.5, // Middle score for ambiguous responses
-            Reasoning = trimmedResponse
+            Reasoning = trimmedResponse,
+            Uncertainty = 0.0
         };
     }
 

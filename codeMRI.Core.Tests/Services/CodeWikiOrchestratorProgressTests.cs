@@ -21,6 +21,7 @@ public class CodeWikiOrchestratorProgressTests
     private Mock<ILogger<CodeWikiOrchestrator>> _mockLogger;
     private Mock<IProgressService> _mockProgressService;
     private Mock<IAgentTelemetryService> _mockTelemetryService;
+    private Mock<IDelegationService> _mockDelegationService;
     private CodeWikiOrchestrator _orchestrator;
 
     [SetUp]
@@ -36,6 +37,13 @@ public class CodeWikiOrchestratorProgressTests
         _mockLogger = new Mock<ILogger<CodeWikiOrchestrator>>();
         _mockProgressService = new Mock<IProgressService>();
         _mockTelemetryService = new Mock<IAgentTelemetryService>();
+        _mockDelegationService = new Mock<IDelegationService>();
+        
+        // Setup delegation to always return no delegation needed
+        _mockDelegationService
+            .Setup(d => d.EvaluateDelegation(It.IsAny<ModuleNode>(), It.IsAny<EnhancedDependencyGraph>(), It.IsAny<int>()))
+            .Returns(DelegationDecision.NoDelegation());
+        
         var mockOptions = new Mock<IOptions<CodeWikiOptions>>();
         mockOptions.Setup(o => o.Value).Returns(new CodeWikiOptions { MaxDegreeOfParallelism = 1 });
         
@@ -57,6 +65,7 @@ public class CodeWikiOrchestratorProgressTests
             _mockWikiRepo.Object,
             _mockProgressService.Object,
             _mockTelemetryService.Object,
+            _mockDelegationService.Object,
             mockOptions.Object,
             _mockLogger.Object
         );

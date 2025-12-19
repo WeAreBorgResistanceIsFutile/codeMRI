@@ -97,6 +97,11 @@ public class ConsensusQualityScore : QualityScore
     public List<IndividualJudgeScore> IndividualScores { get; set; } = new();
     public bool MeetsMinimumJudgeRequirement { get; set; }
     public string ConsensusStatus { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Combined uncertainty from all judges, reflecting inter-judge disagreement.
+    /// </summary>
+    public double OverallUncertainty { get; set; }
 }
 
 public class IndividualJudgeScore
@@ -106,4 +111,9 @@ public class IndividualJudgeScore
     public Dictionary<string, RequirementScore> Breakdown { get; set; } = new();
     public double Reliability { get; set; }
     public Dictionary<string, double> StandardDeviation { get; set; } = new();
+    
+    /// <summary>
+    /// Uncertainty for this judge's overall score.
+    /// </summary>
+    public double OverallUncertainty { get; set; }
 }

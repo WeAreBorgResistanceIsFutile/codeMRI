@@ -18,7 +18,6 @@ public class WireUp
 {
     public static void Registered(IServiceCollection services)
     {
-        // Configure AgentSettings with default values
         services.Configure<AgentSettings>(options =>
         {
             options.EnableDelegation = true;
@@ -28,6 +27,17 @@ public class WireUp
                 { "ComplexityScore", 8 },
                 { "LineCount", 500 }
             };
+        });
+        
+        // Configure DelegationOptions (can be overridden via appsettings)
+        services.Configure<DelegationOptions>(options =>
+        {
+            // MaxTokensPerModule will be derived from LLM context size if not set
+            options.MaxComplexityScore = 100;
+            options.MaxDelegationDepth = 3;
+            options.SemanticDiversityThreshold = 0.6;
+            options.EnableDelegation = true;
+            options.ContextUtilizationRatio = 0.8;
         });
         
         services.AddSingleton<ICSharpParser, RoslynCSharpParser>();
@@ -72,6 +82,17 @@ public class WireUp
         services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
         services.AddScoped<IRubricGenerationService, RubricGenerationService>();
         services.AddScoped<IProgressService, ProgressService>();
+        
+        // Dynamic Delegation Service with LLM context size from configuration
+        services.AddScoped<IDelegationService, DynamicDelegationService>(sp =>
+        {
+            var settings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
+            return new DynamicDelegationService(
+                sp.GetRequiredService<ILogger<DynamicDelegationService>>(),
+                sp.GetRequiredService<IAgentTelemetryService>(),
+                sp.GetRequiredService<IOptions<DelegationOptions>>(),
+                settings.ContextSize);
+        });
         services.AddScoped<ICodeWikiOrchestrator, CodeWikiOrchestrator>(sp =>
         {
             var settings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
@@ -83,8 +104,9 @@ public class WireUp
                 sp.GetRequiredService<IWikiGenerationService>(),
                 sp.GetRequiredService<IDocumentationSynthesisService>(),
                 sp.GetRequiredService<IWikiRepository>(),
-                sp.GetRequiredService<IProgressService>(), // Added
+                sp.GetRequiredService<IProgressService>(),
                 sp.GetRequiredService<IAgentTelemetryService>(),
+                sp.GetRequiredService<IDelegationService>(),
                 sp.GetRequiredService<IOptions<CodeWikiOptions>>(),
                 sp.GetRequiredService<ILogger<CodeWikiOrchestrator>>(),
                 // Use configured Judge model, or fall back to DocumentationModel, then to "llama3"

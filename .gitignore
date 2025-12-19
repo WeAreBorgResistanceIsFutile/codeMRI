@@ -39,3 +39,4 @@
 /TestResults/
 ./codemri_cli.db
 ./*.log
+./codewiki_paper.txt

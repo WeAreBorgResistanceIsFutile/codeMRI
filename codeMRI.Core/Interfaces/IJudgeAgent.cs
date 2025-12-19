@@ -23,6 +23,12 @@ public class RequirementScore
     /// If EvaluationFailed is true, contains the reason for the failure.
     /// </summary>
     public string? FailureReason { get; set; }
+    
+    /// <summary>
+    /// Standard deviation/uncertainty for this requirement score.
+    /// Used for uncertainty propagation in hierarchical aggregation.
+    /// </summary>
+    public double Uncertainty { get; set; }
 }
 
 public class QualityScore
@@ -31,4 +37,10 @@ public class QualityScore
     public Dictionary<string, RequirementScore>? Breakdown { get; set; }
     public double Reliability { get; set; }
     public Dictionary<string, double>? StandardDeviation { get; set; }
+    
+    /// <summary>
+    /// Overall uncertainty/confidence interval for the score.
+    /// Propagated from requirement and category uncertainties.
+    /// </summary>
+    public double Uncertainty { get; set; }
 }

@@ -135,7 +135,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         var breakdown = new ConcurrentDictionary<string, RequirementScore>();
         var scoresByCategory = new ConcurrentDictionary<string, ConcurrentBag<double>>();
 
-        var overallScore = await EvaluateRubricNodeAsync(page, rubric, breakdown, scoresByCategory);
+        var (overallScore, overallUncertainty) = await EvaluateRubricNodeAsync(page, rubric, breakdown, scoresByCategory);
 
         var (reliability, stdDeviation) = CalculateReliabilityMetrics(scoresByCategory);
 
@@ -144,11 +144,12 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             OverallScore = overallScore,
             Breakdown = new Dictionary<string, RequirementScore>(breakdown),
             Reliability = reliability,
-            StandardDeviation = stdDeviation
+            StandardDeviation = stdDeviation,
+            Uncertainty = overallUncertainty
         };
 
-        _logger.LogInformation("Single judge-based evaluation completed with score: {Score} and reliability: {Reliability}",
-            overallScore, reliability);
+        _logger.LogInformation("Single judge-based evaluation completed with score: {Score}, reliability: {Reliability}, uncertainty: {Uncertainty}",
+            overallScore, reliability, overallUncertainty);
 
         return qualityScore;
     }
@@ -194,7 +195,8 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
                 OverallScore = score.OverallScore,
                 Breakdown = score.Breakdown ?? new Dictionary<string, RequirementScore>(),
                 Reliability = score.Reliability,
-                StandardDeviation = score.StandardDeviation ?? new Dictionary<string, double>()
+                StandardDeviation = score.StandardDeviation ?? new Dictionary<string, double>(),
+                OverallUncertainty = score.Uncertainty
             };
 
             individualScores.Add(individualScore);
@@ -218,7 +220,9 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             MeetsMinimumJudgeRequirement = meetsMinimumRequirement,
             ConsensusStatus = consensusStatus,
             Reliability = consensusScore.OverallReliability,
-            StandardDeviation = consensusScore.CategoryStandardDeviations
+            StandardDeviation = consensusScore.CategoryStandardDeviations,
+            OverallUncertainty = consensusScore.OverallUncertainty,
+            Uncertainty = consensusScore.OverallUncertainty
         };
 
         // Aggregate breakdown scores across all judges
@@ -328,14 +332,15 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         return 0.0;
     }
 
-    private (double WeightedAverageScore, double ConsensusValue, double OverallReliability, Dictionary<string, double> CategoryStandardDeviations) 
+    private (double WeightedAverageScore, double ConsensusValue, double OverallReliability, Dictionary<string, double> CategoryStandardDeviations, double OverallUncertainty) 
         CalculateConsensusScore(List<IndividualJudgeScore> individualScores)
     {
         if (!individualScores.Any())
-            return (0.0, 0.0, 0.0, new Dictionary<string, double>());
+            return (0.0, 0.0, 0.0, new Dictionary<string, double>(), 0.0);
 
         var scores = individualScores.Select(s => s.OverallScore).ToList();
         var reliabilities = individualScores.Select(s => s.Reliability).ToList();
+        var uncertainties = individualScores.Select(s => s.OverallUncertainty).ToList();
 
         // Calculate reliability-weighted average score
         var totalReliabilityWeight = reliabilities.Sum();
@@ -359,7 +364,11 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         // Calculate category-level standard deviations
         var categoryStandardDeviations = CalculateCategoryStandardDeviations(individualScores);
 
-        return (weightedAverageScore, consensusValue, overallReliability, categoryStandardDeviations);
+        // Calculate overall uncertainty from judge disagreement
+        // Use the standard deviation of scores as the overall uncertainty
+        var overallUncertainty = scoreStandardDeviation;
+
+        return (weightedAverageScore, consensusValue, overallReliability, categoryStandardDeviations, overallUncertainty);
     }
 
     private Dictionary<string, double> CalculateCategoryStandardDeviations(List<IndividualJudgeScore> individualScores)
@@ -446,7 +455,8 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
                 {
                     RequirementId = requirementTitle,
                     Score = averageScore,
-                    Reasoning = $"Aggregated from {requirementScores.Count} judges: {combinedReasoning}"
+                    Reasoning = $"Aggregated from {requirementScores.Count} judges: {combinedReasoning}",
+                    Uncertainty = 0.0 // Uncertainty is tracked at the category level, not individual requirement level
                 };
             }
         }
@@ -454,7 +464,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         return aggregatedBreakdown;
     }
 
-    private async Task<double> EvaluateRubricNodeAsync(
+    private async Task<(double Score, double Uncertainty)> EvaluateRubricNodeAsync(
         WikiPage page,
         RubricNode node,
         ConcurrentDictionary<string, RequirementScore> breakdown,
@@ -479,32 +489,38 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             var categoryScores = scoresByCategory.GetOrAdd(category, _ => new ConcurrentBag<double>());
             categoryScores.Add(score.Score);
 
-            return score.Score;
+            // Return score and its uncertainty (from the requirement evaluation)
+            return (score.Score, score.Uncertainty);
         }
 
         if (node.Children != null && node.Children.Any())
         {
             var tasks = node.Children.Select(async child => 
             {
-                var s = await EvaluateRubricNodeAsync(page, child, breakdown, scoresByCategory);
-                return (Score: s, Weight: child.Weight);
+                var (s, u) = await EvaluateRubricNodeAsync(page, child, breakdown, scoresByCategory);
+                return (Score: s, Uncertainty: u, Weight: child.Weight);
             });
 
             var results = await Task.WhenAll(tasks);
             
             var childScores = new List<double>();
+            var childUncertainties = new List<double>();
             var childWeights = new List<double>();
 
             foreach (var result in results)
             {
                 childScores.Add(result.Score);
+                childUncertainties.Add(result.Uncertainty);
                 childWeights.Add(result.Weight);
             }
 
-            return CalculateWeightedAverage(childScores, childWeights);
+            var weightedScore = CalculateWeightedAverage(childScores, childWeights);
+            var propagatedUncertainty = CalculatePropagatedUncertainty(childUncertainties, childWeights);
+            
+            return (weightedScore, propagatedUncertainty);
         }
 
-        return 0.0;
+        return (0.0, 0.0);
     }
 
     private static double CalculateWeightedAverage(List<double> scores, List<double> weights)
@@ -522,6 +538,32 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
         var weightedSum = scores.Select((score, index) => score * weights[index]).Sum();
         return weightedSum / totalWeight;
+    }
+
+    /// <summary>
+    /// Propagates uncertainty from child nodes to parent using weighted quadrature sum.
+    /// Formula: σ_parent = sqrt(Σ(w_i² * σ_i²)) / Σ(w_i)
+    /// This follows standard uncertainty propagation for weighted averages.
+    /// </summary>
+    private static double CalculatePropagatedUncertainty(List<double> uncertainties, List<double> weights)
+    {
+        if (!uncertainties.Any() || !weights.Any() || uncertainties.Count != weights.Count)
+        {
+            return 0.0;
+        }
+
+        var totalWeight = weights.Sum();
+        if (totalWeight <= 0.0)
+        {
+            return 0.0;
+        }
+
+        // Weighted quadrature sum: sqrt(Σ(w_i² * σ_i²)) / Σ(w_i)
+        var weightedVarianceSum = uncertainties
+            .Select((uncertainty, index) => weights[index] * weights[index] * uncertainty * uncertainty)
+            .Sum();
+
+        return Math.Sqrt(weightedVarianceSum) / totalWeight;
     }
 
     private static (double Reliability, Dictionary<string, double> StandardDeviation)
