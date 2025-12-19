@@ -73,7 +73,9 @@ public class WireUp
                 sp.GetRequiredService<IDocumentationSynthesisService>(),
                 sp.GetRequiredService<IReferenceManagementService>(),
                 sp.GetRequiredService<ILogger<WikiGenerationService>>(),
-                docModel);
+                docModel,
+                sp.GetService<IModelRoutingService>(),
+                sp.GetService<IMultiModelOrchestrationService>());
         });
         services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
         services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();
@@ -82,6 +84,36 @@ public class WireUp
         services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
         services.AddScoped<IRubricGenerationService, RubricGenerationService>();
         services.AddScoped<IProgressService, ProgressService>();
+        
+        // Multi-Model Services with configuration injection
+        services.AddSingleton<IModelRoutingService>(sp =>
+        {
+            var ollamaSettings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
+            var config = new ModelRoutingConfig
+            {
+                EnableModelRouting = ollamaSettings.ModelRouting.EnableModelRouting,
+                CodeAnalysisModel = ollamaSettings.ModelRouting.CodeAnalysisModel,
+                NaturalLanguageModel = ollamaSettings.ModelRouting.NaturalLanguageModel,
+                SynthesisJudgeModel = ollamaSettings.ModelRouting.SynthesisJudgeModel
+            };
+            return new ModelRoutingService(config, sp.GetRequiredService<ILogger<ModelRoutingService>>());
+        });
+        
+        services.AddScoped<IMultiModelOrchestrationService>(sp =>
+        {
+            var ollamaSettings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
+            var config = new EnsembleConfig
+            {
+                EnableEnsembleGeneration = ollamaSettings.ModelRouting.EnableEnsembleGeneration,
+                EnsembleModels = ollamaSettings.ModelRouting.EnsembleModels,
+                MinimumAgreementThreshold = ollamaSettings.ModelRouting.MinimumAgreementThreshold
+            };
+            return new MultiModelOrchestrationService(
+                sp.GetRequiredService<ILLMClient>(),
+                sp.GetRequiredService<IModelRoutingService>(),
+                config,
+                sp.GetRequiredService<ILogger<MultiModelOrchestrationService>>());
+        });
         
         // Dynamic Delegation Service with LLM context size from configuration
         services.AddScoped<IDelegationService, DynamicDelegationService>(sp =>

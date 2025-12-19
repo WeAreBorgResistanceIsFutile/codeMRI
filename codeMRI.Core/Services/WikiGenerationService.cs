@@ -15,6 +15,8 @@ public class WikiGenerationService : IWikiGenerationService
     private readonly ILLMClient _llmClient;
     private readonly IDocumentationSynthesisService _synthesisService;
     private readonly IReferenceManagementService _referenceManagementService;
+    private readonly IModelRoutingService? _routingService;
+    private readonly IMultiModelOrchestrationService? _orchestrationService;
     private readonly string _documentationModel;
 
     public WikiGenerationService(
@@ -22,7 +24,11 @@ public class WikiGenerationService : IWikiGenerationService
         IDiagramGenerator diagramGenerator,
         IEnhancedDependencyGraphService graphService,
         IDocumentationSynthesisService synthesisService,
-        IReferenceManagementService referenceManagementService, ILogger<WikiGenerationService> logger, string documentationModel)
+        IReferenceManagementService referenceManagementService,
+        ILogger<WikiGenerationService> logger,
+        string documentationModel,
+        IModelRoutingService? routingService = null,
+        IMultiModelOrchestrationService? orchestrationService = null)
     {
         _llmClient = llmClient;
         _diagramGenerator = diagramGenerator;
@@ -31,6 +37,8 @@ public class WikiGenerationService : IWikiGenerationService
         _referenceManagementService = referenceManagementService;
         _logger = logger;
         _documentationModel = documentationModel;
+        _routingService = routingService;
+        _orchestrationService = orchestrationService;
     }
 
     public async Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths,
@@ -164,15 +172,19 @@ public class WikiGenerationService : IWikiGenerationService
         var sourceFilesContent = contextBuilder.ToString();
 
         string content;
+        
+        // Select model based on task type (code analysis for detailed technical pages)
+        var selectedModel = _routingService?.SelectModelForTask(DocumentationTaskType.CodeAnalysis) ?? _documentationModel;
+        
         // Use findings-based chunking if the content is very large (approx > 3000 tokens)
         if (sourceFilesContent.Length > 12000)
         {
-            content = await _llmClient.ChatWithFindingsAsync("", prompt, sourceFilesContent, _documentationModel);
+            content = await _llmClient.ChatWithFindingsAsync("", prompt, sourceFilesContent, selectedModel);
         }
         else
         {
             var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent;
-            content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
+            content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), selectedModel);
         }
 
         // Generate enhanced interactive diagrams if we have a dependency graph
@@ -513,15 +525,22 @@ public class WikiGenerationService : IWikiGenerationService
         }
         var sourceFilesContent = contextBuilder.ToString();
         string content;
+        
+        // Select model based on task type
+        var taskType = (audience == AudienceType.Developer) 
+            ? DocumentationTaskType.CodeAnalysis 
+            : DocumentationTaskType.NaturalLanguage;
+        var selectedModel = _routingService?.SelectModelForTask(taskType) ?? _documentationModel;
+        
         // Use findings-based chunking if the content is very large (approx > 3000 tokens)
         if (sourceFilesContent.Length > 12000)
         {
-            content = await _llmClient.ChatWithFindingsAsync("", prompt, sourceFilesContent, _documentationModel);
+            content = await _llmClient.ChatWithFindingsAsync("", prompt, sourceFilesContent, selectedModel);
         }
         else
         {
             var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent;
-            content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), _documentationModel);
+            content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), selectedModel);
         }
 
         // Generate diagrams if available
