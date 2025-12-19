@@ -79,6 +79,7 @@ public class WireUp
         });
         services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
         services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();
+        services.AddScoped<IDocumentationRevisionService, DocumentationRevisionService>();
         services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();
         services.AddScoped<IEvaluationPromptBuilder, DefaultEvaluationPromptBuilder>();
         services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
@@ -135,6 +136,7 @@ public class WireUp
                 sp.GetRequiredService<IDocumentationJudgeService>(),
                 sp.GetRequiredService<IWikiGenerationService>(),
                 sp.GetRequiredService<IDocumentationSynthesisService>(),
+                sp.GetRequiredService<IDocumentationRevisionService>(),
                 sp.GetRequiredService<IWikiRepository>(),
                 sp.GetRequiredService<IProgressService>(),
                 sp.GetRequiredService<IAgentTelemetryService>(),

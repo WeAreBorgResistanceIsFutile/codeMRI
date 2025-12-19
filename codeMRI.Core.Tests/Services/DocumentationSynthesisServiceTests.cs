@@ -11,13 +11,15 @@ namespace codeMRI.Core.Tests.Services;
 public class DocumentationSynthesisServiceTests
 {
     private Mock<ILLMClient> _mockLlmClient;
+    private Mock<ILogger<DocumentationSynthesisService>> _mockLogger;
     private DocumentationSynthesisService _service;
 
     [SetUp]
     public void Setup()
     {
         _mockLlmClient = new Mock<ILLMClient>();
-        _service = new DocumentationSynthesisService(_mockLlmClient.Object);
+        _mockLogger = new Mock<ILogger<DocumentationSynthesisService>>();
+        _service = new DocumentationSynthesisService(_mockLlmClient.Object, _mockLogger.Object);
     }
 
     [Test]

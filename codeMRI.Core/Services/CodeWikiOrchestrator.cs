@@ -14,12 +14,14 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private readonly ILogger<CodeWikiOrchestrator> _logger;
     private readonly IRubricGenerationService _rubricService;
     private readonly IDocumentationSynthesisService _synthesisService;
+    private readonly IDocumentationRevisionService _revisionService;
     private readonly IWikiGenerationService _wikiGenerationService;
     private readonly IWikiRepository _wikiRepo;
-    private readonly IProgressService _progressService; // Added field
+    private readonly IProgressService _progressService;
     private readonly IAgentTelemetryService _telemetryService;
     private readonly IDelegationService _delegationService;
-    private readonly string _judgeModel; // Changed from List<string> _judgeModels
+    private readonly CodeWikiOptions _options;
+    private readonly string _judgeModel;
     private readonly SemaphoreSlim _semaphore;
 
     public CodeWikiOrchestrator(
@@ -29,13 +31,14 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IDocumentationJudgeService judgeService,
         IWikiGenerationService wikiGenerationService,
         IDocumentationSynthesisService synthesisService,
+        IDocumentationRevisionService revisionService,
         IWikiRepository wikiRepo,
-        IProgressService progressService, // Added parameter
+        IProgressService progressService,
         IAgentTelemetryService telemetryService,
         IDelegationService delegationService,
         IOptions<CodeWikiOptions> options,
         ILogger<CodeWikiOrchestrator> logger,
-        string judgeModel = "default") // Changed from List<string>? judgeModels = null
+        string judgeModel = "default")
     {
         _decompositionService = decompositionService;
         _graphService = graphService;
@@ -43,13 +46,15 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _judgeService = judgeService;
         _wikiGenerationService = wikiGenerationService;
         _synthesisService = synthesisService;
+        _revisionService = revisionService;
         _wikiRepo = wikiRepo;
-        _progressService = progressService; // Initialized new field
+        _progressService = progressService;
         _telemetryService = telemetryService;
         _delegationService = delegationService;
+        _options = options.Value;
         _logger = logger;
-        _judgeModel = judgeModel; // Initialized new field
-        _semaphore = new SemaphoreSlim(options.Value.MaxDegreeOfParallelism);
+        _judgeModel = judgeModel;
+        _semaphore = new SemaphoreSlim(_options.MaxDegreeOfParallelism);
     }
 
     public async Task<WikiStructure> GenerateAdvancedWikiAsync(
@@ -358,7 +363,8 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                         await _semaphore.WaitAsync(cancellationToken);
                     }
                     
-                    // Module is no longer a leaf, fall through to parent page synthesis
+                    // Module is no longer a leaf - mark it for parent page synthesis with merge
+                    module.Metadata["HasClusterChildren"] = "true";
                 }
             }
 
@@ -431,7 +437,38 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                         .ToList();
                 }
 
-                page = await _synthesisService.SynthesizeParentPageAsync(module, childPages, "English", audience);
+                // Check if this module was subdivided into clusters
+                bool isMergingClusters = module.Metadata.ContainsKey("HasClusterChildren") && 
+                                          module.Metadata["HasClusterChildren"] == "true";
+                
+                if (isMergingClusters)
+                {
+                    _logger.LogInformation(
+                        "Merging {Count} cluster pages into parent page for {ModuleName}",
+                        childPages.Count, module.Name);
+                }
+
+                page = await _synthesisService.SynthesizeParentPageAsync(
+                    module, 
+                    childPages, 
+                    "English", 
+                    audience, 
+                    mergeChildContent: isMergingClusters);
+                
+                // Revision step: Refine parent documentation based on child insights (Algorithm 1 - CodeWiki paper)
+                if (_options.EnableRevisionLoop && childPages.Count >= _options.MinChildrenForRevision)
+                {
+                    _logger.LogInformation(
+                        "Revising parent page {ModuleName} based on {Count} child pages",
+                        module.Name, childPages.Count);
+                    
+                    page = await _revisionService.ReviseParentDocumentationAsync(
+                        page,
+                        module,
+                        childPages,
+                        "English",
+                        cancellationToken);
+                }
             }
 
             lock (structure.Pages)

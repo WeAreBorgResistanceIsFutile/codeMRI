@@ -44,7 +44,11 @@ public class OllamaLLMService : ILLMClient
         };
 
         var requestJson = JsonSerializer.Serialize(request);
-        _logger.LogInformation("Sending ChatAsync request to {Url}. Body: {Body}", "/api/chat", requestJson);
+        var displayJson = requestJson.Length > 2000 
+            ? requestJson.Substring(0, 2000) + $"... [TRUNCATED {requestJson.Length - 2000} chars]" 
+            : requestJson;
+        
+        _logger.LogInformation("Sending ChatAsync request to {Url}. Body: {Body}", "/api/chat", displayJson);
 
         const int maxRetries = 3;
         const int baseDelayMs = 1000; // Base delay of 1 second
@@ -159,6 +163,14 @@ public class OllamaLLMService : ILLMClient
 
         for (int i = 0; i < chunks.Count; i++)
         {
+            // Ensure findings don't eat more than 30% of the context
+            int maxFindingsChars = (int)(_settings.ContextSize * 3.5 * 0.3);
+            if (findings.Length > maxFindingsChars)
+            {
+                _logger.LogWarning("Findings too large ({Length} chars). Truncating to {Max} chars.", findings.Length, maxFindingsChars);
+                findings = "... [OLDER FINDINGS TRUNCATED]\n" + findings.Substring(findings.Length - maxFindingsChars);
+            }
+
             var userPrompt = codeMRI.Core.Services.PromptTemplates.ChunkedFindingsPrompt(i, chunks.Count, findings, chunks[i]);
             var combinedUserPrompt = basePrompt + "\n\n" + userPrompt;
 
@@ -188,7 +200,11 @@ public class OllamaLLMService : ILLMClient
         };
 
         var jsonRequest = JsonSerializer.Serialize(request);
-        _logger.LogInformation("Starting ChatStreamAsync to {Url}. Body: {Body}", "/api/chat", jsonRequest);
+        var displayJson = jsonRequest.Length > 2000 
+            ? jsonRequest.Substring(0, 2000) + $"... [TRUNCATED {jsonRequest.Length - 2000} chars]" 
+            : jsonRequest;
+            
+        _logger.LogInformation("Starting ChatStreamAsync to {Url}. Body: {Body}", "/api/chat", displayJson);
         
         var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
 
@@ -282,38 +298,44 @@ public class OllamaLLMService : ILLMClient
         }
     }
 
-    private List<object> BuildMessagesWithContextWindow(string systemPrompt, string userPrompt, List<ChatMessage> history)
+    private List<object> BuildMessagesWithContextWindow(string? systemPrompt, string? userPrompt, List<ChatMessage> history)
     {
         // Reserve space for response and overhead
         const int ResponseBuffer = 1024; 
-        int availableTokens = Math.Max(_settings.ContextSize - ResponseBuffer, 256); // Ensure minimum valid value
+        int availableTokens = Math.Max(_settings.ContextSize - ResponseBuffer, 256); 
+        
+        // Conservative character-to-token ratio
+        const double CharsPerToken = 3.5;
+        int maxChars = (int)(availableTokens * CharsPerToken);
 
-        // 1. Calculate compulsory tokens (System + User)
-        int systemTokens = EstimateTokenCount(systemPrompt);
-        int userTokens = EstimateTokenCount(userPrompt);
-        int compulsory = systemTokens + userTokens;
+        // 1. Calculate compulsory content length (System + User)
+        int systemLen = systemPrompt?.Length ?? 0;
+        int originalUserLen = userPrompt?.Length ?? 0;
+        int compulsoryLen = systemLen + originalUserLen;
 
-        string finalUserPrompt = userPrompt;
+        string finalUserPrompt = userPrompt ?? string.Empty;
 
-        if (compulsory > availableTokens)
+        if (compulsoryLen > maxChars)
         {
-            _logger.LogWarning("Prompt size ({Compulsory}) exceeds available context limit ({Available}). Truncating user prompt.", compulsory, availableTokens);
+            int budgetForUser = maxChars - systemLen;
+            if (budgetForUser < 500) budgetForUser = 500; // Absolute minimum to avoid total loss if system prompt is massive
+
+            _logger.LogWarning("Prompt size ({Compulsory} chars) exceeds estimated context character limit ({Max} chars). Truncating user prompt to {Budget}.", 
+                compulsoryLen, maxChars, budgetForUser);
             
-            // Limit user prompt to fit
-            int budgetForUser = availableTokens - systemTokens;
-            // Ensure we at least send something if system prompt is reasonable
-            if (budgetForUser < 100 && systemTokens < availableTokens) budgetForUser = 100;
-            
-            // Truncate user prompt (approx 4 chars per token)
-            int maxChars = Math.Max(0, budgetForUser * 4);
-            if (finalUserPrompt.Length > maxChars)
+            if (originalUserLen > budgetForUser)
             {
-                finalUserPrompt = finalUserPrompt.Substring(0, maxChars) + "... [TRUNCATED]";
+                if (budgetForUser < originalUserLen / 2)
+                {
+                    _logger.LogWarning("Severe truncation: more than 50% of user prompt content will be lost ({Original} -> {Truncated} chars).", 
+                        originalUserLen, budgetForUser);
+                }
+                finalUserPrompt = (userPrompt ?? string.Empty).Substring(0, budgetForUser) + "\n\n... [CONTENT TRUNCATED DUE TO CONTEXT LIMIT]";
             }
         }
 
-        // 2. Add History if space remains logic (re-calculate with finalized prompts)
-        int currentTokens = EstimateTokenCount(systemPrompt) + EstimateTokenCount(finalUserPrompt);
+        // 2. Add History if space remains (calculate with finalized user prompt)
+        int currentChars = (systemPrompt?.Length ?? 0) + finalUserPrompt.Length;
         var finalHistory = new List<ChatMessage>();
 
         if (history != null && history.Any())
@@ -322,16 +344,16 @@ public class OllamaLLMService : ILLMClient
             for (int i = history.Count - 1; i >= 0; i--)
             {
                 var msg = history[i];
-                int msgTokens = EstimateTokenCount(msg.Content) + 4; // +1 token overhead approx
+                int msgLen = (msg.Content?.Length ?? 0) + 50; // Add overhead
                 
-                if (currentTokens + msgTokens <= availableTokens)
+                if (currentChars + msgLen <= maxChars)
                 {
                     finalHistory.Insert(0, msg);
-                    currentTokens += msgTokens;
+                    currentChars += msgLen;
                 }
                 else
                 {
-                    _logger.LogInformation("Context window full. History truncated. Dropping {Count} older messages.", i + 1);
+                    _logger.LogInformation("Context window character limit reached. History truncated. Dropping {Count} older messages.", i + 1);
                     break;
                 }
             }
@@ -352,8 +374,8 @@ public class OllamaLLMService : ILLMClient
     private int EstimateTokenCount(string? text)
     {
         if (string.IsNullOrEmpty(text)) return 0;
-        // Approximation: 1 token ~= 4 characters for English text
-        return text.Length / 4;
+        // Conservative approximation: 1 token ~= 3.5 characters for technical text
+        return (int)(text.Length / 3.5);
     }
 
     /// <summary>

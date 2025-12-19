@@ -368,6 +368,73 @@ public static class PromptTemplates
 
     #endregion
 
+    #region Cluster Merging Prompt
+
+    /// <summary>
+    /// Generates a prompt for merging cluster pages into a single cohesive document.
+    /// Used when a module was subdivided due to size constraints during dynamic delegation.
+    /// </summary>
+    public static string MergeClusterPagesPrompt(
+        ModuleNode parentModule,
+        List<WikiPage> clusterPages,
+        string language)
+    {
+        // Extract section headers and content from each cluster page
+        var clusterContents = clusterPages
+            .Select((p, idx) => new
+            {
+                Index = idx,
+                Title = p.Title,
+                Content = p.Content,
+                FileCount = p.RelevantFiles?.Count ?? 0
+            })
+            .ToList();
+
+        var clusterSummary = string.Join("\n", clusterContents.Select(c => 
+            $"- **{c.Title}**: {c.FileCount} files, {c.Content.Length} characters"));
+
+        return $"""
+            Merge documentation from {clusterPages.Count} cluster pages into a single comprehensive document for "{parentModule.Name}".
+            
+            ## Context
+            This module was temporarily subdivided into clusters for processing efficiency. Your job is to merge them back into ONE cohesive document.
+            
+            ## Cluster Summary
+            {clusterSummary}
+            
+            ## Cluster Contents
+            {string.Join("\n\n---\n\n", clusterContents.Select(c => $"### Source: {c.Title}\n\n{c.Content}"))}
+            
+            ## Instructions
+            1. **Consolidate into ONE document** titled "# {parentModule.Name}"
+            2. **Merge redundant sections**: If multiple clusters have "Overview" or similar sections, synthesize them into ONE overview
+            3. **Organize by logical sections**: Group related content from different clusters under unified section headers
+            4. **Remove cluster-specific headers**: Replace "{parentModule.Name} - Cluster_N" with appropriate subsection names
+            5. **Preserve all technical details**: Don't summarize or lose implementation details - include everything
+            6. **Create unified diagrams**: If multiple clusters have similar diagrams, merge them into one comprehensive diagram
+            7. **Deduplicate content**: If the same class/component is mentioned in multiple clusters, merge into one entry
+            
+            ## Suggested Structure
+            - # {parentModule.Name} (main title)
+            - ## Overview (merged from all cluster overviews)
+            - ## Architecture (unified view of all components)
+            - ## Components (organized by logical grouping, not cluster number)
+            - ## Technical Details (merged implementation details)
+            - ## API Reference (if applicable)
+            
+            STRICT RULES:
+            - Output ONE complete markdown document
+            - Do NOT create subsections for each cluster (e.g., no "## Cluster 0" sections)
+            - Do NOT add meta-commentary about the merging process
+            - Preserve all technical accuracy from source clusters
+            - Use {language} for all content
+            
+            Output ONLY the merged markdown content starting with # {parentModule.Name}
+            """;
+    }
+
+    #endregion
+
     #region Enhanced RAG System Prompt
 
     /// <summary>
@@ -427,6 +494,116 @@ public static class PromptTemplates
             - Use proper markdown syntax.
             - No markdown fences around the entire response.
             """;
+    }
+
+    #endregion
+
+    #region Parent Documentation Revision Prompt
+
+    /// <summary>
+    /// Generates a prompt for revising parent documentation based on completed child documentation.
+    /// Implements the revision step from Algorithm 1 in the CodeWiki paper.
+    /// </summary>
+    public static string ReviseParentDocumentationPrompt(
+        WikiPage originalParentPage,
+        ModuleNode parentModule,
+        List<WikiPage> childPages,
+        string language)
+    {
+        var childInsights = childPages
+            .Select(p => new
+            {
+                Title = p.Title,
+                KeyTopics = ExtractKeyTopics(p.Content),
+                ConcreteDetails = ExtractConcreteDetails(p.Content)
+            });
+
+        var childInsightsJson = JsonSerializer.Serialize(childInsights,
+            new JsonSerializerOptions { WriteIndented = true });
+
+        return $"""
+            You are refining parent-level documentation based on insights from completed child module documentation.
+            
+            ## Original Parent Page
+            <original_content>
+            {originalParentPage.Content}
+            </original_content>
+            
+            ## Child Module Insights
+            The following insights were extracted from {childPages.Count} child documentation pages:
+            <child_insights>
+            {childInsightsJson}
+            </child_insights>
+            
+            ## Module Context
+            - **Module Name**: {parentModule.Name}
+            - **Hierarchy Level**: {parentModule.Level}
+            - **Architectural Pattern**: {parentModule.Metadata.GetValueOrDefault("ArchitecturalPattern", "Not identified")}
+            - **Child Module Count**: {childPages.Count}
+            
+            ## Revision Goals (Algorithm 1 - CodeWiki Paper)
+            1. **Enrich Abstract Descriptions**: Replace generic descriptions with specific patterns/components discovered in children
+               - BEFORE: "This module handles data processing"
+               - AFTER: "This module orchestrates three data pipelines: validation (InputValidator), transformation (DataTransformer), and enrichment (MetadataEnricher)"
+            
+            2. **Add Concrete Evidence**: Back up architectural claims with specific child implementations
+               - Reference specific classes, patterns, or behaviors documented in children
+               
+            3. **Update Architecture Diagrams**: If a component diagram exists, ensure it accurately reflects child relationships
+            
+            4. **Cross-Reference Children**: Add [[WikiLink]] references to child documentation where appropriate
+            
+            5. **Preserve Accuracy**: Do NOT change content that is already accurate and specific
+            
+            ## Output Rules
+            - Maintain the same overall structure as the original
+            - Keep sections that are already well-detailed
+            - Focus improvements on abstract/vague sections
+            - Do NOT reduce the length of the document
+            - Use {language} for all content
+            
+            Output ONLY the revised markdown content starting with # {parentModule.Name}
+            """;
+    }
+
+    /// <summary>
+    /// Extracts key topics from page content for revision context.
+    /// </summary>
+    private static string ExtractKeyTopics(string? content)
+    {
+        if (string.IsNullOrEmpty(content)) return "None identified";
+
+        // Extract H2 and H3 headers as key topics
+        var lines = content.Split('\n');
+        var topics = lines
+            .Where(l => l.TrimStart().StartsWith("## ") || l.TrimStart().StartsWith("### "))
+            .Select(l => l.TrimStart('#', ' '))
+            .Take(5)
+            .ToList();
+
+        return topics.Any() ? string.Join(", ", topics) : "General overview";
+    }
+
+    /// <summary>
+    /// Extracts concrete details (class names, patterns) from page content.
+    /// </summary>
+    private static string ExtractConcreteDetails(string? content)
+    {
+        if (string.IsNullOrEmpty(content)) return "None";
+
+        // Look for code references (backticked items) as concrete details
+        var backtickPattern = new System.Text.RegularExpressions.Regex(@"`([^`]+)`");
+        var matches = backtickPattern.Matches(content);
+
+        var details = matches
+            .Cast<System.Text.RegularExpressions.Match>()
+            .Select(m => m.Groups[1].Value)
+            .Where(d => d.Length > 2 && d.Length < 50 && !d.Contains('\n'))
+            .Distinct()
+            .Take(8)
+            .ToList();
+
+        return details.Any() ? string.Join(", ", details) : "See documentation";
     }
 
     #endregion

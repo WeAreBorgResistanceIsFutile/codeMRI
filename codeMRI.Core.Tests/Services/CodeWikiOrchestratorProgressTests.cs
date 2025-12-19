@@ -17,6 +17,7 @@ public class CodeWikiOrchestratorProgressTests
     private Mock<IDocumentationJudgeService> _mockJudgeService;
     private Mock<IWikiGenerationService> _mockWikiGenerationService;
     private Mock<IDocumentationSynthesisService> _mockSynthesisService;
+    private Mock<IDocumentationRevisionService> _mockRevisionService;
     private Mock<IWikiRepository> _mockWikiRepo;
     private Mock<ILogger<CodeWikiOrchestrator>> _mockLogger;
     private Mock<IProgressService> _mockProgressService;
@@ -33,6 +34,7 @@ public class CodeWikiOrchestratorProgressTests
         _mockJudgeService = new Mock<IDocumentationJudgeService>();
         _mockWikiGenerationService = new Mock<IWikiGenerationService>();
         _mockSynthesisService = new Mock<IDocumentationSynthesisService>();
+        _mockRevisionService = new Mock<IDocumentationRevisionService>();
         _mockWikiRepo = new Mock<IWikiRepository>();
         _mockLogger = new Mock<ILogger<CodeWikiOrchestrator>>();
         _mockProgressService = new Mock<IProgressService>();
@@ -62,6 +64,7 @@ public class CodeWikiOrchestratorProgressTests
             _mockJudgeService.Object,
             _mockWikiGenerationService.Object,
             _mockSynthesisService.Object,
+            _mockRevisionService.Object,
             _mockWikiRepo.Object,
             _mockProgressService.Object,
             _mockTelemetryService.Object,
@@ -128,7 +131,7 @@ public class CodeWikiOrchestratorProgressTests
             It.IsAny<List<string>?>()))
             .ReturnsAsync(new WikiPage { Id = "page1", Title = "Page 1" });
             
-        _mockSynthesisService.Setup(s => s.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>()))
+        _mockSynthesisService.Setup(s => s.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<bool>()))
             .ReturnsAsync(new WikiPage { Id = "parent", Title = "Parent" });
 
         _mockJudgeService.Setup(x => x.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(), It.IsAny<List<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))

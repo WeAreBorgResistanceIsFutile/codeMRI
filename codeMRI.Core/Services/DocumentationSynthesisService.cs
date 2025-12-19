@@ -1,19 +1,22 @@
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
 
 public class DocumentationSynthesisService : IDocumentationSynthesisService
 {
     private readonly ILLMClient _llmClient;
+    private readonly ILogger<DocumentationSynthesisService> _logger;
 
-    public DocumentationSynthesisService(ILLMClient llmClient)
+    public DocumentationSynthesisService(ILLMClient llmClient, ILogger<DocumentationSynthesisService> logger)
     {
         _llmClient = llmClient;
+        _logger = logger;
     }
 
     public async Task<WikiPage> SynthesizeParentPageAsync(ModuleNode module, List<WikiPage> childPages,
-        string language = "English", AudienceType audience = AudienceType.Developer)
+        string language = "English", AudienceType audience = AudienceType.Developer, bool mergeChildContent = false)
     {
         // If no children, perform a simple generation
         if (childPages == null || !childPages.Any())
@@ -52,6 +55,37 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
             };
         }
 
+            // Check if we're merging cluster content
+        if (mergeChildContent)
+        {
+            _logger.LogInformation("Merging {Count} cluster pages into parent page for {ModuleName}", 
+                childPages.Count, module.Name);
+            
+            var mergePrompt = PromptTemplates.MergeClusterPagesPrompt(
+                module,
+                childPages,
+                language);
+            
+            var mergedContent = await _llmClient.ChatAsync(
+                "You are a technical documentation expert specializing in content synthesis and organization.",
+                mergePrompt,
+                new List<ChatMessage>());
+            
+            return new WikiPage
+            {
+                Id = Guid.NewGuid().ToString(),
+                Title = module.Name,
+                Content = CleanContent(mergedContent, module.Name),
+                RelevantFiles = childPages.SelectMany(p => p.RelevantFiles ?? new List<string>()).Distinct().ToList(),
+                Metadata = new Dictionary<string, object>
+                {
+                    { "IsMergedFromClusters", true },
+                    { "ClusterCount", childPages.Count }
+                }
+            };
+        }
+    
+        // Otherwise, perform standard parent page synthesis
         // Estimate cross-module dependencies (simplified - could be enhanced with graph data)
         var estimatedCrossModuleDeps = childPages.Count > 1 ? childPages.Count * 2 : 0;
 

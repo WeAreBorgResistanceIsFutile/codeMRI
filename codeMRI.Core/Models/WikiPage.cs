@@ -7,4 +7,5 @@ public class WikiPage
     public string Description { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public List<string> RelevantFiles { get; set; } = new();
+    public Dictionary<string, object> Metadata { get; set; } = new();
 }

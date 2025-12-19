@@ -215,7 +215,7 @@ public class WikiGenerationServiceAudienceTests
         var childPages = new List<WikiPage>();
         var audience = AudienceType.DevOps;
         
-        _mockSynthesisService.Setup(x => x.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>()))
+        _mockSynthesisService.Setup(x => x.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<bool>()))
             .ReturnsAsync(new WikiPage { Content = "Content" });
             
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
@@ -225,7 +225,7 @@ public class WikiGenerationServiceAudienceTests
         await _service.GenerateParentPageAsync(module, childPages, "English", audience);
 
         // Assert
-        _mockSynthesisService.Verify(x => x.SynthesizeParentPageAsync(module, childPages, "English", audience), Times.Once);
+        _mockSynthesisService.Verify(x => x.SynthesizeParentPageAsync(module, childPages, "English", audience, It.IsAny<bool>()), Times.Once);
         
         // Assert Diagrams skipped for non-developer
         _mockDiagramGenerator.Verify(x => x.GenerateArchitectureDiagramAsync(It.IsAny<ModuleTree>(), It.IsAny<EnhancedDependencyGraph>()), Times.Never);

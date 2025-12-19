@@ -17,6 +17,7 @@ public class CodeWikiOrchestratorTests
     private Mock<IDocumentationJudgeService> _mockJudgeService;
     private Mock<IWikiGenerationService> _mockWikiGenerationService;
     private Mock<IDocumentationSynthesisService> _mockSynthesisService;
+    private Mock<IDocumentationRevisionService> _mockRevisionService;
     private Mock<IWikiRepository> _mockWikiRepo;
     private Mock<ILogger<CodeWikiOrchestrator>> _mockLogger;
     private Mock<IProgressService> _mockProgressService;
@@ -33,6 +34,7 @@ public class CodeWikiOrchestratorTests
         _mockJudgeService = new Mock<IDocumentationJudgeService>();
         _mockWikiGenerationService = new Mock<IWikiGenerationService>();
         _mockSynthesisService = new Mock<IDocumentationSynthesisService>();
+        _mockRevisionService = new Mock<IDocumentationRevisionService>();
         _mockWikiRepo = new Mock<IWikiRepository>();
         _mockLogger = new Mock<ILogger<CodeWikiOrchestrator>>();
         _mockProgressService = new Mock<IProgressService>();
@@ -67,6 +69,7 @@ public class CodeWikiOrchestratorTests
             _mockJudgeService.Object,
             _mockWikiGenerationService.Object,
             _mockSynthesisService.Object,
+            _mockRevisionService.Object,
             _mockWikiRepo.Object,
             _mockProgressService.Object,
             _mockTelemetryService.Object,
@@ -127,7 +130,7 @@ public class CodeWikiOrchestratorTests
             
         // Verify Synthesis was NOT called
         _mockSynthesisService.Verify(
-            s => s.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>()),
+            s => s.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<bool>()),
             Times.Never);
     }
 
@@ -232,7 +235,7 @@ public class CodeWikiOrchestratorTests
                 new WikiPage { Id = $"id_{m.Name}", Title = m.Name, Content = $"Content for {m.Name}" });
 
         _mockSynthesisService
-            .Setup(s => s.SynthesizeParentPageAsync(rootModule, It.IsAny<List<WikiPage>>(), "English", AudienceType.All))
+            .Setup(s => s.SynthesizeParentPageAsync(rootModule, It.IsAny<List<WikiPage>>(), "English", AudienceType.All, It.IsAny<bool>()))
             .ReturnsAsync(new WikiPage { Id = "id_RootModule", Title = "RootModule", Content = "Synthesized Content" });
 
         // Act
