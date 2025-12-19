@@ -35,8 +35,7 @@
 /codeMRI.Server/logs/
 /codeMRI.CLI/bin/
 /codeMRI.CLI/obj/
-/data/
+/md/
 /TestResults/
 ./codemri_cli.db
-/docs/
 ./*.log
