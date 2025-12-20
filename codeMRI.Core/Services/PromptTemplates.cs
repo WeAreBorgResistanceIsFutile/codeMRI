@@ -610,48 +610,6 @@ public static class PromptTemplates
 
     #region Diagram Context Prompt
 
-    /// <summary>
-    /// Generates a prompt for creating contextual Mermaid diagrams based on module structure.
-    /// </summary>
-    public static string DiagramContextPrompt(
-        string diagramType,
-        ModuleNode module,
-        List<DiagramNodeInfo> nodes,
-        string language)
-    {
-        var nodesJson = JsonSerializer.Serialize(nodes.Take(30), 
-            new JsonSerializerOptions { WriteIndented = true });
-
-        return $"""
-            Generate a {diagramType} Mermaid diagram for the "{module.Name}" module.
-            
-            ## Available Components
-            <components>
-            {nodesJson}
-            </components>
-            
-            ## Rules
-            1. Include ONLY components from the list above
-            2. Show the most important relationships (max 15 edges to keep diagram readable)
-            3. Use proper Mermaid syntax with strict vertical orientation (graph TD or sequenceDiagram)
-            4. Add meaningful labels to edges where appropriate
-            5. Group by layer if applicable using subgraph blocks
-            6. Use descriptive but short node IDs
-            
-            ## Diagram Types
-            - For "component": Use classDiagram or graph TD showing class relationships
-            - For "sequence": Use sequenceDiagram showing method call flows
-            - For "dataflow": Use graph LR showing data transformations
-            - For "architecture": Use graph TD with subgraphs for layers
-            
-            ## Output
-            Return ONLY the Mermaid code block, no explanation:
-            ```mermaid
-            ...
-            ```
-            """;
-    }
-
     #endregion
 
     #region Legacy Page Prompt (Kept for backward compatibility)
@@ -717,6 +675,169 @@ public static class PromptTemplates
             """;
     }
 
+    #endregion
+
+    #region Hierarchical Summarization Prompts
+    /// <summary>
+    /// Generates a prompt for summarizing a module to a compressed form.
+    /// Used in Map phase of Map-Reduce processing.
+    /// </summary>
+    public static string SummarizeModulePrompt(WikiPage page, ExtractedEntities entities, int maxWords = 200)
+    {
+        var entityList = entities.HasEntities
+            ? $"MUST PRESERVE these identifiers: {string.Join(", ", entities.AllEntities.Take(15))}"
+            : "No key entities identified";
+
+        return $"""
+            Summarize the following documentation to approximately {maxWords} words.
+            
+            ## CRITICAL ENTITY ANCHORING
+            {entityList}
+            
+            ## Original Content
+            {page.Content}
+            
+            ## Instructions
+            1. Write a 1-2 sentence core purpose statement
+            2. List the 3-5 most important capabilities/functions
+            3. Note any external dependencies
+            4. Preserve ALL entity names from the MUST PRESERVE list
+            
+            ## Output Format
+            [Core purpose in 1-2 sentences]
+            
+            Key functions: [comma-separated list]
+            Dependencies: [comma-separated list or "None"]
+            Pattern: [architectural pattern or "Not identified"]
+            """;
+    }
+
+    /// <summary>
+    /// Generates a synthesis prompt that includes entity anchoring.
+    /// Ensures key identifiers are not lost during parent page generation.
+    /// </summary>
+    public static string EntityAnchoredSynthesisPrompt(
+        ModuleNode parentModule,
+        List<WikiPage> childPages,
+        ExtractedEntities entities,
+        int crossModuleDependencies,
+        string language)
+    {
+        var childSummaries = childPages
+            .Select(p => new
+            {
+                Title = p.Title,
+                Summary = ExtractFirstParagraph(p.Content),
+                FileCount = p.RelevantFiles?.Count ?? 0
+            });
+
+        var childSummariesJson = JsonSerializer.Serialize(childSummaries,
+            new JsonSerializerOptions { WriteIndented = true });
+
+        var entitySection = entities.HasEntities
+            ? $"""
+              ## CRITICAL: Entity Anchoring
+              The following identifiers MUST appear in your output. Do NOT omit or rename them:
+              - Classes: {string.Join(", ", entities.ClassNames.Take(10))}
+              - Functions: {string.Join(", ", entities.FunctionNames.Take(10))}
+              - Patterns: {string.Join(", ", entities.PatternNames.Take(5))}
+              - Dependencies: {string.Join(", ", entities.DependencyNames.Take(5))}
+              """
+            : "";
+
+        return $"""
+            Synthesize an architectural overview page for "{parentModule.Name}" (Level {parentModule.Level}).
+            
+            {entitySection}
+            
+            ## Child Modules
+            <children>
+            {childSummariesJson}
+            </children>
+            
+            ## Architecture Insights
+            - **Detected Pattern**: {parentModule.Metadata.GetValueOrDefault("ArchitecturalPattern", "Mixed")}
+            - **Cross-Module Dependencies**: {crossModuleDependencies} connections between child modules
+            - **Total Complexity**: {parentModule.ComplexityScore:F1}
+            - **Cohesion**: {parentModule.QualityMetrics.Cohesion:F2}
+            - **Coupling**: {parentModule.QualityMetrics.Coupling:F2}
+            
+            ## Your Task
+            1. Create a HIGH-LEVEL overview that explains how child modules collaborate
+            2. INCLUDE all entities from the Entity Anchoring section above
+            3. Reference child pages using [[PageTitle]] syntax
+            4. Include an architecture diagram showing child module relationships (Mermaid graph TD)
+            5. Explain the design decisions and patterns employed
+            6. Provide a "Getting Started" section for new developers
+            
+            STRICT RULES:
+            - Base content ONLY on the provided child module summaries
+            - Do NOT invent components or features not mentioned in child modules
+            - Do NOT rename or omit anchored entities
+            - Use {language} for all content
+            
+            Output ONLY the markdown content starting with # {parentModule.Name}
+            """;
+    }
+    /// <summary>
+    /// Generates a synthesis prompt for the Reduce phase of Map-Reduce.
+    /// Uses module summaries instead of full child pages to manage context size.
+    /// </summary>
+    public static string MapReduceSynthesisPrompt(
+        ModuleNode parentModule,
+        List<ModuleSummary> summaries,
+        ExtractedEntities entities,
+        int crossModuleDependencies,
+        string language)
+    {
+        var summariesJson = JsonSerializer.Serialize(summaries,
+            new JsonSerializerOptions { WriteIndented = true });
+
+        var entitySection = entities.HasEntities
+            ? $"""
+              ## CRITICAL: Entity Anchoring
+              The following identifiers MUST appear in your output. Do NOT omit or rename them:
+              - Classes: {string.Join(", ", entities.ClassNames.Take(10))}
+              - Functions: {string.Join(", ", entities.FunctionNames.Take(10))}
+              - Patterns: {string.Join(", ", entities.PatternNames.Take(5))}
+              - Dependencies: {string.Join(", ", entities.DependencyNames.Take(5))}
+              """
+            : "";
+
+        return $"""
+            Synthesize an architectural overview page for "{parentModule.Name}" (Level {parentModule.Level}).
+            
+            {entitySection}
+            
+            ## Child Module Summaries (Compressed)
+            <summaries>
+            {summariesJson}
+            </summaries>
+            
+            ## Architecture Insights
+            - **Detected Pattern**: {parentModule.Metadata.GetValueOrDefault("ArchitecturalPattern", "Mixed")}
+            - **Cross-Module Dependencies**: {crossModuleDependencies} connections between child modules
+            - **Total Complexity**: {parentModule.ComplexityScore:F1}
+            - **Cohesion**: {parentModule.QualityMetrics.Cohesion:F2}
+            - **Coupling**: {parentModule.QualityMetrics.Coupling:F2}
+            
+            ## Your Task
+            1. Create a HIGH-LEVEL overview that explains how child modules collaborate based on these summaries.
+            2. INCLUDE all entities from the Entity Anchoring section above.
+            3. Reference child modules using [[ModuleName]] syntax.
+            4. Include an architecture diagram showing child module relationships (Mermaid graph TD).
+            5. Explain the design decisions and patterns employed.
+            6. Provide a "Getting Started" section for new developers.
+            
+            STRICT RULES:
+            - Base content ONLY on the provided summaries.
+            - Do NOT invent components or features not mentioned in child summaries.
+            - Do NOT rename or omit anchored entities.
+            - Use {language} for all content.
+            
+            Output ONLY the markdown content starting with # {parentModule.Name}
+            """;
+    }
     #endregion
 
     #region Helper Methods
@@ -825,18 +946,6 @@ public class ModulePageContext
     /// IDs of components that depend on this module (external to the module).
     /// </summary>
     public List<string> Dependents { get; set; } = new();
-}
-
-/// <summary>
-/// Simplified node information for diagram generation.
-/// </summary>
-public class DiagramNodeInfo
-{
-    public string Id { get; set; } = string.Empty;
-    public string Type { get; set; } = string.Empty;
-    public string? Layer { get; set; }
-    public int OutDegree { get; set; }
-    public int InDegree { get; set; }
 }
 
 #endregion

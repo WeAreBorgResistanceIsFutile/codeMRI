@@ -8,11 +8,16 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
 {
     private readonly ILLMClient _llmClient;
     private readonly ILogger<DocumentationSynthesisService> _logger;
+    private readonly IHierarchicalSummaryService? _summaryService;
 
-    public DocumentationSynthesisService(ILLMClient llmClient, ILogger<DocumentationSynthesisService> logger)
+    public DocumentationSynthesisService(
+        ILLMClient llmClient, 
+        ILogger<DocumentationSynthesisService> logger,
+        IHierarchicalSummaryService? summaryService = null)
     {
         _llmClient = llmClient;
         _logger = logger;
+        _summaryService = summaryService;
     }
 
     public async Task<WikiPage> SynthesizeParentPageAsync(ModuleNode module, List<WikiPage> childPages,
@@ -114,41 +119,70 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
         // Estimate cross-module dependencies (simplified - could be enhanced with graph data)
         var estimatedCrossModuleDeps = childPages.Count > 1 ? childPages.Count * 2 : 0;
 
-        string prompt;
-        if (audience == AudienceType.All)
+        // Entity Anchoring: Extract key entities from child pages
+        ExtractedEntities? entities = null;
+        if (_summaryService != null && childPages.Count > 0)
         {
-             prompt = PromptTemplates.ComprehensiveParentPageSynthesisPrompt(
+            entities = _summaryService.ExtractKeyEntities(childPages);
+            if (entities.HasEntities)
+            {
+                _logger.LogInformation(
+                    "Extracted {Count} anchored entities from {ChildCount} child pages for {ModuleName}",
+                    entities.AllEntities.Count(), childPages.Count, module.Name);
+            }
+        }
+
+        // Determine synthesis strategy and final prompt
+        string prompt;
+        int overviewThreshold = (int)(_llmClient.ContextSize * 3.5);
+        bool useMapReduce = false;
+        
+        // Initial prompt estimation (Direct or Entity Anchored)
+        string basePrompt = entities?.HasEntities == true
+            ? PromptTemplates.EntityAnchoredSynthesisPrompt(module, childPages, entities, estimatedCrossModuleDeps, language)
+            : audience == AudienceType.All
+                ? PromptTemplates.ComprehensiveParentPageSynthesisPrompt(module, childPages, estimatedCrossModuleDeps, language)
+                : audience != AudienceType.Developer
+                    ? PromptTemplates.UserGuideSynthesisPrompt(module, childPages, audience, language)
+                    : PromptTemplates.ParentPageSynthesisPrompt(module, childPages, estimatedCrossModuleDeps, language);
+
+        if (basePrompt.Length > overviewThreshold && _summaryService != null)
+        {
+            _logger.LogInformation("Synthesis prompt for {ModuleName} exceeds threshold ({Length}). Initiating Map-Reduce.", module.Name, basePrompt.Length);
+            
+            // MAP Phase: Summarize each child page
+            var summaries = new List<ModuleSummary>();
+            foreach (var childPage in childPages)
+            {
+                var summary = await _summaryService.SummarizeModuleAsync(childPage, 200, default);
+                summaries.Add(summary);
+            }
+            
+            // REDUCE Phase: Synthesize from summaries
+            prompt = PromptTemplates.MapReduceSynthesisPrompt(
                 module,
-                childPages,
+                summaries,
+                entities ?? new ExtractedEntities(),
                 estimatedCrossModuleDeps,
                 language);
-        }
-        else if (audience != AudienceType.Developer)
-        {
-            prompt = PromptTemplates.UserGuideSynthesisPrompt(
-                module,
-                childPages ?? new List<WikiPage>(),
-                audience,
-                language);
+            
+            useMapReduce = true;
+            _logger.LogDebug("Using Map-Reduce synthesis for {ModuleName}", module.Name);
         }
         else
         {
-            // Use the new ParentPageSynthesisPrompt from PromptTemplates
-            prompt = PromptTemplates.ParentPageSynthesisPrompt(
-                module,
-                childPages,
-                estimatedCrossModuleDeps,
-                language);
+            prompt = basePrompt;
+            _logger.LogDebug("Using {Strategy} synthesis for {ModuleName}", 
+                entities?.HasEntities == true ? "Entity-Anchored" : "Direct", module.Name);
         }
 
         string overviewContent;
-        int overviewThreshold = (int)(_llmClient.ContextSize * 3.5);
         if (prompt.Length > overviewThreshold)
         {
-            _logger.LogInformation("Synthesis prompt too large ({Length}). Using findings-based synthesis.", prompt.Length);
+            _logger.LogWarning("Final synthesis prompt still exceeds threshold ({Length}) for {ModuleName}. Using findings-based synthesis as last resort.", prompt.Length, module.Name);
             overviewContent = await _llmClient.ChatWithFindingsAsync(
                 "You are a technical documentation expert.",
-                "Synthesize architectural documentation from the following child module summaries.",
+                "Synthesize architectural documentation from the following child module data.",
                 prompt);
         }
         else
@@ -159,13 +193,30 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                 new List<ChatMessage>());
         }
 
-        return new WikiPage
+        var resultPage = new WikiPage
         {
             Id = Guid.NewGuid().ToString(),
             Title = module.Name,
             Content = CleanContent(overviewContent, module.Name),
             RelevantFiles = new List<string>()
         };
+        
+        if (useMapReduce)
+        {
+            resultPage.Metadata["SynthesisStrategy"] = "MapReduce";
+            resultPage.Metadata["ChildSummaryCount"] = childPages.Count;
+        }
+        else if (entities?.HasEntities == true)
+        {
+            resultPage.Metadata["SynthesisStrategy"] = "WithEntityAnchoring";
+            resultPage.Metadata["AnchoredEntityCount"] = entities.AllEntities.Count();
+        }
+        else
+        {
+            resultPage.Metadata["SynthesisStrategy"] = "Direct";
+        }
+        
+        return resultPage;
     }
 
     /// <summary>

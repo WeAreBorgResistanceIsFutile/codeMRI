@@ -45,7 +45,7 @@ public class DelegationLogicTests
         var result = await _agent.ShouldDelegate(task, CancellationToken.None);
 
         // Assert
-        Assert.IsNull(result);
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -64,7 +64,7 @@ public class DelegationLogicTests
         var result = await _agent.ShouldDelegate(task, CancellationToken.None);
 
         // Assert
-        Assert.IsNotNull(result);
+        Assert.That(result, Is.Not.Null);
         Assert.That(result!.Reason, Does.StartWith("Delegation required due to high complexity (TokenCount"));
     }
 
