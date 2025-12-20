@@ -29,7 +29,20 @@ public class JudgeAgentService : IJudgeAgent
             var systemPrompt = BuildSystemPrompt();
             var userPrompt = BuildEvaluationPrompt(page, requirement);
             
-            var response = await _llmClient.ChatAsync(systemPrompt, userPrompt, new List<ChatMessage>());
+            string response;
+            int threshold = (int)(_llmClient.ContextSize * 3.5);
+            if (userPrompt.Length > threshold)
+            {
+                _logger.LogInformation("Evaluation prompt too large ({Length}). Using findings-based evaluation.", userPrompt.Length);
+                response = await _llmClient.ChatWithFindingsAsync(
+                    systemPrompt,
+                    $"Evaluate if identifying information for requirement '{requirement.Title}' exists in following content. Requirement: {requirement.Description}",
+                    userPrompt);
+            }
+            else
+            {
+                response = await _llmClient.ChatAsync(systemPrompt, userPrompt, new List<ChatMessage>());
+            }
             var result = ParseEvaluationResponse(response, requirement.Title);
 
             _logger.LogInformation("Evaluation completed for {Requirement}: Score={Score}",

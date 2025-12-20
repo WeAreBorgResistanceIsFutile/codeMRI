@@ -182,12 +182,27 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         var synthesisSystemPrompt = BuildSynthesisSystemPrompt();
         var synthesisUserPrompt = BuildSynthesisUserPrompt(outputs, originalUserPrompt);
 
-        var synthesizedContent = await _llmClient.ChatAsync(
-            synthesisSystemPrompt,
-            synthesisUserPrompt,
-            new List<ChatMessage>(),
-            judgeModel,
-            cancellationToken);
+        string synthesizedContent;
+        int threshold = (int)(_llmClient.ContextSize * 3.5);
+        if (synthesisUserPrompt.Length > threshold)
+        {
+            _logger.LogInformation("Synthesis prompt too large ({Length}). Using findings-based synthesis.", synthesisUserPrompt.Length);
+            synthesizedContent = await _llmClient.ChatWithFindingsAsync(
+                synthesisSystemPrompt,
+                "Synthesize the following documentation drafts into a single high-quality result.",
+                synthesisUserPrompt,
+                judgeModel,
+                cancellationToken);
+        }
+        else
+        {
+            synthesizedContent = await _llmClient.ChatAsync(
+                synthesisSystemPrompt,
+                synthesisUserPrompt,
+                new List<ChatMessage>(),
+                judgeModel,
+                cancellationToken);
+        }
 
         return synthesizedContent;
     }

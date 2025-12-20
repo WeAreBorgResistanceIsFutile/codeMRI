@@ -177,7 +177,7 @@ public class WikiGenerationService : IWikiGenerationService
         var selectedModel = _routingService?.SelectModelForTask(DocumentationTaskType.CodeAnalysis) ?? _documentationModel;
         
         // Use findings-based chunking if the content is very large (approx > 3000 tokens)
-        if (sourceFilesContent.Length > 12000)
+        if (sourceFilesContent.Length > (int)(_llmClient.ContextSize * 3.5))
         {
             content = await _llmClient.ChatWithFindingsAsync("", prompt, sourceFilesContent, selectedModel);
         }
@@ -268,8 +268,8 @@ public class WikiGenerationService : IWikiGenerationService
         // Enrich content with intelligent cross-links
         // Use pageTitle as sourceComponentId context if possible, or a safe fallback
         var pageId = Guid.NewGuid().ToString();
-        content = _referenceManagementService.EnrichContentWithLinks(content, pageTitle); // Using title as ID proxy for now
-        content = CleanLLMPageContent(content, pageTitle, filePaths, repoPath, remoteUrl, branch);
+        content = _referenceManagementService.EnrichContentWithLinks(content ?? string.Empty, pageTitle); // Using title as ID proxy for now
+        content = CleanLLMPageContent(content ?? string.Empty, pageTitle, filePaths, repoPath, remoteUrl, branch);
 
         return new WikiPage
         {
@@ -286,7 +286,7 @@ public class WikiGenerationService : IWikiGenerationService
     /// </summary>
     private string CleanLLMPageContent(string llmContent, string pageTitle, List<string> filePaths, string? repoPath = null, string? remoteUrl = null, string? branch = null)
     {
-        var cleanedContent = llmContent.Trim();
+        var cleanedContent = (llmContent ?? string.Empty).Trim();
 
         // 0. Strip markdown code fences that LLMs sometimes wrap around the entire output
         // This fixes the issue where ```markdown appears at the start and ``` at the end
@@ -533,7 +533,7 @@ public class WikiGenerationService : IWikiGenerationService
         var selectedModel = _routingService?.SelectModelForTask(taskType) ?? _documentationModel;
         
         // Use findings-based chunking if the content is very large (approx > 3000 tokens)
-        if (sourceFilesContent.Length > 12000)
+        if (sourceFilesContent.Length > (int)(_llmClient.ContextSize * 3.5))
         {
             content = await _llmClient.ChatWithFindingsAsync("", prompt, sourceFilesContent, selectedModel);
         }

@@ -21,6 +21,7 @@ public class DocumentationJudgeServiceTests
     public void Setup()
     {
         _mockLlmClient = new Mock<ILLMClient>();
+        _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
         _mockLogger = new Mock<ILogger<DocumentationJudgeService>>();
         _mockMeterFactory = new Mock<IMeterFactory>();
         _mockPromptBuilder = new Mock<IEvaluationPromptBuilder>();

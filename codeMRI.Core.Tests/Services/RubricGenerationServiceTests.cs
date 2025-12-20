@@ -20,6 +20,7 @@ public class RubricGenerationServiceTests
     {
         _loggerMock = new Mock<ILogger<RubricGenerationService>>();
         _llmClientMock = new Mock<ILLMClient>();
+        _llmClientMock.Setup(x => x.ContextSize).Returns(4096);
         _service = new RubricGenerationService(_loggerMock.Object, _llmClientMock.Object);
     }
 

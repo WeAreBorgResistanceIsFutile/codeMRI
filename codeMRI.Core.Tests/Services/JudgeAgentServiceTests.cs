@@ -20,6 +20,7 @@ public class JudgeAgentServiceTests
     public void SetUp()
     {
         _mockLLMClient = new Mock<ILLMClient>();
+        _mockLLMClient.Setup(x => x.ContextSize).Returns(4096);
         _mockLogger = new Mock<ILogger<IJudgeAgent>>();
         _judgeAgentService = new JudgeAgentService(_mockLogger.Object, _mockLLMClient.Object);
 

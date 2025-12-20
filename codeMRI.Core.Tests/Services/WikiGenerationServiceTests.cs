@@ -23,6 +23,10 @@ public class WikiGenerationServiceTests
         _mockSynthesisService = new Mock<IDocumentationSynthesisService>();
         _mockRefService = new Mock<IReferenceManagementService>();
 
+        _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
+        _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns<string, string>((c, id) => c!);
+
         _service = new WikiGenerationService(
             _mockLlmClient!.Object,
             _mockDiagramGenerator!.Object,
@@ -432,8 +436,8 @@ public class WikiGenerationServiceTests
         var fileName = "LargeController.cs";
         var filePaths = new List<string> { fileName };
         
-        // Create large content (> 12000 chars)
-        var largeContent = new string('a', 13000);
+        // Create large content (> 15000 chars to exceed 4096 * 3.5 threshold)
+        var largeContent = new string('a', 16000);
         var fileContents = new Dictionary<string, string> { { fileName, largeContent } };
 
         _mockLlmClient.Setup(x => x.ChatWithFindingsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))

@@ -17,6 +17,8 @@ public class OllamaLLMService : ILLMClient
     private readonly OllamaSettings _settings;
     private readonly ILogger<OllamaLLMService> _logger;
 
+    public int ContextSize => _settings.ContextSize;
+
     public OllamaLLMService(HttpClient httpClient, IOptions<OllamaSettings> settings, ILogger<OllamaLLMService> logger)
     {
         _httpClient = httpClient;
@@ -39,7 +41,8 @@ public class OllamaLLMService : ILLMClient
             stream = false,
             options = new
             {
-                temperature = _settings.Temperature
+                temperature = _settings.Temperature,
+                num_ctx = _settings.ContextSize
             }
         };
 
@@ -195,7 +198,8 @@ public class OllamaLLMService : ILLMClient
             stream = true,
             options = new
             {
-                temperature = _settings.Temperature
+                temperature = _settings.Temperature,
+                num_ctx = _settings.ContextSize
             }
         };
 
@@ -301,11 +305,11 @@ public class OllamaLLMService : ILLMClient
     private List<object> BuildMessagesWithContextWindow(string? systemPrompt, string? userPrompt, List<ChatMessage> history)
     {
         // Reserve space for response and overhead
-        const int ResponseBuffer = 1024; 
-        int availableTokens = Math.Max(_settings.ContextSize - ResponseBuffer, 256); 
+        const int ResponseBuffer = 2048; // Increased from 1024 to be safer for larger responses
+        int availableTokens = Math.Max(_settings.ContextSize - ResponseBuffer, 512); 
         
-        // Conservative character-to-token ratio
-        const double CharsPerToken = 3.5;
+        // Conservative character-to-token ratio for technical text (Mix of code and prose)
+        const double CharsPerToken = 4.0; 
         int maxChars = (int)(availableTokens * CharsPerToken);
 
         // 1. Calculate compulsory content length (System + User)
@@ -320,8 +324,8 @@ public class OllamaLLMService : ILLMClient
             int budgetForUser = maxChars - systemLen;
             if (budgetForUser < 500) budgetForUser = 500; // Absolute minimum to avoid total loss if system prompt is massive
 
-            _logger.LogWarning("Prompt size ({Compulsory} chars) exceeds estimated context character limit ({Max} chars). Truncating user prompt to {Budget}.", 
-                compulsoryLen, maxChars, budgetForUser);
+            _logger.LogWarning("Prompt size ({Compulsory} chars) exceeds estimated context character limit ({Max} chars, ContextSize: {Tokens}). Truncating user prompt.", 
+                compulsoryLen, maxChars, _settings.ContextSize);
             
             if (originalUserLen > budgetForUser)
             {

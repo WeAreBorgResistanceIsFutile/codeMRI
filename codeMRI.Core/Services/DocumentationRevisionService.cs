@@ -47,12 +47,31 @@ public class DocumentationRevisionService : IDocumentationRevisionService
 
         try
         {
-            var revisedContent = await _llmClient.ChatAsync(
-                "You are an expert technical writer specializing in documentation refinement.",
+            string revisedContent;
+        int maxCharLimit = (int)(_llmClient.ContextSize * 3.5);
+        
+        string systemPrompt = "You are an expert technical writer specializing in documentation refinement.";
+
+        if (prompt.Length > maxCharLimit)
+        {
+            _logger.LogInformation("Revision prompt length ({Length}) exceeds threshold ({Threshold}). Using findings-based synthesis.", prompt.Length, maxCharLimit);
+            // We'll treat the prompt as the large content and use a minimal base prompt
+            revisedContent = await _llmClient.ChatWithFindingsAsync(
+                systemPrompt,
+                "Refine the following documentation based on the provided insights.",
+                prompt,
+                null,
+                cancellationToken);
+        }
+        else
+        {
+            revisedContent = await _llmClient.ChatAsync(
+                systemPrompt,
                 prompt,
                 new List<ChatMessage>(),
                 null,
                 cancellationToken);
+        }
 
             // Create revised page preserving metadata
             var revisedPage = new WikiPage

@@ -27,6 +27,7 @@ public class WikiGenerationServiceAudienceTests
     public void Setup()
     {
         _mockLlmClient = new Mock<ILLMClient>();
+        _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
         _mockDiagramGenerator = new Mock<IDiagramGenerator>();
         _mockGraphService = new Mock<IEnhancedDependencyGraphService>();
         _mockLogger = new Mock<ILogger<WikiGenerationService>>();

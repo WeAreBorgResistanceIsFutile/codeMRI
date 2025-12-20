@@ -18,6 +18,7 @@ public class DocumentationSynthesisServiceTests
     public void Setup()
     {
         _mockLlmClient = new Mock<ILLMClient>();
+        _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
         _mockLogger = new Mock<ILogger<DocumentationSynthesisService>>();
         _service = new DocumentationSynthesisService(_mockLlmClient.Object, _mockLogger.Object);
     }

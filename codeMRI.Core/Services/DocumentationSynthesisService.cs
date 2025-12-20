@@ -41,10 +41,22 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                 Output markdown starting with # {module.Name}
                 """;
             
-            var simpleContent = await _llmClient.ChatAsync(
-                "You are a technical documentation expert.", 
-                simplePrompt,
-                new List<ChatMessage>());
+            string simpleContent;
+            int simpleThreshold = (int)(_llmClient.ContextSize * 3.5);
+            if (simplePrompt.Length > simpleThreshold)
+            {
+                simpleContent = await _llmClient.ChatWithFindingsAsync(
+                    "You are a technical documentation expert.",
+                    "Summarize the following module information.",
+                    simplePrompt);
+            }
+            else
+            {
+                simpleContent = await _llmClient.ChatAsync(
+                    "You are a technical documentation expert.", 
+                    simplePrompt,
+                    new List<ChatMessage>());
+            }
             
             return new WikiPage
             {
@@ -66,10 +78,23 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                 childPages,
                 language);
             
-            var mergedContent = await _llmClient.ChatAsync(
-                "You are a technical documentation expert specializing in content synthesis and organization.",
-                mergePrompt,
-                new List<ChatMessage>());
+            string mergedContent;
+            int mergeThreshold = (int)(_llmClient.ContextSize * 3.5);
+            if (mergePrompt.Length > mergeThreshold)
+            {
+                _logger.LogInformation("Merge prompt too large ({Length}). Using findings-based synthesis.", mergePrompt.Length);
+                mergedContent = await _llmClient.ChatWithFindingsAsync(
+                    "You are a technical documentation expert specializing in content synthesis and organization.",
+                    "Merge the following documentation clusters into a single cohesive document as instructed.",
+                    mergePrompt);
+            }
+            else
+            {
+                mergedContent = await _llmClient.ChatAsync(
+                    "You are a technical documentation expert specializing in content synthesis and organization.",
+                    mergePrompt,
+                    new List<ChatMessage>());
+            }
             
             return new WikiPage
             {
@@ -116,10 +141,23 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                 language);
         }
 
-        var overviewContent = await _llmClient.ChatAsync(
-            "You are a technical documentation expert.", 
-            prompt,
-            new List<ChatMessage>());
+        string overviewContent;
+        int overviewThreshold = (int)(_llmClient.ContextSize * 3.5);
+        if (prompt.Length > overviewThreshold)
+        {
+            _logger.LogInformation("Synthesis prompt too large ({Length}). Using findings-based synthesis.", prompt.Length);
+            overviewContent = await _llmClient.ChatWithFindingsAsync(
+                "You are a technical documentation expert.",
+                "Synthesize architectural documentation from the following child module summaries.",
+                prompt);
+        }
+        else
+        {
+            overviewContent = await _llmClient.ChatAsync(
+                "You are a technical documentation expert.", 
+                prompt,
+                new List<ChatMessage>());
+        }
 
         return new WikiPage
         {

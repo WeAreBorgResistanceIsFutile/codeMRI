@@ -2,6 +2,8 @@ namespace codeMRI.Core.Interfaces;
 
 public interface ILLMClient
 {
+    int ContextSize { get; }
+
     Task<string> ChatAsync(string systemPrompt, string userPrompt, List<ChatMessage> history, string? model = null, CancellationToken cancellationToken = default);
     
     IAsyncEnumerable<string> ChatStreamAsync(string systemPrompt, string userPrompt, List<ChatMessage> history, string? model = null, CancellationToken cancellationToken = default);
