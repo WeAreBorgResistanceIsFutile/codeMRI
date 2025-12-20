@@ -1,17 +1,28 @@
 # codeMRI
 
-**codeMRI** is an advanced AI-powered code analysis and documentation platform that generates comprehensive, multi-perspective repository documentation using LLM-based agents and semantic analysis.
+**codeMRI** is an advanced AI-powered code analysis and documentation platform that generates comprehensive, multi-perspective repository documentation using LLM-based agents and semantic analysis. Based on the CodeWiki research, it provides scalable, context-aware documentation generation with intelligent model routing and adaptive processing.
 
 ## 🚀 Features
 
-- **Intelligent Repository Ingestion**: Supports both local and remote Git repositories
-- **Multi-Language AST Parsing**: Deep code analysis via dedicated AST service (TypeScript/JavaScript, Python, C#, Java, Go, Rust, and more)
-- **AI-Powered Documentation**: Generates comprehensive wiki documentation using LLM orchestration with multiple judge models
-- **Semantic Search**: RAG-based chat interface for querying codebases
-- **Hierarchical Decomposition**: Automatically structures repositories into logical modules and components
-- **Dependency Graph Analysis**: Visualizes code relationships and dependencies
-- **Agent Telemetry**: Tracks and monitors AI agent activities throughout the documentation generation process
-- **Re-ingestion Support**: Update documentation as repositories evolve
+### Core Capabilities
+- **Intelligent Repository Ingestion**: Supports both local and remote Git repositories with automatic language detection
+- **Multi-Language AST Parsing**: Deep code analysis via dedicated AST service supporting TypeScript/JavaScript, Python, C#, Java, Go, Rust, and more
+- **Hierarchical Decomposition**: Automatically structures repositories into logical modules and components using semantic clustering
+- **Dependency Graph Analysis**: Visualizes code relationships and dependencies in Neo4j graph database
+- **Semantic Search**: RAG-based chat interface for querying codebases with vector similarity search
+- **Agent Telemetry**: Comprehensive tracking and monitoring of AI agent activities throughout the generation process
+- **Re-ingestion Support**: Intelligent updates for evolving repositories
+
+### Advanced AI Features
+- **Audience-Specific Documentation**: Generate tailored documentation for different audiences (Developer, Tester, DevOps)
+- **Model Routing**: Intelligent task-specific model selection for optimal results
+  - Code analysis using specialized models (e.g., `glm-4.6:cloud`)
+  - Natural language generation with optimized models (e.g., `ministral-3:14b-cloud`)
+  - Ensemble synthesis for high-quality output
+- **Multi-Perspective Evaluation**: Documentation judged and synthesized from multiple LLM perspectives using consensus-based quality control
+- **Adaptive Delegation**: Dynamic complexity-based delegation with configurable depth and semantic diversity thresholds
+- **Hierarchical Context Management**: Map-Reduce style processing for large codebases with entity anchoring and parent-child revision loops
+- **Semantic Chunking**: Configurable intelligent chunking based on semantic boundaries rather than fixed token limits
 
 ## 🏗️ Architecture
 
@@ -44,15 +55,23 @@ codeMRI follows a clean architecture pattern with the following components:
 
 Pull the necessary models:
 ```bash
-ollama pull nomic-embed-text
-ollama pull mistral-large-3:675b-cloud
+# Core models
+ollama pull nomic-embed-text           # Embeddings
+ollama pull mistral-large-3:675b-cloud  # Documentation & chat
+
+# Judge models for multi-perspective evaluation
 ollama pull kimi-k2-thinking:cloud
 ollama pull deepseek-v3.1:671b-cloud
 ollama pull cogito-2.1:671b-cloud
 ollama pull minimax-m2:cloud
+
+# Specialized routing models (optional but recommended)
+ollama pull glm-4.6:cloud              # Code analysis
+ollama pull ministral-3:14b-cloud       # Natural language
+ollama pull devstral-2:123b-cloud       # Ensemble generation
 ```
 
-> **Note**: The judge models listed above are used for multi-perspective documentation evaluation. You can configure different models in `appsettings.json`.
+> **Note**: The judge models above are used for multi-perspective documentation evaluation. Model routing allows task-specific model selection for optimal results. You can configure different models in `appsettings.json`.
 
 ## 🚀 Getting Started
 
@@ -97,7 +116,9 @@ The browser should open automatically to the Blazor WebAssembly app. If not, nav
 
 ## 📖 Usage
 
-### Ingesting a Repository
+### Web Interface
+
+#### Ingesting a Repository
 
 1. **Navigate to the Ingestion Page**: Click "Ingest Repository" in the navigation
 2. **Enter Repository Source**:
@@ -110,27 +131,87 @@ The browser should open automatically to the Blazor WebAssembly app. If not, nav
    - Build dependency graphs in Neo4j
    - Store metadata in SQLite
 
-### Generating Documentation
+#### Generating Documentation
 
 1. **Navigate to Repository Landing**: Select your ingested repository
-2. **Click "Generate Advanced Wiki"**: The AI orchestrator will:
-   - Perform hierarchical decomposition
+2. **Select Target Audience**: Choose Developer, Tester, or DevOps for audience-specific documentation
+3. **Click "Generate Advanced Wiki"**: The AI orchestrator will:
+   - Perform hierarchical decomposition with semantic clustering
+   - Apply intelligent model routing for optimal results
    - Generate documentation rubrics
    - Draft content using multiple LLM perspectives
-   - Evaluate and synthesize final documentation
-3. **View Generated Wiki**: Browse the structured documentation in the wiki interface
+   - Evaluate and synthesize final documentation using ensemble methods
+   - Apply parent-child revision loops for consistency
+4. **View Generated Wiki**: Browse the structured, audience-tailored documentation in the wiki interface
 
-### RAG Chat
+#### RAG Chat
 
 1. **Navigate to the Chat Interface**: Access the chat page for your repository
 2. **Ask Questions**: Query the codebase using natural language
-3. **Semantic Search**: The system retrieves relevant code snippets and provides context-aware answers
+3. **Semantic Search**: The system retrieves relevant code snippets using vector similarity and provides context-aware answers
 
-### Re-ingesting a Repository
+#### Re-ingesting a Repository
 
 1. **Navigate to Repository Landing**
 2. **Click "Re-ingest"**: The dialog will pre-fill with the original repository source
 3. **Confirm**: The system will update the analysis with the latest code changes
+
+### Command-Line Interface (CLI)
+
+The CLI provides a headless interface for automated documentation generation and integration into CI/CD pipelines.
+
+#### Basic Usage
+
+```bash
+cd codeMRI.CLI
+dotnet run -- --input /path/to/repo
+```
+
+#### Advanced Examples
+
+```bash
+# Generate documentation for a local repository with specific audience
+dotnet run -- \
+  --input /path/to/repo \
+  --audience Developer \
+  --server http://localhost:5247 \
+  --verbose
+
+# Process a Git repository and save output to files
+dotnet run -- \
+  --input https://github.com/username/repo.git \
+  --audience Tester \
+  --output ./docs \
+  --force
+
+# Full example with all options
+dotnet run -- \
+  --input /Users/username/projects/my-repo \
+  --server http://localhost:5247 \
+  --audience DevOps \
+  --output ./generated-docs \
+  --force \
+  --verbose
+```
+
+#### CLI Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--input` | `-i` | Path to local repository or Git URL | (required) |
+| `--server` | `-s` | URL of the codeMRI Server | `http://localhost:5247` |
+| `--audience` | `-a` | Target audience (Developer, Tester, DevOps) | `Developer` |
+| `--output` | `-o` | Directory to save generated Markdown files | (optional) |
+| `--force` | `-f` | Force regeneration (ignore cache) | `false` |
+| `--verbose` | `-v` | Enable verbose logging | `false` |
+
+#### CLI Features
+
+- **Real-time Progress**: Connects to SignalR hub for live generation updates
+- **Git Integration**: Automatically clones remote repositories
+- **Audience-specific Output**: Saves documentation to audience-named subdirectories
+- **Flexible Output**: Either persist to database or export as Markdown files
+- **Error Handling**: Comprehensive error messages and connection diagnostics
 
 ## ⚙️ Configuration
 
@@ -149,22 +230,60 @@ Edit `codeMRI.Server/appsettings.json`:
     "EmbeddingModel": "nomic-embed-text",
     "DocumentationModel": "mistral-large-3:675b-cloud",
     "ChatModel": "mistral-large-3:675b-cloud",
-    "ContextSize": 16384,
+    "ContextSize": 16000,
     "JudgeModels": [
       "mistral-large-3:675b-cloud",
       "kimi-k2-thinking:cloud",
       "deepseek-v3.1:671b-cloud",
       "cogito-2.1:671b-cloud",
       "minimax-m2:cloud"
-    ]
+    ],
+    "ModelRouting": {
+      "EnableModelRouting": true,
+      "EnableEnsembleGeneration": true,
+      "CodeAnalysisModel": "glm-4.6:cloud",
+      "NaturalLanguageModel": "ministral-3:14b-cloud",
+      "SynthesisJudgeModel": "cogito-2.1:671b-cloud",
+      "EnsembleModels": [
+        "deepseek-v3.1:671b-cloud",
+        "devstral-2:123b-cloud",
+        "kimi-k2-thinking:cloud"
+      ],
+      "MinimumAgreementThreshold": 2
+    }
   },
   "ASTService": {
     "BaseUrl": "http://localhost:3002",
     "TimeoutSeconds": 30,
     "Enabled": true
+  },
+  "Delegation": {
+    "EnableDelegation": true,
+    "MaxComplexityScore": 100,
+    "MaxDelegationDepth": 3,
+    "SemanticDiversityThreshold": 0.6,
+    "ContextUtilizationRatio": 0.8
   }
 }
 ```
+
+#### Configuration Options
+
+**Model Routing** (`Ollama.ModelRouting`):
+- `EnableModelRouting`: Use specialized models for different tasks (code vs. natural language)
+- `EnableEnsembleGeneration`: Generate multiple drafts and synthesize for higher quality
+- `CodeAnalysisModel`: Model optimized for analyzing code structure and relationships
+- `NaturalLanguageModel`: Model optimized for generating readable documentation
+- `SynthesisJudgeModel`: Model that evaluates and combines outputs from multiple models
+- `EnsembleModels`: List of models used in ensemble generation
+- `MinimumAgreementThreshold`: Number of models that must agree for consensus (2-5)
+
+**Delegation** (`Delegation`):
+- `EnableDelegation`: Enable adaptive complexity-based delegation for scalability
+- `MaxComplexityScore`: Complexity threshold that triggers delegation (50-200)
+- `MaxDelegationDepth`: Maximum nesting level for delegated subtasks (1-5)
+- `SemanticDiversityThreshold`: Minimum semantic difference for splitting modules (0.3-0.9)
+- `ContextUtilizationRatio`: Target context window utilization ratio (0.6-0.9)
 
 ### Docker Services Configuration
 
@@ -219,4 +338,11 @@ Contributions are welcome! Please ensure:
 
 ## 🙏 Acknowledgments
 
-Based on the CodeWiki research paper on automated repository-level documentation generation.
+This project is based on **CodeWiki: Automated Repository-Level Documentation at Scale**, implementing the research paper's approach to hierarchical repository documentation using LLM-based agents. Key implementations include:
+
+- Hierarchical decomposition with semantic clustering
+- Multi-agent documentation generation with judge models
+- Adaptive delegation for scalability
+- Parent-child revision loops for consistency
+
+The implementation extends the research with additional features like audience-specific documentation, intelligent model routing, and ensemble synthesis.
