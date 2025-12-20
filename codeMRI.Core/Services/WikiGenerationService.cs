@@ -402,16 +402,11 @@ public class WikiGenerationService : IWikiGenerationService
 
         // Use the enhanced prompt with module context based on audience
         string prompt;
-        if (audience == AudienceType.All)
+        if (audience != AudienceType.Developer)
         {
-            // Comprehensive prompt for all audiences
-            prompt = PromptTemplates.ComprehensivePagePrompt(module, relatedPages, context, language, humanContext);
-        }
-        else if (audience != AudienceType.Developer)
-        {
-            // For User/DevOps, use the specific prompt template
+            // For Tester/DevOps, use the specific prompt template
             var sourceContent = availableFiles.ToDictionary(k => k.Key, v => v.Value);
-            prompt = PromptTemplates.UserGuidePagePrompt(module, context, sourceContent, audience, language,
+            prompt = PromptTemplates.TesterGuidePagePrompt(module, context, sourceContent, audience, language,
                 humanContext);
         }
         else
@@ -450,7 +445,7 @@ public class WikiGenerationService : IWikiGenerationService
 
             if (graph.NodeCount > 0)
             {
-                if (audience == AudienceType.Developer || audience == AudienceType.All)
+                if (audience == AudienceType.Developer)
                 {
                     var entryPointId = FindEntryPointForPage(module.Name, filePaths, graph);
                     if (!string.IsNullOrEmpty(entryPointId))
@@ -466,9 +461,9 @@ public class WikiGenerationService : IWikiGenerationService
                     }
                 }
 
-                if (audience != AudienceType.Developer || audience == AudienceType.All)
+                if (audience != AudienceType.Developer)
                 {
-                    // For User/DevOps or All, generate high-level Deployment/Context diagram
+                    // For Tester/DevOps, generate high-level Deployment/Context diagram
                     var deploymentDiagram = await _diagramGenerator.GenerateDeploymentDiagramAsync(module, graph);
                     if (!string.IsNullOrWhiteSpace(deploymentDiagram) && deploymentDiagram.Contains("C4Context"))
                     {

@@ -250,8 +250,8 @@ public class CodeWikiOrchestratorTests
                 new WikiPage { Id = $"id_{m.Name}", Title = m.Name, Content = $"Content for {m.Name}" });
 
         _mockSynthesisService
-            .Setup(s => s.SynthesizeParentPageAsync(rootModule, It.IsAny<List<WikiPage>>(), "English", AudienceType.All,
-                It.IsAny<bool>(), It.IsAny<SynthesisStrategy?>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.SynthesizeParentPageAsync(rootModule, It.IsAny<List<WikiPage>>(), "English", AudienceType.Developer,
+                false, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WikiPage { Id = "id_RootModule", Title = "RootModule", Content = "Synthesized Content" });
 
         // Act

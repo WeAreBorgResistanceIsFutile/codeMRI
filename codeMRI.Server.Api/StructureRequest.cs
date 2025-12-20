@@ -3,9 +3,8 @@ namespace codeMRI.Server.Api;
 public enum AudienceType
 {
     Developer,
-    User,
-    DevOps,
-    All
+    Tester,
+    DevOps
 }
 
 public class StructureRequest

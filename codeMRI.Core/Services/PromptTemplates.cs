@@ -362,13 +362,13 @@ Use the language '{language}' for labels if possible.
 ";
     }
 
-    #region User/DevOps Documentation Prompts
+    #region Tester/DevOps Documentation Prompts
 
     /// <summary>
-    ///     Generates a user-focused guide prompt for a module.
+    ///     Generates a tester-focused guide prompt for a module.
     ///     Focuses on capabilities, configuration, and operations rather than code structure.
     /// </summary>
-    public static string UserGuidePagePrompt(
+    public static string TesterGuidePagePrompt(
         ModuleNode module,
         ModulePageContext context,
         Dictionary<string, string> sourceFiles,
@@ -376,10 +376,10 @@ Use the language '{language}' for labels if possible.
         string language,
         string? humanContext = null)
     {
-        var role = audience == AudienceType.DevOps ? "DevOps Engineer" : "Technical Writer";
+        var role = audience == AudienceType.DevOps ? "DevOps Engineer" : "QA Engineer";
         var audienceDesc = audience == AudienceType.DevOps
             ? "System Administrators and DevOps"
-            : "End Users and Non-Technical Stakeholders";
+            : "QA Engineers and Testers";
 
         var sb = new StringBuilder();
         sb.AppendLine($"You are an expert {role} writing documentation for {audienceDesc}.");
@@ -400,7 +400,7 @@ Use the language '{language}' for labels if possible.
         sb.AppendLine(
             "Write a user-friendly guide covering the following aspects based ONLY on the source code provided:");
         sb.AppendLine("1. **Overview**: What is this component and what problem does it solve? (No code jargon)");
-        sb.AppendLine("2. **Key Capabilities**: specific features available to the user/admin.");
+        sb.AppendLine("2. **Key Capabilities**: specific features available to the tester/admin.");
         sb.AppendLine(
             "3. **Configuration**: Look for environment variables, config files, or settings classes. specific flags.");
         sb.AppendLine(
@@ -504,9 +504,9 @@ Use the language '{language}' for labels if possible.
     }
 
     /// <summary>
-    ///     Generates a high-level system overview prompt for User/DevOps audience.
+    ///     Generates a high-level system overview prompt for Tester/DevOps audience.
     /// </summary>
-    public static string UserGuideSynthesisPrompt(
+    public static string TesterGuideSynthesisPrompt(
         ModuleNode parentModule,
         List<WikiPage> childPages,
         AudienceType audience,

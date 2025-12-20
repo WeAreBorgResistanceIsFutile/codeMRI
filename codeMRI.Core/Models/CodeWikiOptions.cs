@@ -25,4 +25,10 @@ public class CodeWikiOptions
     ///     Whether to use semantic chunking in TextSplitter instead of simple sliding windows.
     /// </summary>
     public bool UseSemanticChunking { get; set; } = true;
+
+    /// <summary>
+    ///     Default target audience for documentation generation.
+    ///     Can be overridden per generation request.
+    /// </summary>
+    public AudienceType DefaultAudience { get; set; } = AudienceType.Developer;
 }

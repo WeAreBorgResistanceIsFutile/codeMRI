@@ -153,13 +153,10 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
             : entities?.HasEntities == true && activeStrategy != SynthesisStrategy.Direct
                 ? PromptTemplates.EntityAnchoredSynthesisPrompt(module, childPages, entities, estimatedCrossModuleDeps,
                     language)
-                : audience == AudienceType.All
-                    ? PromptTemplates.ComprehensiveParentPageSynthesisPrompt(module, childPages,
-                        estimatedCrossModuleDeps, language)
-                    : audience != AudienceType.Developer
-                        ? PromptTemplates.UserGuideSynthesisPrompt(module, childPages, audience, language)
-                        : PromptTemplates.ParentPageSynthesisPrompt(module, childPages, estimatedCrossModuleDeps,
-                            language);
+                : audience != AudienceType.Developer
+                    ? PromptTemplates.TesterGuideSynthesisPrompt(module, childPages, audience, language)
+                    : PromptTemplates.ParentPageSynthesisPrompt(module, childPages, estimatedCrossModuleDeps,
+                        language);
 
         if ((basePrompt.Length > overviewThreshold || activeStrategy == SynthesisStrategy.MapReduce) &&
             _summaryService != null)

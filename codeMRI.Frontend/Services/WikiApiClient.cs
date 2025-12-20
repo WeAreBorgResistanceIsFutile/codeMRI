@@ -118,7 +118,17 @@ public class WikiApiClient
 
     public async Task<List<IngestionJob>> ListActiveIngestionsAsync()
     {
-        return await _http.GetFromJsonAsync<List<IngestionJob>>("api/Wiki/ingestions/active")
+        // Create JSON options with string enum converter
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        };
+        
+        var response = await _http.GetAsync("api/Wiki/ingestions/active");
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<List<IngestionJob>>(json, jsonOptions)
                ?? new List<IngestionJob>();
     }
 

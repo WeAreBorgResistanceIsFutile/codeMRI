@@ -63,8 +63,8 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IProgress<ProgressInfo>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        // Force AudienceType to All for comprehensive documentation
-        var audience = AudienceType.All;
+        // Use configured default audience
+        var audience = _options.DefaultAudience;
 
         // 0. Initialize Progress Sservice
         if (progress != null) _progressService.SetHandler(p => progress.Report(p));

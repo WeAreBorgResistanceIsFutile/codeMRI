@@ -21,3 +21,10 @@ public class ProgressInfo
     public string Message { get; set; } = string.Empty;
     public int Percentage { get; set; }
 }
+
+public enum AudienceType
+{
+    Developer,
+    Tester,
+    DevOps
+}

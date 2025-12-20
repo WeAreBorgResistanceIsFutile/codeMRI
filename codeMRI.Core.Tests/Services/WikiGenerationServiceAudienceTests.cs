@@ -67,13 +67,13 @@ public class WikiGenerationServiceAudienceTests
 
         // Act
         await _service.GenerateEnhancedPageAsync(module, null, context, fileContents, "English", null,
-            AudienceType.User);
+            AudienceType.Tester);
 
         // Assert
         // Verify prompt contains audience specific text
         _mockLlmClient.Verify(x => x.ChatAsync(
             It.IsAny<string>(),
-            It.Is<string>(p => p.Contains("End Users") && p.Contains("Key Capabilities")),
+            It.Is<string>(p => p.Contains("QA Engineers") && p.Contains("Key Capabilities")),
             It.IsAny<List<ChatMessage>>(),
             It.IsAny<string?>(),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -117,7 +117,7 @@ public class WikiGenerationServiceAudienceTests
 
         // Act
         await _service.GenerateEnhancedPageAsync(module, null, context, fileContents, "English", null,
-            AudienceType.User);
+            AudienceType.Tester);
 
         // Assert
         // Verify Deployment Diagram is called
@@ -174,7 +174,7 @@ public class WikiGenerationServiceAudienceTests
             await File.WriteAllTextAsync(Path.Combine(tempDir, "File.cs"), "code content");
 
             await _service.GenerateEnhancedPageAsync(module, null, context, fileContents, "English", tempDir,
-                AudienceType.User);
+                AudienceType.Tester);
 
             // Assert
             Assert.That(capturedPrompt, Does.Contain("Human written readme content"));

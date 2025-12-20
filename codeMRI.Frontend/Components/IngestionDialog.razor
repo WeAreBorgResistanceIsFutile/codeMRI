@@ -148,7 +148,7 @@
     [Parameter] public string DefaultValue { get; set; } = "";
 
     private string repoInput = "";
-    private readonly AudienceType selectedAudience = AudienceType.All;
+    private AudienceType selectedAudience = AudienceType.Developer;
     private string errorMessage = "";
     private IngestionJob? currentJob;
     private List<IngestionJob>? activeJobs;

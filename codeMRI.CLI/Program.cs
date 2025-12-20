@@ -34,22 +34,35 @@ internal class Program
             new[] { "--output", "-o" },
             "Directory to save the generated Markdown files");
 
+        var audienceOption = new Option<string>(
+            new[] { "--audience", "-a" },
+            description: "Target audience for documentation generation (Developer, Tester, DevOps)",
+            getDefaultValue: () => "Developer");
+
         rootCommand.AddOption(inputOption);
         rootCommand.AddOption(serverOption);
         rootCommand.AddOption(verboseOption);
         rootCommand.AddOption(forceOption);
         rootCommand.AddOption(outputOption);
+        rootCommand.AddOption(audienceOption);
 
         rootCommand.SetHandler(
-            async (input, serverUrl, verbose, force, output) =>
+            async (input, serverUrl, verbose, force, output, audience) =>
             {
-                await RunAsync(input, serverUrl, verbose, force, output);
-            }, inputOption, serverOption, verboseOption, forceOption, outputOption);
+                // Validate audience
+                if (!Enum.TryParse<AudienceType>(audience, ignoreCase: true, out var audienceType))
+                {
+                    Console.WriteLine($"Error: Invalid audience type '{audience}'. Valid values are: Developer, Tester, DevOps");
+                    return;
+                }
+                
+                await RunAsync(input, serverUrl, verbose, force, output, audienceType);
+            }, inputOption, serverOption, verboseOption, forceOption, outputOption, audienceOption);
 
         return await rootCommand.InvokeAsync(args);
     }
 
-    private static async Task RunAsync(string input, string serverUrl, bool verbose, bool force, string? output)
+    private static async Task RunAsync(string input, string serverUrl, bool verbose, bool force, string? output, AudienceType audience)
     {
         using var client = new HttpClient();
         client.BaseAddress = new Uri(serverUrl);
@@ -121,12 +134,20 @@ internal class Program
             Language = "Detected automatically",
             ForceRegenerate = force,
             SkipPersistence = !string.IsNullOrEmpty(output),
-            ConnectionId = connectionId
+            ConnectionId = connectionId,
+            Audience = audience.ToString()
         };
 
         try
         {
             if (verbose) Console.WriteLine($"Sending request to server for {targetPath}...");
+            
+            // Debug: Show the JSON being sent
+            if (verbose)
+            {
+                var debugJson = System.Text.Json.JsonSerializer.Serialize(request, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                Console.WriteLine($"Request JSON:\n{debugJson}");
+            }
 
             var response = await client.PostAsJsonAsync("api/Wiki/generate-advanced", request);
 
@@ -143,7 +164,10 @@ internal class Program
 
                         if (structure != null)
                         {
-                            Directory.CreateDirectory(output);
+                            // Create audience-specific subdirectory
+                            var outputDir = Path.Combine(output, audience.ToString());
+                            Directory.CreateDirectory(outputDir);
+                            
                             Console.WriteLine($"Received {structure.Pages.Count} pages from server.");
                             if (verbose)
                             {
@@ -151,16 +175,16 @@ internal class Program
                                 foreach (var p in structure.Pages) Console.WriteLine($"- {p.Title}");
                             }
 
-                            Console.WriteLine($"Saving pages to {output}...");
+                            Console.WriteLine($"Saving pages to {outputDir}...");
 
                             foreach (var page in structure.Pages)
                             {
                                 var safeTitle = string.Join("_", page.Title.Split(Path.GetInvalidFileNameChars()));
-                                var filePath = Path.Combine(output, $"{safeTitle}.md");
+                                var filePath = Path.Combine(outputDir, $"{safeTitle}.md");
                                 await File.WriteAllTextAsync(filePath, page.Content);
                             }
 
-                            Console.WriteLine($"Saved files to {output}");
+                            Console.WriteLine($"Saved {structure.Pages.Count} files to {outputDir}");
                         }
                         else
                         {
