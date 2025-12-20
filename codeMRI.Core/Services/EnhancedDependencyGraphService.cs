@@ -8,10 +8,10 @@ namespace codeMRI.Core.Services;
 
 public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
 {
-    private readonly ILogger<EnhancedDependencyGraphService> _logger;
     private readonly IASTServiceClient _astServiceClient; // Renamed back
     private readonly IComponentIdentificationService _componentService;
-    private readonly IProgressService _progressService; 
+    private readonly ILogger<EnhancedDependencyGraphService> _logger;
+    private readonly IProgressService _progressService;
 
     public EnhancedDependencyGraphService(
         ILogger<EnhancedDependencyGraphService> logger,
@@ -34,8 +34,8 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
 
         // Note: Node creation happens in the loop below which includes AST enrichment.
         // Don't add nodes here to avoid duplicates.
-        int processed = 0;
-        int total = components.Count;
+        var processed = 0;
+        var total = components.Count;
 
         // Build nodes (original loop, modified for progress reporting and AST service)
         foreach (var component in components)
@@ -43,7 +43,7 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
             processed++;
             if (total > 0)
             {
-                int pct = (int)((double)processed / total * 100);
+                var pct = (int)((double)processed / total * 100);
                 _progressService.Report(new ProgressInfo
                 {
                     Phase = "Graph Construction",
@@ -55,7 +55,8 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
             cancellationToken.ThrowIfCancellationRequested();
 
             // Enrich with AST Service if possible
-            if (component.Type != "Configuration" && !string.IsNullOrEmpty(component.FilePath) && File.Exists(component.FilePath))
+            if (component.Type != "Configuration" && !string.IsNullOrEmpty(component.FilePath) &&
+                File.Exists(component.FilePath))
                 try
                 {
                     var code = await File.ReadAllTextAsync(component.FilePath, cancellationToken);
@@ -68,7 +69,6 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
 
                         // Process Rich AST Nodes
                         if (graphData.Nodes != null && graphData.Nodes.Any())
-                        {
                             foreach (var node in graphData.Nodes)
                             {
                                 // Avoid overwriting the main component node if it exists, or maybe enrich it?
@@ -89,31 +89,20 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
                                 };
                                 graph.AddNode(node.Id, nodeMetadata);
                             }
-                        }
 
                         // Process Rich AST Edges
                         if (graphData.Edges != null && graphData.Edges.Any())
-                        {
                             foreach (var edge in graphData.Edges)
-                            {
                                 // Map EdgeType string to Enum
                                 if (Enum.TryParse<EdgeType>(edge.Type, true, out var type))
-                                {
                                     graph.AddEdge(edge.Source, edge.Target, type, 1.0);
-                                }
                                 else
-                                {
                                     graph.AddEdge(edge.Source, edge.Target, EdgeType.Dependency, 1.0);
-                                }
-                            }
-                        }
 
                         // Legacy Dependencies Support
                         foreach (var dep in graphData.Dependencies)
-                        {
                             if (!component.Dependencies.Contains(dep))
                                 component.Dependencies.Add(dep);
-                        }
                     }
                 }
                 catch (Exception ex)
@@ -465,7 +454,7 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
     }
 
     /// <summary>
-    /// Finds strongly connected components using Tarjan's algorithm.
+    ///     Finds strongly connected components using Tarjan's algorithm.
     /// </summary>
     private List<List<string>> FindStronglyConnectedComponents(EnhancedDependencyGraph graph)
     {
@@ -486,9 +475,7 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
 
             var node = graph.GetNode(nodeId);
             if (node != null)
-            {
                 foreach (var neighborId in node.OutEdges)
-                {
                     if (!indices.ContainsKey(neighborId))
                     {
                         // Successor has not been visited; recurse
@@ -500,8 +487,6 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
                         // Successor is on the stack, hence in current SCC
                         lowLinks[nodeId] = Math.Min(lowLinks[nodeId], indices[neighborId]);
                     }
-                }
-            }
 
             // If nodeId is a root node, pop the stack and generate an SCC
             if (lowLinks[nodeId] == indices[nodeId])
@@ -520,12 +505,8 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         }
 
         foreach (var node in graph.GetNodes())
-        {
             if (!indices.ContainsKey(node.ComponentId))
-            {
                 StrongConnect(node.ComponentId);
-            }
-        }
 
         return sccs.Where(scc => scc.Count > 1).ToList(); // Only return cycles (size > 1)
     }

@@ -10,9 +10,11 @@ public interface IEvaluationMetricsSystem
     Task<CoverageMetrics> CalculateCoverageMetricsAsync(List<WikiPage> pages, List<CodeComponent> components);
     Task<ReadabilityMetrics> AnalyzeReadabilityAsync(List<WikiPage> pages);
     Task<BenchmarkReport> GenerateBenchmarkReportAsync(string repositoryPath, DocumentationQualityMetrics metrics);
-    
+
     // Multi-judge consensus evaluation methods
-    Task<ConsensusQualityScore> EvaluateWithMultipleJudgesAsync(WikiPage page, EvaluationRubric rubric, List<IJudgeAgent> judges);
+    Task<ConsensusQualityScore> EvaluateWithMultipleJudgesAsync(WikiPage page, EvaluationRubric rubric,
+        List<IJudgeAgent> judges);
+
     Task<QualityScore> EvaluateWithJudgesAsync(WikiPage page, EvaluationRubric rubric);
 }
 
@@ -97,9 +99,9 @@ public class ConsensusQualityScore : QualityScore
     public List<IndividualJudgeScore> IndividualScores { get; set; } = new();
     public bool MeetsMinimumJudgeRequirement { get; set; }
     public string ConsensusStatus { get; set; } = string.Empty;
-    
+
     /// <summary>
-    /// Combined uncertainty from all judges, reflecting inter-judge disagreement.
+    ///     Combined uncertainty from all judges, reflecting inter-judge disagreement.
     /// </summary>
     public double OverallUncertainty { get; set; }
 }
@@ -111,9 +113,9 @@ public class IndividualJudgeScore
     public Dictionary<string, RequirementScore> Breakdown { get; set; } = new();
     public double Reliability { get; set; }
     public Dictionary<string, double> StandardDeviation { get; set; } = new();
-    
+
     /// <summary>
-    /// Uncertainty for this judge's overall score.
+    ///     Uncertainty for this judge's overall score.
     /// </summary>
     public double OverallUncertainty { get; set; }
 }

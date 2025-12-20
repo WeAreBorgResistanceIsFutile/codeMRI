@@ -18,7 +18,7 @@ public class AgentCoordinatorTests
         _mockAgent = new Mock<IAgent>();
         _mockLogger = new Mock<ILogger<AgentCoordinator>>();
         _mockDelegationLogger = new Mock<ILogger<DelegationService>>();
-        
+
         // Setup AgentSettings mock with default values
         var mockSettings = new Mock<IOptions<AgentSettings>>();
         mockSettings.Setup(s => s.Value).Returns(new AgentSettings
@@ -31,9 +31,10 @@ public class AgentCoordinatorTests
                 { "LineCount", 500 }
             }
         });
-        
+
         var mockMessageBus = new Mock<AgentMessageBus>(Mock.Of<ILogger<AgentMessageBus>>());
-        _delegationService = new DelegationService(_mockDelegationLogger.Object, mockSettings.Object, mockMessageBus.Object);
+        _delegationService =
+            new DelegationService(_mockDelegationLogger.Object, mockSettings.Object, mockMessageBus.Object);
 
         _coordinator = new AgentCoordinator(
             _delegationService,

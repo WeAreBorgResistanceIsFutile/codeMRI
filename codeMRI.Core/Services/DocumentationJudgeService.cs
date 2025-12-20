@@ -11,7 +11,7 @@ namespace codeMRI.Core.Services;
 public partial class DocumentationJudgeService : IDocumentationJudgeService
 {
     private const string SystemPrompt = "You are a technical documentation evaluator.";
-    
+
     private static readonly JsonSerializerOptions JsonParsingOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -19,20 +19,17 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true
     };
-    
-    [GeneratedRegex(@"```(?:json)?\s*(.*?)\s*```", RegexOptions.Singleline)]
-    private static partial Regex MarkdownJsonBlockRegex();
-    
+
+    // Metrics
+    private readonly Counter<long> _evaluationCounter;
+    private readonly Histogram<double> _evaluationDuration;
+    private readonly Counter<long> _failedModelsCounter;
+
     private readonly ILLMClient _llmClient;
     private readonly ILogger<DocumentationJudgeService> _logger;
     private readonly Meter _meter;
     private readonly IEvaluationPromptBuilder _promptBuilder;
-    
-    // Metrics
-    private readonly Counter<long> _evaluationCounter;
-    private readonly Histogram<double> _evaluationDuration;
     private readonly Histogram<double> _scoreDistribution;
-    private readonly Counter<long> _failedModelsCounter;
     private readonly Histogram<double> _standardDeviationHistogram;
 
     public DocumentationJudgeService(
@@ -45,25 +42,25 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         _llmClient = llmClient;
         _meter = meterFactory.Create("CodeMRI.Judge");
         _promptBuilder = promptBuilder;
-        
+
         // Initialize metrics
         _evaluationCounter = _meter.CreateCounter<long>(
             "codemri.judge.evaluations.total",
             description: "Total number of requirement evaluations performed");
-        
+
         _evaluationDuration = _meter.CreateHistogram<double>(
             "codemri.judge.evaluation.duration",
-            unit: "ms",
-            description: "Duration of requirement evaluation in milliseconds");
-        
+            "ms",
+            "Duration of requirement evaluation in milliseconds");
+
         _scoreDistribution = _meter.CreateHistogram<double>(
             "codemri.judge.scores",
             description: "Distribution of evaluation scores (0-1)");
-        
+
         _failedModelsCounter = _meter.CreateCounter<long>(
             "codemri.judge.models.failed",
             description: "Number of failed model evaluations");
-        
+
         _standardDeviationHistogram = _meter.CreateHistogram<double>(
             "codemri.judge.standard_deviation",
             description: "Standard deviation of scores across multiple judges");
@@ -81,8 +78,9 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
             { "requirement", requirement.Title },
             { "model", model ?? "default" }
         };
-        
-        _logger.LogInformation("Evaluating requirement: {RequirementTitle} (Model: {Model})", requirement.Title, model ?? "Default");
+
+        _logger.LogInformation("Evaluating requirement: {RequirementTitle} (Model: {Model})", requirement.Title,
+            model ?? "Default");
 
         var prompt = _promptBuilder.BuildPrompt(requirement, documentationStructure);
 
@@ -96,12 +94,12 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         var assessment = ParseAssessmentFromResponse(response, requirement);
 
         stopwatch.Stop();
-        
+
         // Record metrics
         _evaluationCounter.Add(1, tags);
         _evaluationDuration.Record(stopwatch.Elapsed.TotalMilliseconds, tags);
         _scoreDistribution.Record(assessment.MeanScore, tags);
-        
+
         _logger.LogInformation("Requirement assessment completed with score: {Score}", assessment.MeanScore);
 
         return assessment;
@@ -114,7 +112,8 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         int maxConcurrency = 5,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Evaluating {RequirementCount} requirements using {JudgeCount} judges (Concurrency: {Concurrency})",
+        _logger.LogInformation(
+            "Evaluating {RequirementCount} requirements using {JudgeCount} judges (Concurrency: {Concurrency})",
             requirements.Count, judgeModels.Count, maxConcurrency);
 
         var assessments = new List<RequirementAssessment>();
@@ -122,7 +121,6 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         var tasks = new List<Task<RequirementAssessment>>();
 
         foreach (var requirement in requirements)
-        {
             tasks.Add(Task.Run(async () =>
             {
                 await semaphore.WaitAsync(cancellationToken);
@@ -132,7 +130,6 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
                     var failedModels = new List<string>();
 
                     foreach (var modelName in judgeModels)
-                    {
                         try
                         {
                             var assessment = await EvaluateRequirementAsync(
@@ -150,7 +147,7 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
                         {
                             _logger.LogWarning(ex, "Failed to evaluate with model: {ModelName}", modelName);
                             failedModels.Add(modelName);
-                            
+
                             // Record failed model metric
                             _failedModelsCounter.Add(1, new TagList
                             {
@@ -158,20 +155,17 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
                                 { "model", modelName }
                             });
                         }
-                    }
 
                     var aggregatedAssessment = AggregateAssessments(modelAssessments, requirement, failedModels);
-                    
+
                     // Record standard deviation metric if multiple judges
                     if (modelAssessments.Count > 1)
-                    {
                         _standardDeviationHistogram.Record(aggregatedAssessment.StandardDeviation, new TagList
                         {
                             { "requirement", requirement.Title },
                             { "judge_count", modelAssessments.Count }
                         });
-                    }
-                    
+
                     return aggregatedAssessment;
                 }
                 finally
@@ -179,7 +173,6 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
                     semaphore.Release();
                 }
             }, cancellationToken));
-        }
 
         var results = await Task.WhenAll(tasks);
         assessments.AddRange(results);
@@ -187,6 +180,9 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         _logger.LogInformation("Completed evaluation of {RequirementCount} requirements", requirements.Count);
         return assessments;
     }
+
+    [GeneratedRegex(@"```(?:json)?\s*(.*?)\s*```", RegexOptions.Singleline)]
+    private static partial Regex MarkdownJsonBlockRegex();
 
     private RequirementAssessment AggregateAssessments(
         List<ModelAssessment> modelAssessments,
@@ -225,7 +221,6 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
     }
 
 
-
     private RequirementAssessment ParseAssessmentFromResponse(string response, RubricRequirement requirement)
     {
         try
@@ -234,18 +229,12 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
             if (response.Contains("```"))
             {
                 var match = MarkdownJsonBlockRegex().Match(response);
-                if (match.Success)
-                {
-                    response = match.Groups[1].Value;
-                }
+                if (match.Success) response = match.Groups[1].Value;
             }
-            
+
             // 2. Fallback: Use bracket counting or simple index finding to extract valid JSON
             var extractedJson = ExtractValidJson(response);
-            if (!string.IsNullOrWhiteSpace(extractedJson))
-            {
-                response = extractedJson;
-            }
+            if (!string.IsNullOrWhiteSpace(extractedJson)) response = extractedJson;
 
             var assessment = JsonSerializer.Deserialize<JudgeResponse>(response, JsonParsingOptions);
 
@@ -269,33 +258,35 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         catch (JsonException ex)
         {
             var preview = response.Length > 500 ? response.Substring(0, 500) + "..." : response;
-            _logger.LogError(ex, "Error parsing assessment JSON from LLM response. Raw response (first 500 chars): {ResponsePreview}", preview);
+            _logger.LogError(ex,
+                "Error parsing assessment JSON from LLM response. Raw response (first 500 chars): {ResponsePreview}",
+                preview);
             return CreateDefaultAssessment(requirement);
         }
     }
 
     /// <summary>
-    /// Extracts a valid JSON object by finding the first '{' and the last '}'.
-    /// This is more robust against chatty introductions and conclusions.
+    ///     Extracts a valid JSON object by finding the first '{' and the last '}'.
+    ///     This is more robust against chatty introductions and conclusions.
     /// </summary>
     private static string? ExtractValidJson(string response)
     {
-        int startIdx = response.IndexOf('{');
-        int endIdx = response.LastIndexOf('}');
+        var startIdx = response.IndexOf('{');
+        var endIdx = response.LastIndexOf('}');
 
-        if (startIdx >= 0 && endIdx > startIdx)
-        {
-            return response.Substring(startIdx, endIdx - startIdx + 1);
-        }
+        if (startIdx >= 0 && endIdx > startIdx) return response.Substring(startIdx, endIdx - startIdx + 1);
         return null;
     }
 
     /// <summary>
-    /// Validates that a parsed assessment has reasonable values.
-    /// We allow scores slightly outside 0-1 range since we clamp them anyway.
+    ///     Validates that a parsed assessment has reasonable values.
+    ///     We allow scores slightly outside 0-1 range since we clamp them anyway.
     /// </summary>
-    private static bool IsValidAssessment(JudgeResponse response) =>
-        response.Score >= -1.0 && response.Score <= 2.0;  // Allow for clamping
+    private static bool IsValidAssessment(JudgeResponse response)
+    {
+        return response.Score >= -1.0 && response.Score <= 2.0;
+        // Allow for clamping
+    }
 
     private RequirementAssessment CreateDefaultAssessment(RubricRequirement requirement)
     {

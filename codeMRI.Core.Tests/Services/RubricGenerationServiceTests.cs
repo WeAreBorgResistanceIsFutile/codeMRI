@@ -1,5 +1,3 @@
-using System.Text.Json;
-using codeMRI.Core.Converters;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
@@ -11,10 +9,6 @@ namespace codeMRI.Core.Tests.Services;
 [TestFixture]
 public class RubricGenerationServiceTests
 {
-    private Mock<ILogger<RubricGenerationService>> _loggerMock;
-    private Mock<ILLMClient> _llmClientMock;
-    private RubricGenerationService _service;
-
     [SetUp]
     public void Setup()
     {
@@ -23,6 +17,10 @@ public class RubricGenerationServiceTests
         _llmClientMock.Setup(x => x.ContextSize).Returns(4096);
         _service = new RubricGenerationService(_loggerMock.Object, _llmClientMock.Object);
     }
+
+    private Mock<ILogger<RubricGenerationService>> _loggerMock;
+    private Mock<ILLMClient> _llmClientMock;
+    private RubricGenerationService _service;
 
     [Test]
     public async Task GenerateRubricAsync_ShouldParseJsonCorrectly()
@@ -47,8 +45,9 @@ public class RubricGenerationServiceTests
         }
     ]
 }";
-        
-        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+
+        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(json);
 
         var structure = new WikiStructure();
@@ -62,17 +61,17 @@ public class RubricGenerationServiceTests
         Assert.That(rubric.Title, Is.EqualTo("tunesynctool Documentation Evaluation"));
         Assert.That(rubric.Children, Is.Not.Null);
         Assert.That(rubric.Children.Count, Is.EqualTo(1));
-        
+
         var category = rubric.Children[0];
         Assert.That(category, Is.InstanceOf<RubricCategory>());
         Assert.That(category.Title, Is.EqualTo("Core Architectural Components"));
         Assert.That(category.IsLeaf, Is.False);
-        
-        var requirement = category.Children[0];
+
+        var requirement = category.Children![0];
         Assert.That(requirement, Is.InstanceOf<RubricRequirement>());
         Assert.That(requirement.Title, Is.EqualTo("High-Level System Architecture"));
         Assert.That(requirement.IsLeaf, Is.True);
-        
+
         var reqCast = (RubricRequirement)requirement;
         Assert.That(reqCast.Description, Is.EqualTo("Diagram and description of the overall system architecture."));
     }
@@ -316,8 +315,9 @@ public class RubricGenerationServiceTests
         }
     ]
 }";
-        
-        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+
+        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(largeJson);
 
         var structure = new WikiStructure();
@@ -337,7 +337,7 @@ public class RubricGenerationServiceTests
         Assert.That(qualityCategory, Is.InstanceOf<RubricCategory>());
         Assert.That(qualityCategory.Title, Is.EqualTo("Documentation Quality and Maintenance"));
 
-        var clarityRequirement = qualityCategory.Children[0]; // "Clarity and Readability"
+        var clarityRequirement = qualityCategory.Children![0]; // "Clarity and Readability"
         Assert.That(clarityRequirement, Is.InstanceOf<RubricRequirement>());
         Assert.That(clarityRequirement.Title, Is.EqualTo("Clarity and Readability"));
         Assert.That(clarityRequirement.IsLeaf, Is.True);
@@ -360,8 +360,9 @@ Here is the rubric you requested:
 ```
 I hope this helps!
 ";
-        
-        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+
+        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(dirtyJson);
 
         var structure = new WikiStructure();

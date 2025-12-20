@@ -7,20 +7,20 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
-        <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
-        <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-        <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.0" />
+        <PackageReference Include="Serilog.AspNetCore" Version="10.0.0"/>
+        <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0"/>
+        <PackageReference Include="Serilog.Sinks.File" Version="7.0.0"/>
+        <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.0"/>
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\codeMRI.Infrastructure\codeMRI.Infrastructure.csproj" />
-        <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj" />
-        <ProjectReference Include="..\codeMRI.Server.Api\codeMRI.Server.Api.csproj" />
+        <ProjectReference Include="..\codeMRI.Infrastructure\codeMRI.Infrastructure.csproj"/>
+        <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj"/>
+        <ProjectReference Include="..\codeMRI.Server.Api\codeMRI.Server.Api.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="logs\" />
+        <Folder Include="logs\"/>
     </ItemGroup>
 
 </Project>

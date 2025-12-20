@@ -2,234 +2,234 @@
 <html lang="en">
 
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>codeMRI.Frontend</title>
-    <base href="/" />
-    <link rel="preload" id="webassembly" />
-    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="css/app.css" />
-    <link rel="icon" type="image/png" href="favicon.png" />
-    <link href="codeMRI.Frontend.styles.css" rel="stylesheet" />
+    <base href="/"/>
+    <link id="webassembly" rel="preload"/>
+    <link href="lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet"/>
+    <link href="css/app.css" rel="stylesheet"/>
+    <link href="favicon.png" rel="icon" type="image/png"/>
+    <link href="codeMRI.Frontend.styles.css" rel="stylesheet"/>
     <script type="importmap"></script>
 </head>
 
 <body>
-    <div id="app">
-        <svg class="loading-progress">
-            <circle r="40%" cx="50%" cy="50%" />
-            <circle r="40%" cx="50%" cy="50%" />
-        </svg>
-        <div class="loading-progress-text"></div>
-    </div>
+<div id="app">
+    <svg class="loading-progress">
+        <circle cx="50%" cy="50%" r="40%"/>
+        <circle cx="50%" cy="50%" r="40%"/>
+    </svg>
+    <div class="loading-progress-text"></div>
+</div>
 
-    <div id="blazor-error-ui">
-        An unhandled error has occurred.
-        <a href="." class="reload">Reload</a>
-        <span class="dismiss">🗙</span>
-    </div>
-    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <script>
-        mermaid.initialize({ startOnLoad: false });
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a class="reload" href=".">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+<script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+    mermaid.initialize({startOnLoad: false});
 
-        window.renderMermaidDiagrams = async () => {
-            console.log("Starting renderMermaidDiagrams...");
+    window.renderMermaidDiagrams = async () => {
+        console.log("Starting renderMermaidDiagrams...");
 
-            const initZoomPan = (container, svgId, originalSource) => {
-                const svg = container.querySelector('svg');
-                if (!svg) return;
+        const initZoomPan = (container, svgId, originalSource) => {
+            const svg = container.querySelector('svg');
+            if (!svg) return;
 
-                // Create wrapper for panning
-                const wrapper = document.createElement('div');
-                wrapper.className = 'mermaid-svg-wrapper';
-                svg.parentNode.insertBefore(wrapper, svg);
-                wrapper.appendChild(svg);
+            // Create wrapper for panning
+            const wrapper = document.createElement('div');
+            wrapper.className = 'mermaid-svg-wrapper';
+            svg.parentNode.insertBefore(wrapper, svg);
+            wrapper.appendChild(svg);
 
-                // Create code view (hidden initially)
-                const codeView = document.createElement('pre');
-                codeView.className = 'mermaid-code-view';
-                codeView.style.display = 'none';
-                const codeBlock = document.createElement('code');
-                codeBlock.textContent = originalSource;
-                codeView.appendChild(codeBlock);
-                container.appendChild(codeView);
+            // Create code view (hidden initially)
+            const codeView = document.createElement('pre');
+            codeView.className = 'mermaid-code-view';
+            codeView.style.display = 'none';
+            const codeBlock = document.createElement('code');
+            codeBlock.textContent = originalSource;
+            codeView.appendChild(codeBlock);
+            container.appendChild(codeView);
 
-                // Initial state
-                let state = { x: 0, y: 0, scale: 1, isDragging: false, startX: 0, startY: 0, showCode: false };
+            // Initial state
+            let state = {x: 0, y: 0, scale: 1, isDragging: false, startX: 0, startY: 0, showCode: false};
 
-                const updateTransform = () => {
-                    svg.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
-                    svg.style.transition = state.isDragging ? 'none' : 'transform 0.1s ease-out';
-                };
+            const updateTransform = () => {
+                svg.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+                svg.style.transition = state.isDragging ? 'none' : 'transform 0.1s ease-out';
+            };
 
-                const toggleView = (btn) => {
-                    state.showCode = !state.showCode;
-                    wrapper.style.display = state.showCode ? 'none' : 'flex';
-                    codeView.style.display = state.showCode ? 'block' : 'none';
-                    btn.innerHTML = state.showCode ? '<span>🖼️</span>' : '<span>📝</span>';
-                    btn.title = state.showCode ? 'Show Diagram' : 'Show Code';
+            const toggleView = (btn) => {
+                state.showCode = !state.showCode;
+                wrapper.style.display = state.showCode ? 'none' : 'flex';
+                codeView.style.display = state.showCode ? 'block' : 'none';
+                btn.innerHTML = state.showCode ? '<span>🖼️</span>' : '<span>📝</span>';
+                btn.title = state.showCode ? 'Show Diagram' : 'Show Code';
 
-                    // Disable other controls in code mode
-                    const otherBtns = container.querySelectorAll('.mermaid-btn:not(.toggle-btn)');
-                    otherBtns.forEach(b => b.style.opacity = state.showCode ? '0.5' : '1');
-                    otherBtns.forEach(b => b.style.pointerEvents = state.showCode ? 'none' : 'auto');
-                };
+                // Disable other controls in code mode
+                const otherBtns = container.querySelectorAll('.mermaid-btn:not(.toggle-btn)');
+                otherBtns.forEach(b => b.style.opacity = state.showCode ? '0.5' : '1');
+                otherBtns.forEach(b => b.style.pointerEvents = state.showCode ? 'none' : 'auto');
+            };
 
-                // Add Controls
-                const controls = document.createElement('div');
-                controls.className = 'mermaid-controls';
-                controls.innerHTML = `
+            // Add Controls
+            const controls = document.createElement('div');
+            controls.className = 'mermaid-controls';
+            controls.innerHTML = `
                     <div class="mermaid-btn toggle-btn" title="Show Code"><span>📝</span></div>
                     <div class="mermaid-vr"></div>
                     <div class="mermaid-btn" title="Zoom In" onclick="this.dispatchEvent(new CustomEvent('zoom', {detail: 1.2, bubbles: true}))">+</div>
                     <div class="mermaid-btn" title="Zoom Out" onclick="this.dispatchEvent(new CustomEvent('zoom', {detail: 0.8, bubbles: true}))">-</div>
                     <div class="mermaid-btn" title="Reset" onclick="this.dispatchEvent(new CustomEvent('reset', {bubbles: true}))">⟲</div>
                 `;
-                container.appendChild(controls);
+            container.appendChild(controls);
 
-                // Event Listeners for Controls
-                controls.querySelector('.toggle-btn').addEventListener('click', function () {
-                    toggleView(this);
-                });
+            // Event Listeners for Controls
+            controls.querySelector('.toggle-btn').addEventListener('click', function () {
+                toggleView(this);
+            });
 
-                controls.addEventListener('zoom', (e) => {
-                    state.scale *= e.detail;
-                    updateTransform();
-                });
-                controls.addEventListener('reset', () => {
-                    state = { x: 0, y: 0, scale: 1, isDragging: false, startX: 0, startY: 0, showCode: state.showCode };
-                    updateTransform();
-                });
+            controls.addEventListener('zoom', (e) => {
+                state.scale *= e.detail;
+                updateTransform();
+            });
+            controls.addEventListener('reset', () => {
+                state = {x: 0, y: 0, scale: 1, isDragging: false, startX: 0, startY: 0, showCode: state.showCode};
+                updateTransform();
+            });
 
-                // Mouse/Touch Events for Panning
-                wrapper.addEventListener('mousedown', (e) => {
-                    if (e.target.closest('.mermaid-controls')) return;
-                    state.isDragging = true;
-                    state.startX = e.clientX - state.x;
-                    state.startY = e.clientY - state.y;
-                    wrapper.style.cursor = 'grabbing';
-                });
+            // Mouse/Touch Events for Panning
+            wrapper.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.mermaid-controls')) return;
+                state.isDragging = true;
+                state.startX = e.clientX - state.x;
+                state.startY = e.clientY - state.y;
+                wrapper.style.cursor = 'grabbing';
+            });
 
-                window.addEventListener('mousemove', (e) => {
-                    if (!state.isDragging) return;
-                    e.preventDefault();
-                    state.x = e.clientX - state.startX;
-                    state.y = e.clientY - state.startY;
-                    updateTransform();
-                });
+            window.addEventListener('mousemove', (e) => {
+                if (!state.isDragging) return;
+                e.preventDefault();
+                state.x = e.clientX - state.startX;
+                state.y = e.clientY - state.startY;
+                updateTransform();
+            });
 
-                window.addEventListener('mouseup', () => {
-                    state.isDragging = false;
-                    wrapper.style.cursor = 'grab';
-                });
+            window.addEventListener('mouseup', () => {
+                state.isDragging = false;
+                wrapper.style.cursor = 'grab';
+            });
 
-                // Ensure SVG fits initially
-                svg.style.maxWidth = '100%';
-                svg.style.height = 'auto';
-            };
+            // Ensure SVG fits initially
+            svg.style.maxWidth = '100%';
+            svg.style.height = 'auto';
+        };
 
-            const processElement = async (element, content, isFenced) => {
-                const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
-                const container = document.createElement('div');
-                container.className = 'mermaid-diagram-container';
-                container.id = 'container-' + id;
+        const processElement = async (element, content, isFenced) => {
+            const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+            const container = document.createElement('div');
+            container.className = 'mermaid-diagram-container';
+            container.id = 'container-' + id;
 
-                // Replace original element
-                if (isFenced) {
-                    const preElement = element.parentElement;
-                    if (preElement && preElement.tagName === 'PRE') {
-                        preElement.replaceWith(container);
-                    } else {
-                        element.replaceWith(container);
-                    }
+            // Replace original element
+            if (isFenced) {
+                const preElement = element.parentElement;
+                if (preElement && preElement.tagName === 'PRE') {
+                    preElement.replaceWith(container);
                 } else {
-                    element.parentNode.insertBefore(container, element);
-                    element.remove();
+                    element.replaceWith(container);
                 }
+            } else {
+                element.parentNode.insertBefore(container, element);
+                element.remove();
+            }
 
-                try {
-                    // Render
-                    const { svg } = await mermaid.render(id, content);
-                    container.innerHTML = svg;
-                    console.log(`Successfully rendered diagram ${id}`);
+            try {
+                // Render
+                const {svg} = await mermaid.render(id, content);
+                container.innerHTML = svg;
+                console.log(`Successfully rendered diagram ${id}`);
 
-                    // Init Zoom/Pan with original content
-                    initZoomPan(container, id, content);
-                } catch (error) {
-                    console.error('Mermaid rendering failed:', error);
-                    container.innerHTML = `<div style="padding: 1rem; color: red;">
+                // Init Zoom/Pan with original content
+                initZoomPan(container, id, content);
+            } catch (error) {
+                console.error('Mermaid rendering failed:', error);
+                container.innerHTML = `<div style="padding: 1rem; color: red;">
                         Failed to render diagram
                         <pre style="background: #f5f5f5; padding: 0.5rem; margin-top: 0.5rem; overflow: auto; font-size: 0.8rem;">${content}</pre>
                     </div>`;
-                    container.style.height = 'auto';
-                }
-            };
-
-            // 1. Process fenced code blocks
-            const codeElements = document.querySelectorAll('pre code.language-mermaid:not([data-processed])');
-            for (const element of codeElements) {
-                element.setAttribute('data-processed', 'true');
-                await processElement(element, element.textContent.trim(), true);
-            }
-
-            // 2. Process plain text
-            const markdownContent = document.querySelector('.markdown-content');
-            if (markdownContent) {
-                const walker = document.createTreeWalker(markdownContent, NodeFilter.SHOW_TEXT, null, false);
-                const textNodes = [];
-                let node;
-                while (node = walker.nextNode()) {
-                    const text = node.textContent.trim();
-                    if (text.match(/^(graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie|gitGraph|flowchart)\s/)) {
-                        textNodes.push(node);
-                    }
-                }
-                for (const textNode of textNodes) {
-                    await processElement(textNode, textNode.textContent.trim(), false);
-                }
+                container.style.height = 'auto';
             }
         };
 
-        // --- Sidebar Resizing Logic ---
-        let isResizing = false;
-        let currentResizer = null;
+        // 1. Process fenced code blocks
+        const codeElements = document.querySelectorAll('pre code.language-mermaid:not([data-processed])');
+        for (const element of codeElements) {
+            element.setAttribute('data-processed', 'true');
+            await processElement(element, element.textContent.trim(), true);
+        }
 
-        window.startResize = (side) => {
-            isResizing = true;
-            currentResizer = side;
-            document.body.style.cursor = 'col-resize';
-            document.body.classList.add('resizing'); // Optional: add class to body during resize
-        };
-
-        window.addEventListener('mousemove', (e) => {
-            if (!isResizing) return;
-            e.preventDefault(); // Prevent text selection
-
-            const root = document.documentElement;
-
-            if (currentResizer === 'left') {
-                // Min width 150px, Max width 50% of screen
-                const newWidth = Math.max(150, Math.min(e.clientX, window.innerWidth * 0.5));
-                root.style.setProperty('--sidebar-width-left', `${newWidth}px`);
-            } else if (currentResizer === 'right') {
-                // Calculate width from right edge
-                const newWidth = Math.max(200, Math.min(window.innerWidth - e.clientX, window.innerWidth * 0.5));
-                root.style.setProperty('--sidebar-width-right', `${newWidth}px`);
+        // 2. Process plain text
+        const markdownContent = document.querySelector('.markdown-content');
+        if (markdownContent) {
+            const walker = document.createTreeWalker(markdownContent, NodeFilter.SHOW_TEXT, null, false);
+            const textNodes = [];
+            let node;
+            while (node = walker.nextNode()) {
+                const text = node.textContent.trim();
+                if (text.match(/^(graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie|gitGraph|flowchart)\s/)) {
+                    textNodes.push(node);
+                }
             }
-        });
-
-        window.addEventListener('mouseup', () => {
-            if (isResizing) {
-                isResizing = false;
-                currentResizer = null;
-                document.body.style.cursor = '';
-                document.body.classList.remove('resizing');
-                // Trigger resize event for charts/etc if needed
-                window.dispatchEvent(new Event('resize'));
+            for (const textNode of textNodes) {
+                await processElement(textNode, textNode.textContent.trim(), false);
             }
-        });
-    </script>
+        }
+    };
+
+    // --- Sidebar Resizing Logic ---
+    let isResizing = false;
+    let currentResizer = null;
+
+    window.startResize = (side) => {
+        isResizing = true;
+        currentResizer = side;
+        document.body.style.cursor = 'col-resize';
+        document.body.classList.add('resizing'); // Optional: add class to body during resize
+    };
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+        e.preventDefault(); // Prevent text selection
+
+        const root = document.documentElement;
+
+        if (currentResizer === 'left') {
+            // Min width 150px, Max width 50% of screen
+            const newWidth = Math.max(150, Math.min(e.clientX, window.innerWidth * 0.5));
+            root.style.setProperty('--sidebar-width-left', `${newWidth}px`);
+        } else if (currentResizer === 'right') {
+            // Calculate width from right edge
+            const newWidth = Math.max(200, Math.min(window.innerWidth - e.clientX, window.innerWidth * 0.5));
+            root.style.setProperty('--sidebar-width-right', `${newWidth}px`);
+        }
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            currentResizer = null;
+            document.body.style.cursor = '';
+            document.body.classList.remove('resizing');
+            // Trigger resize event for charts/etc if needed
+            window.dispatchEvent(new Event('resize'));
+        }
+    });
+</script>
 </body>
 
 </html>

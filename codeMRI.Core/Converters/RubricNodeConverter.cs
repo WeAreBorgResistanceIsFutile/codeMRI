@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using codeMRI.Core.Interfaces;
@@ -17,7 +15,7 @@ public class RubricNodeConverter : JsonConverter<RubricNode>
     {
         if (reader.TokenType == JsonTokenType.Null) return null;
 
-        using (JsonDocument doc = JsonDocument.ParseValue(ref reader))
+        using (var doc = JsonDocument.ParseValue(ref reader))
         {
             var root = doc.RootElement;
             return ReadRubricNode(root, typeToConvert, options);
@@ -26,17 +24,13 @@ public class RubricNodeConverter : JsonConverter<RubricNode>
 
     private RubricNode ReadRubricNode(JsonElement element, Type typeToConvert, JsonSerializerOptions options)
     {
-        bool isLeaf = false;
-        if (TryGetPropertyCaseInsensitive(element, "is_leaf", out var isLeafProp) && 
-            (isLeafProp.ValueKind == JsonValueKind.True))
-        {
+        var isLeaf = false;
+        if (TryGetPropertyCaseInsensitive(element, "is_leaf", out var isLeafProp) &&
+            isLeafProp.ValueKind == JsonValueKind.True)
             isLeaf = true;
-        }
         else if (TryGetPropertyCaseInsensitive(element, "isLeaf", out var isLeafPropCam) &&
-                 (isLeafPropCam.ValueKind == JsonValueKind.True))
-        {
+                 isLeafPropCam.ValueKind == JsonValueKind.True)
             isLeaf = true;
-        }
 
         RubricNode node;
 
@@ -60,12 +54,14 @@ public class RubricNodeConverter : JsonConverter<RubricNode>
         if (TryGetPropertyCaseInsensitive(element, "title", out var title))
             node.Title = title.GetString() ?? string.Empty;
 
-        if (TryGetPropertyCaseInsensitive(element, "weight", out var weight) && weight.ValueKind == JsonValueKind.Number)
+        if (TryGetPropertyCaseInsensitive(element, "weight", out var weight) &&
+            weight.ValueKind == JsonValueKind.Number)
             node.Weight = weight.GetDouble();
 
         node.IsLeaf = isLeaf;
 
-        if (TryGetPropertyCaseInsensitive(element, "children", out var children) && children.ValueKind == JsonValueKind.Array)
+        if (TryGetPropertyCaseInsensitive(element, "children", out var children) &&
+            children.ValueKind == JsonValueKind.Array)
         {
             node.Children = new List<RubricNode>();
             foreach (var child in children.EnumerateArray())
@@ -89,13 +85,13 @@ public class RubricNodeConverter : JsonConverter<RubricNode>
     private bool TryGetPropertyCaseInsensitive(JsonElement element, string propertyName, out JsonElement value)
     {
         if (element.TryGetProperty(propertyName, out value)) return true;
-        
+
         // Simple manual scan for case-insensitive match if direct lookup fails
         foreach (var prop in element.EnumerateObject())
         {
             // Normalize property names (handle snake_case vs camelCase)
-            string normalizedProp = prop.Name.Replace("_", "").ToLowerInvariant();
-            string normalizedTarget = propertyName.Replace("_", "").ToLowerInvariant();
+            var normalizedProp = prop.Name.Replace("_", "").ToLowerInvariant();
+            var normalizedTarget = propertyName.Replace("_", "").ToLowerInvariant();
 
             if (normalizedProp == normalizedTarget)
             {
@@ -103,7 +99,7 @@ public class RubricNodeConverter : JsonConverter<RubricNode>
                 return true;
             }
         }
-        
+
         value = default;
         return false;
     }

@@ -15,11 +15,11 @@ public class EvaluationMetricsSystemTests
     {
         _mockLogger = new Mock<ILogger<EvaluationMetricsSystem>>();
         _mockJudgeAgent = new Mock<IJudgeAgent>();
-        
+
         var options = new CodeWikiOptions { MaxDegreeOfParallelism = 5 };
         _mockOptions = new Mock<IOptions<CodeWikiOptions>>();
         _mockOptions.Setup(o => o.Value).Returns(options);
-        
+
         _service = new EvaluationMetricsSystem(_mockLogger.Object, _mockJudgeAgent.Object, _mockOptions.Object);
     }
 

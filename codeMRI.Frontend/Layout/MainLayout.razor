@@ -15,7 +15,8 @@
             </div>
         }
         <div class="actions">
-            <a href="ingestions" title="Monitor Ingestions" style="color: rgba(255,255,255,0.7); text-decoration: none; margin-right: 20px; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
+            <a href="ingestions" title="Monitor Ingestions"
+               style="color: rgba(255,255,255,0.7); text-decoration: none; margin-right: 20px; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
                 <span>📊</span> Monitor
             </a>
             @if (string.IsNullOrEmpty(AppState.RepoPath))
@@ -24,7 +25,10 @@
             }
             <div class="status-wrapper @(AppState.IsBusy ? "busy" : "")">
                 <div class="status-dot"></div>
-                @if(AppState.IsBusy) { <span class="status-text ms-2">@AppState.BusyMessage</span> }
+                @if (AppState.IsBusy)
+                {
+                    <span class="status-text ms-2">@AppState.BusyMessage</span>
+                }
             </div>
         </div>
     </header>
@@ -37,7 +41,7 @@
             <div class="pane-content custom-scrollbar p-0">
                 @if (!string.IsNullOrEmpty(AppState.RepoPath))
                 {
-                    <WikiTree />
+                    <WikiTree/>
                 }
                 else
                 {
@@ -63,13 +67,14 @@
         <aside class="sidebar-pane right-pane">
             <div class="pane-header">ASSISTANT</div>
             <div class="pane-content p-0">
-                <ChatPanel />
+                <ChatPanel/>
             </div>
         </aside>
     </main>
 </div>
 
 @code {
+
     protected override void OnInitialized()
     {
         AppState.OnChange += StateHasChanged;
@@ -79,4 +84,5 @@
     {
         AppState.OnChange -= StateHasChanged;
     }
+
 }

@@ -1,4 +1,3 @@
-@using codeMRI.Frontend.Services
 @using codeMRI.Server.Api
 @inject AppState AppState
 @inject WikiApiClient WikiApi
@@ -14,10 +13,10 @@
                 </div>
             </div>
         }
-        
+
         @if (AppState.ChatHistory.Count == 0)
         {
-             <div class="chat-message assistant mb-3">
+            <div class="chat-message assistant mb-3">
                 <div class="p-2 rounded bg-light border">
                     <strong>Assistant</strong>
                     <p class="mb-0">Hello! Select a page to start exploring the codebase.</p>
@@ -27,7 +26,7 @@
     </div>
     <div class="px-3 pt-3 pb-2 border-top" style="flex-shrink: 0;">
         <div class="input-group">
-            <input type="text" class="form-control" placeholder="Ask a question..." 
+            <input type="text" class="form-control" placeholder="Ask a question..."
                    @bind="userInput" @onkeyup="HandleKeyUp" disabled="@isChatting"/>
             <button class="btn btn-primary" @onclick="SendMessage" disabled="@isChatting">Send</button>
         </div>
@@ -36,7 +35,7 @@
 
 @code {
     private string userInput = "";
-    private bool isChatting = false;
+    private bool isChatting;
 
     protected override void OnInitialized()
     {
@@ -84,4 +83,5 @@
             isChatting = false;
         }
     }
+
 }

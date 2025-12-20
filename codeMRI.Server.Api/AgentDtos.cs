@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace codeMRI.Server.Api;
 
 public class AgentMessage

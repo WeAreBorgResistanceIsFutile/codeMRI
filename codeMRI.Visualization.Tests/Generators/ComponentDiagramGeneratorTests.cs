@@ -1,7 +1,7 @@
+using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Visualization.Services;
 using Moq;
-using codeMRI.Core.Interfaces;
 
 namespace codeMRI.Visualization.Tests.Generators;
 

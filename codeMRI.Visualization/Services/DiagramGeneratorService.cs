@@ -1,7 +1,8 @@
 using System.Text;
 using codeMRI.Core.Interfaces;
-using codeMRI.Core.Services; // For PromptTemplates
 using codeMRI.Core.Models;
+using codeMRI.Core.Services;
+// For PromptTemplates
 
 namespace codeMRI.Visualization.Services;
 
@@ -22,33 +23,17 @@ public class DiagramGeneratorService : IDiagramGenerator
     public async Task<string> GenerateDeploymentDiagramAsync(ModuleNode module, EnhancedDependencyGraph graph)
     {
         var prompt = PromptTemplates.DeploymentDiagramPrompt(module, graph, "English");
-        
+
         // We use a safe fallback model if _documentationModel is not available, or just use the default.
         // Assuming ILLMClient handles model selection or we pass null.
         // We need to provide a model name if ChatAsync requires it. 
         // WikiGenerationService uses "_documentationModel" configuration.
         // Here we might just pass null to use default.
-        
-        var content = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>(), null);
-        
+
+        var content = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>());
+
         // Extract mermaid code block
         return ExtractMermaidCode(content);
-    }
-
-    private string ExtractMermaidCode(string content)
-    {
-        if (string.IsNullOrWhiteSpace(content)) return string.Empty;
-        
-        // Find start of mermaid block
-        var startIdx = content.IndexOf("```mermaid", StringComparison.OrdinalIgnoreCase);
-        if (startIdx == -1) return content; // Return raw if no block found
-        
-        startIdx += "```mermaid".Length;
-        
-        var endIdx = content.IndexOf("```", startIdx, StringComparison.OrdinalIgnoreCase);
-        if (endIdx == -1) return content.Substring(startIdx).Trim();
-        
-        return content.Substring(startIdx, endIdx - startIdx).Trim();
     }
 
     public Task<string> GenerateArchitectureDiagramAsync(ModuleTree moduleTree, EnhancedDependencyGraph graph)
@@ -60,21 +45,18 @@ public class DiagramGeneratorService : IDiagramGenerator
         var printedNodes = new HashSet<string>();
 
         // Strategy 1: Recursively render ModuleTree structure
-        if (moduleTree.Root != null)
-        {
-            RenderModule(moduleTree.Root, mermaid, printedNodes);
-        }
+        if (moduleTree.Root != null) RenderModule(moduleTree.Root, mermaid, printedNodes);
 
         // Strategy 2: Group remaining nodes by Layer/Pattern
         var remainingNodes = nodes.Where(n => !printedNodes.Contains(n.ComponentId)).ToList();
-        
+
         if (remainingNodes.Any())
         {
             var groupedNodes = new Dictionary<string, List<GraphNode>>();
 
             foreach (var node in remainingNodes)
             {
-                string group = "Default";
+                var group = "Default";
                 if (node.Metadata.Properties.TryGetValue("Module", out var moduleObj) && moduleObj is string moduleName)
                 {
                     group = moduleName;
@@ -82,77 +64,33 @@ public class DiagramGeneratorService : IDiagramGenerator
                 else
                 {
                     // Fallback to Layer
-                    string layer = node.Metadata.Layer;
-                    if (string.IsNullOrEmpty(layer))
-                    {
-                        layer = DetermineComponentLayer(node.Metadata.Type);
-                    }
-                    
-                    if (layer != "Unknown")
-                    {
-                        group = layer;
-                    }
+                    var layer = node.Metadata.Layer;
+                    if (string.IsNullOrEmpty(layer)) layer = DetermineComponentLayer(node.Metadata.Type);
+
+                    if (layer != "Unknown") group = layer;
                 }
-                
+
                 if (!groupedNodes.ContainsKey(group))
                     groupedNodes[group] = new List<GraphNode>();
-                
+
                 groupedNodes[group].Add(node);
             }
 
             // Generate subgraphs for remaining nodes
             foreach (var group in groupedNodes)
             {
-                if (group.Key != "Default")
-                {
-                    mermaid.AppendLine($"    subgraph {group.Key}");
-                }
+                if (group.Key != "Default") mermaid.AppendLine($"    subgraph {group.Key}");
 
-                foreach (var node in group.Value)
-                {
-                    mermaid.AppendLine($"        {node.ComponentId}[{node.ComponentId}]");
-                }
+                foreach (var node in group.Value) mermaid.AppendLine($"        {node.ComponentId}[{node.ComponentId}]");
 
-                if (group.Key != "Default")
-                {
-                    mermaid.AppendLine("    end");
-                }
+                if (group.Key != "Default") mermaid.AppendLine("    end");
             }
         }
 
         // Add relationships
-        foreach (var edge in graph.GetEdges())
-        {
-            mermaid.AppendLine($"    {edge.From} --> {edge.To}");
-        }
+        foreach (var edge in graph.GetEdges()) mermaid.AppendLine($"    {edge.From} --> {edge.To}");
 
         return Task.FromResult(mermaid.ToString());
-    }
-
-    private void RenderModule(ModuleNode module, StringBuilder sb, HashSet<string> printedNodes)
-    {
-        // Only render if it has content or is meaningful
-        bool hasContent = module.Components.Count > 0 || module.Children.Count > 0;
-        
-        if (hasContent)
-        {
-            sb.AppendLine($"    subgraph {module.Id}[{module.Name}]");
-            
-            // Render Components
-            foreach (var compId in module.Components)
-            {
-                sb.AppendLine($"        {compId}[{compId}]");
-                printedNodes.Add(compId);
-            }
-
-            // Render Children
-            foreach (var child in module.Children)
-            {
-                RenderModule(child, sb, printedNodes);
-            }
-            
-            sb.AppendLine("    end");
-        }
     }
 
     public Task<string> GenerateComponentDiagramAsync(EnhancedDependencyGraph graph, string? focusComponentId = null)
@@ -197,13 +135,13 @@ public class DiagramGeneratorService : IDiagramGenerator
         queue.Enqueue(entryPointId);
 
         // Limit depth or count to prevent infinite loops/huge diagrams
-        int maxSteps = 20;
-        int steps = 0;
+        var maxSteps = 20;
+        var steps = 0;
 
         while (queue.Count > 0 && steps < maxSteps)
         {
             var current = queue.Dequeue();
-            
+
             // We allow revisiting for sequence flow, but need to be careful. 
             // For a static graph walk, we just list dependencies as calls.
             if (visited.Contains(current)) continue;
@@ -212,19 +150,16 @@ public class DiagramGeneratorService : IDiagramGenerator
             var outgoingEdges = graph.GetEdges().Where(e => e.From == current);
             foreach (var edge in outgoingEdges)
             {
-                string arrow = "->>"; // Solid line with arrow
+                var arrow = "->>"; // Solid line with arrow
                 if (edge.Type == EdgeType.Call || edge.Type == EdgeType.MethodCall)
-                {
-                    arrow = "->>"; 
-                }
+                    arrow = "->>";
                 else
-                {
                     arrow = "-->>"; // Dotted line for loose dependencies? Or just stick to solid.
-                }
 
                 mermaid.AppendLine($"    {current} {arrow} {edge.To}: {edge.Type}");
                 if (!visited.Contains(edge.To)) queue.Enqueue(edge.To);
             }
+
             steps++;
         }
 
@@ -300,6 +235,45 @@ public class DiagramGeneratorService : IDiagramGenerator
         diagram.Relationships = ExtractRelationshipsFromGraph(graph, options.Filter);
 
         return diagram;
+    }
+
+    private string ExtractMermaidCode(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return string.Empty;
+
+        // Find start of mermaid block
+        var startIdx = content.IndexOf("```mermaid", StringComparison.OrdinalIgnoreCase);
+        if (startIdx == -1) return content; // Return raw if no block found
+
+        startIdx += "```mermaid".Length;
+
+        var endIdx = content.IndexOf("```", startIdx, StringComparison.OrdinalIgnoreCase);
+        if (endIdx == -1) return content.Substring(startIdx).Trim();
+
+        return content.Substring(startIdx, endIdx - startIdx).Trim();
+    }
+
+    private void RenderModule(ModuleNode module, StringBuilder sb, HashSet<string> printedNodes)
+    {
+        // Only render if it has content or is meaningful
+        var hasContent = module.Components.Count > 0 || module.Children.Count > 0;
+
+        if (hasContent)
+        {
+            sb.AppendLine($"    subgraph {module.Id}[{module.Name}]");
+
+            // Render Components
+            foreach (var compId in module.Components)
+            {
+                sb.AppendLine($"        {compId}[{compId}]");
+                printedNodes.Add(compId);
+            }
+
+            // Render Children
+            foreach (var child in module.Children) RenderModule(child, sb, printedNodes);
+
+            sb.AppendLine("    end");
+        }
     }
 
     /// <summary>

@@ -1,33 +1,35 @@
-@using codeMRI.Server.Api
 @inject WikiApiClient WikiApi
 @inject WikiHubClient WikiHub
 @inject AppState AppState
 @inject NavigationManager Navigation
+@using codeMRI.Frontend.Components.AgentDashboard
+@using codeMRI.Server.Api
 @implements IAsyncDisposable
 
 <div class="container mt-5">
     <div class="row justify-content-center">
         <div class="col-md-10"> <!-- Widened col to fit dashboard -->
             <h2 class="mb-4" style="font-family: 'Google Sans';">Repositories</h2>
-            
+
             @if (AppState.CurrentProgress != null)
             {
                 <div class="card mb-4 shadow-sm border-primary">
                     <div class="card-body">
                         <h5 class="card-title text-primary">Generating Documentation...</h5>
-                         <div class="progress mb-2" style="height: 20px;">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
-                                 style="width: @(AppState.CurrentProgress.Percentage)%;" 
-                                 aria-valuenow="@AppState.CurrentProgress.Percentage" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress mb-2" style="height: 20px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                                 style="width: @(AppState.CurrentProgress.Percentage)%;"
+                                 aria-valuenow="@AppState.CurrentProgress.Percentage" aria-valuemin="0"
+                                 aria-valuemax="100">
                                 @AppState.CurrentProgress.Percentage%
                             </div>
                         </div>
                         <div class="text-muted small mb-3">
                             <strong>[@AppState.CurrentProgress.Phase]</strong> @AppState.CurrentProgress.Message
                         </div>
-                        
+
                         <!-- Agent Dashboard Visualization -->
-                        <AgentDashboard />
+                        <AgentDashboard/>
                     </div>
                 </div>
             }
@@ -41,9 +43,10 @@
                 <div class="list-group shadow-sm">
                     @foreach (var repo in repositories)
                     {
-                        <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3"
-                             style="cursor: pointer;"
-                             @onclick="() => SelectRepo(repo.Path)">
+                        <div
+                            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3"
+                            style="cursor: pointer;"
+                            @onclick="() => SelectRepo(repo.Path)">
                             <div>
                                 <strong class="text-primary">@repo.Name</strong>
                                 <div class="small text-muted">@repo.Path</div>
@@ -53,9 +56,9 @@
                                 }
                             </div>
                             <div class="d-flex align-items-center">
-                                <button class="btn btn-sm btn-outline-success me-3" 
+                                <button class="btn btn-sm btn-outline-success me-3"
                                         disabled="@AppState.IsBusy"
-                                        @onclick:stopPropagation="true" 
+                                        @onclick:stopPropagation="true"
                                         @onclick="() => GenerateAdvanced(repo.Path)">
                                     Advanced Gen
                                 </button>
@@ -90,7 +93,7 @@
         finally
         {
             isLoading = false;
-            StateHasChanged(); 
+            StateHasChanged();
         }
 
         try
@@ -104,29 +107,29 @@
         }
         catch (Exception ex)
         {
-             Console.WriteLine($"Warning: Failed to connect to WikiHub: {ex.Message}");
+            Console.WriteLine($"Warning: Failed to connect to WikiHub: {ex.Message}");
         }
     }
 
-    private void HandleProgress(codeMRI.Server.Api.ProgressInfo info)
+    private void HandleProgress(ProgressInfo info)
     {
         AppState.SetProgress(info);
         InvokeAsync(StateHasChanged);
     }
 
-    private void HandleAgentStatus(codeMRI.Server.Api.AgentMessage msg)
+    private void HandleAgentStatus(AgentMessage msg)
     {
         AppState.UpdateAgentStatus(msg);
         InvokeAsync(StateHasChanged);
     }
 
-    private void HandleDelegation(codeMRI.Server.Api.AgentMessage msg)
+    private void HandleDelegation(AgentMessage msg)
     {
         AppState.AddDelegationEvent(msg);
         InvokeAsync(StateHasChanged);
     }
-    
-    private void HandleTaskLifecycle(codeMRI.Server.Api.AgentMessage msg)
+
+    private void HandleTaskLifecycle(AgentMessage msg)
     {
         AppState.AddTaskLifecycleEvent(msg);
         InvokeAsync(StateHasChanged);
@@ -140,14 +143,14 @@
         {
             // First try to get existing navigation structure
             var structure = await WikiApi.GetNavigationAsync(path);
-            
+
             if (structure == null)
                 // No cached structure, treat as error (user should ingest first)
                 Console.WriteLine($"Error: No structure found for {path}");
-                // We could show a toast here
+            // We could show a toast here
 
-            
-            AppState.SetStructure(structure);
+
+            if (structure != null) AppState.SetStructure(structure);
         }
         catch (Exception ex)
         {
@@ -163,8 +166,8 @@
     private async Task GenerateAdvanced(string path)
     {
         AppState.SetBusy(true, "Starting advanced generation...");
-        AppState.SetProgress(new codeMRI.Server.Api.ProgressInfo { Phase = "Init", Message = "Starting...", Percentage = 0 });
-        
+        AppState.SetProgress(new ProgressInfo { Phase = "Init", Message = "Starting...", Percentage = 0 });
+
         // Clear previous run state
         AppState.ActiveAgents.Clear();
         AppState.DelegationHistory.Clear();
@@ -174,14 +177,14 @@
         {
             var connectionId = WikiHub.ConnectionId;
             var structure = await WikiApi.GenerateAdvancedStructureAsync(path, connectionId);
-            
-            AppState.SetRepoPath(path); 
+
+            AppState.SetRepoPath(path);
             AppState.SetStructure(structure);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error generating advanced wiki: {ex.Message}");
-            AppState.SetProgress(new codeMRI.Server.Api.ProgressInfo { Phase = "Error", Message = ex.Message, Percentage = 0 });
+            AppState.SetProgress(new ProgressInfo { Phase = "Error", Message = ex.Message, Percentage = 0 });
         }
         finally
         {
@@ -203,4 +206,5 @@
         // but for now Repositories is the only user.
         // The implementation calls StartAsync in OnInitialized.
     }
+
 }

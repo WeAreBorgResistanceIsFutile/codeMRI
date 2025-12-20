@@ -1,33 +1,39 @@
 using System.Diagnostics;
+using System.Text;
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace codeMRI.Core.Services;
 
 /// <summary>
-/// Orchestrates multi-model documentation generation with ensemble synthesis.
-/// Generates content with multiple models in parallel and synthesizes results.
+///     Orchestrates multi-model documentation generation with ensemble synthesis.
+///     Generates content with multiple models in parallel and synthesizes results.
 /// </summary>
 public class MultiModelOrchestrationService : IMultiModelOrchestrationService
 {
-    private readonly ILLMClient _llmClient;
-    private readonly IModelRoutingService _routingService;
     private readonly EnsembleConfig _config;
+    private readonly ILLMClient _llmClient;
     private readonly ILogger<MultiModelOrchestrationService> _logger;
+    private readonly CodeWikiOptions _options;
+    private readonly IModelRoutingService _routingService;
 
     public MultiModelOrchestrationService(
         ILLMClient llmClient,
         IModelRoutingService routingService,
         EnsembleConfig config,
-        ILogger<MultiModelOrchestrationService> logger)
+        ILogger<MultiModelOrchestrationService> logger,
+        IOptions<CodeWikiOptions> options)
     {
         _llmClient = llmClient;
         _routingService = routingService;
         _config = config;
         _logger = logger;
+        _options = options.Value;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task<MultiModelResult> GenerateWithEnsembleAsync(
         string systemPrompt,
         string userPrompt,
@@ -37,7 +43,7 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         if (!_config.EnableEnsembleGeneration || _config.EnsembleModels.Count == 0)
         {
             _logger.LogWarning("Ensemble generation is disabled or no models configured, falling back to single model");
-            
+
             // Fall back to single model generation
             var singleResult = await _llmClient.ChatAsync(systemPrompt, userPrompt, history, null, cancellationToken);
             return new MultiModelResult
@@ -91,7 +97,7 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
     }
 
     /// <summary>
-    /// Generates content with a specific model and tracks timing.
+    ///     Generates content with a specific model and tracks timing.
     /// </summary>
     private async Task<ModelOutput?> GenerateWithModelAsync(
         string modelName,
@@ -101,16 +107,16 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-        
+
         try
         {
             _logger.LogDebug("Generating with model: {Model}", modelName);
-            
+
             var content = await _llmClient.ChatAsync(
                 systemPrompt, userPrompt, history, modelName, cancellationToken);
 
             stopwatch.Stop();
-            
+
             _logger.LogDebug("Model {Model} completed in {Duration}ms",
                 modelName, stopwatch.ElapsedMilliseconds);
 
@@ -132,8 +138,8 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
     }
 
     /// <summary>
-    /// Calculates agreement score based on content similarity.
-    /// Uses simple length-based heuristic for now; can be enhanced with semantic similarity.
+    ///     Calculates agreement score based on content similarity.
+    ///     Uses simple length-based heuristic for now; can be enhanced with semantic similarity.
     /// </summary>
     private double CalculateAgreementScore(List<ModelOutput> outputs)
     {
@@ -144,7 +150,7 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         // Lower variance = higher agreement
         var lengths = outputs.Select(o => o.Content.Length).ToList();
         var avgLength = lengths.Average();
-        
+
         if (avgLength == 0)
             return 0.0;
 
@@ -159,7 +165,7 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
     }
 
     /// <summary>
-    /// Synthesizes multiple model outputs into a single coherent result using a judge model.
+    ///     Synthesizes multiple model outputs into a single coherent result using a judge model.
     /// </summary>
     private async Task<string> SynthesizeOutputsAsync(
         List<ModelOutput> outputs,
@@ -168,31 +174,30 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         CancellationToken cancellationToken)
     {
         var judgeModel = _routingService.SelectModelForTask(DocumentationTaskType.Synthesis);
-        
+
         _logger.LogInformation("Synthesizing {Count} outputs using judge model: {Model}",
             outputs.Count, judgeModel ?? "default");
 
         // If only one output, return it directly
-        if (outputs.Count == 1)
-        {
-            return outputs[0].Content;
-        }
+        if (outputs.Count == 1) return outputs[0].Content;
 
         // Build synthesis prompt
         var synthesisSystemPrompt = BuildSynthesisSystemPrompt();
         var synthesisUserPrompt = BuildSynthesisUserPrompt(outputs, originalUserPrompt);
 
         string synthesizedContent;
-        int threshold = (int)(_llmClient.ContextSize * 3.5);
+        var threshold = (int)(_llmClient.ContextSize * 3.5);
         if (synthesisUserPrompt.Length > threshold)
         {
-            _logger.LogInformation("Synthesis prompt too large ({Length}). Using findings-based synthesis.", synthesisUserPrompt.Length);
+            _logger.LogInformation("Synthesis prompt too large ({Length}). Using findings-based synthesis.",
+                synthesisUserPrompt.Length);
             synthesizedContent = await _llmClient.ChatWithFindingsAsync(
                 synthesisSystemPrompt,
                 "Synthesize the following documentation drafts into a single high-quality result.",
                 synthesisUserPrompt,
                 judgeModel,
-                cancellationToken);
+                cancellationToken,
+                _options.UseSemanticChunking);
         }
         else
         {
@@ -208,11 +213,12 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
     }
 
     /// <summary>
-    /// Builds system prompt for the synthesis judge.
+    ///     Builds system prompt for the synthesis judge.
     /// </summary>
     private string BuildSynthesisSystemPrompt()
     {
-        return @"You are an expert documentation synthesis judge. Your role is to combine multiple documentation drafts into a single, coherent, high-quality result.
+        return
+            @"You are an expert documentation synthesis judge. Your role is to combine multiple documentation drafts into a single, coherent, high-quality result.
 
 Guidelines:
 - Identify the BEST elements from each draft (accuracy, clarity, completeness, examples)
@@ -226,21 +232,22 @@ Output ONLY the synthesized documentation content. Do not include preambles like
     }
 
     /// <summary>
-    /// Builds user prompt for synthesis containing all model outputs.
+    ///     Builds user prompt for synthesis containing all model outputs.
     /// </summary>
     private string BuildSynthesisUserPrompt(List<ModelOutput> outputs, string originalPrompt)
     {
-        var promptBuilder = new System.Text.StringBuilder();
-        
+        var promptBuilder = new StringBuilder();
+
         promptBuilder.AppendLine("Original Request:");
         promptBuilder.AppendLine(originalPrompt);
         promptBuilder.AppendLine();
         promptBuilder.AppendLine("---");
         promptBuilder.AppendLine();
-        promptBuilder.AppendLine($"I have {outputs.Count} documentation drafts from different models. Please synthesize them into the best possible result.");
+        promptBuilder.AppendLine(
+            $"I have {outputs.Count} documentation drafts from different models. Please synthesize them into the best possible result.");
         promptBuilder.AppendLine();
 
-        for (int i = 0; i < outputs.Count; i++)
+        for (var i = 0; i < outputs.Count; i++)
         {
             promptBuilder.AppendLine($"## Draft {i + 1} (from {outputs[i].ModelName})");
             promptBuilder.AppendLine();
@@ -256,7 +263,7 @@ Output ONLY the synthesized documentation content. Do not include preambles like
     }
 
     /// <summary>
-    /// Calculates uncertainty based on agreement score and number of models.
+    ///     Calculates uncertainty based on agreement score and number of models.
     /// </summary>
     private double CalculateUncertainty(double agreementScore, int modelCount)
     {
@@ -274,7 +281,7 @@ Output ONLY the synthesized documentation content. Do not include preambles like
 }
 
 /// <summary>
-/// Configuration for ensemble generation (injected from Infrastructure layer).
+///     Configuration for ensemble generation (injected from Infrastructure layer).
 /// </summary>
 public class EnsembleConfig
 {

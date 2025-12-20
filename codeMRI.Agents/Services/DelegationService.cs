@@ -26,21 +26,18 @@ public class DelegationService
     public bool ShouldDelegate(AgentTask task, object context)
     {
         // Check if delegation is enabled
-        if (!_settings.EnableDelegation)
-        {
-            return false;
-        }
+        if (!_settings.EnableDelegation) return false;
 
         // Simple heuristic: if payload is a large module or complex component
         if (task.Payload is CodeComponent component)
         {
             var complexityThreshold = _settings.ComplexityThresholds.GetValueOrDefault("ComplexityScore", 8);
             var lineCountThreshold = _settings.ComplexityThresholds.GetValueOrDefault("LineCount", 500);
-            
+
             if (component.ComplexityScore > complexityThreshold || component.LineCount > lineCountThreshold)
             {
                 _logger.LogInformation(
-                    "Delegation recommended for component {ComponentName} (Complexity: {Complexity}, Lines: {Lines})", 
+                    "Delegation recommended for component {ComponentName} (Complexity: {Complexity}, Lines: {Lines})",
                     component.Name,
                     component.ComplexityScore,
                     component.LineCount);

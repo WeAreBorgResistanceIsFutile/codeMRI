@@ -1,4 +1,5 @@
 using System.Net;
+using codeMRI.Core.Interfaces;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
@@ -11,13 +12,6 @@ namespace codeMRI.Infrastructure.Tests.Services;
 [TestFixture]
 public class ASTServiceClientTests
 {
-    private Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private Mock<ILogger<ASTServiceClient>> _loggerMock;
-    private Mock<IOptions<ASTServiceSettings>> _settingsMock;
-    private Mock<ICSharpParser> _csharpParserMock;
-    private HttpClient _httpClient;
-    private ASTServiceClient _service;
-
     [SetUp]
     public void Setup()
     {
@@ -38,7 +32,8 @@ public class ASTServiceClientTests
             Enabled = true
         });
 
-        _service = new ASTServiceClient(_httpClient, _loggerMock.Object, _settingsMock.Object, _csharpParserMock.Object);
+        _service = new ASTServiceClient(_httpClient, _loggerMock.Object, _settingsMock.Object,
+            _csharpParserMock.Object);
     }
 
     [TearDown]
@@ -46,6 +41,13 @@ public class ASTServiceClientTests
     {
         _httpClient.Dispose();
     }
+
+    private Mock<HttpMessageHandler> _httpMessageHandlerMock;
+    private Mock<ILogger<ASTServiceClient>> _loggerMock;
+    private Mock<IOptions<ASTServiceSettings>> _settingsMock;
+    private Mock<ICSharpParser> _csharpParserMock;
+    private HttpClient _httpClient;
+    private ASTServiceClient _service;
 
     [Test]
     public async Task ParseCodeAsync_ShouldDeserializeIntoRawDependencyData_AndReturnASTParseResult()
@@ -113,7 +115,7 @@ public class ASTServiceClientTests
         var code = "public class Foo { }";
         var language = "java";
         var filePath = "src/Foo.java";
-        
+
         // We capture the request to inspect it later
         HttpRequestMessage capturedRequest = null;
 
@@ -127,7 +129,8 @@ public class ASTServiceClientTests
             .ReturnsAsync(new HttpResponseMessage
             {
                 StatusCode = HttpStatusCode.OK,
-                Content = new StringContent("{}") // Return empty JSON object to satisfy EnsureSuccessStatusCode and Deserialize
+                Content = new StringContent(
+                    "{}") // Return empty JSON object to satisfy EnsureSuccessStatusCode and Deserialize
             });
 
         // Act
@@ -191,8 +194,8 @@ if not logger.hasHandlers():
         var code = "public class Foo {}";
         var language = "csharp";
         var filePath = "test.cs";
-        var expectedResult = new codeMRI.Core.Interfaces.ASTParseResult { Language = "C#" };
-        
+        var expectedResult = new ASTParseResult { Language = "C#" };
+
         _csharpParserMock.Setup(p => p.Parse(code, filePath)).Returns(expectedResult);
 
         // Act
@@ -201,8 +204,9 @@ if not logger.hasHandlers():
         // Assert
         Assert.That(result, Is.SameAs(expectedResult));
         _csharpParserMock.Verify(p => p.Parse(code, filePath), Times.Once);
-        
+
         // Verify HTTP was NOT called
-        _httpMessageHandlerMock.Protected().Verify("SendAsync", Times.Never(), ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>());
+        _httpMessageHandlerMock.Protected().Verify("SendAsync", Times.Never(), ItExpr.IsAny<HttpRequestMessage>(),
+            ItExpr.IsAny<CancellationToken>());
     }
 }

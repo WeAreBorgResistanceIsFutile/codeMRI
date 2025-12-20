@@ -8,10 +8,6 @@ namespace codeMRI.E2E;
 [TestFixture]
 public class FrontendApiIntegrationTests
 {
-    private WebApplicationFactory<Program> _factory;
-    private HttpClient _client;
-    private const string TestRepoPath = "/Users/levente/AI/OllamaRAG5";
-
     [OneTimeSetUp]
     public void OneTimeSetup()
     {
@@ -26,6 +22,10 @@ public class FrontendApiIntegrationTests
         _client?.Dispose();
         _factory?.Dispose();
     }
+
+    private WebApplicationFactory<Program> _factory;
+    private HttpClient _client;
+    private const string TestRepoPath = "/Users/levente/AI/OllamaRAG5";
 
     [Test]
     [Order(3)]
@@ -54,6 +54,7 @@ public class FrontendApiIntegrationTests
             var content = await response.Content.ReadAsStringAsync();
             TestContext.WriteLine($"GeneratePage failed: {response.StatusCode} - {content}");
         }
+
         Assert.That(response.IsSuccessStatusCode, Is.True, "Page Generation API should return success.");
 
         var page = await response.Content.ReadFromJsonAsync<WikiPage>();

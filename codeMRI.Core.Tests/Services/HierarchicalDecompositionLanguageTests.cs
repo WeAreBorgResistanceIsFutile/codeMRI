@@ -2,21 +2,13 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Moq;
-using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services;
 
 [TestFixture]
 public class HierarchicalDecompositionLanguageTests
 {
-    private Mock<ILogger<HierarchicalDecompositionService>> _loggerMock;
-    private Mock<IEnhancedDependencyGraphService> _graphServiceMock;
-    private Mock<IArchitecturalPatternService> _patternServiceMock;
-    private Mock<IProgressService> _progressServiceMock;
-    private HierarchicalDecompositionService _service;
-
     [SetUp]
     public void Setup()
     {
@@ -34,13 +26,19 @@ public class HierarchicalDecompositionLanguageTests
             _graphServiceMock.Object,
             _patternServiceMock.Object,
             _progressServiceMock.Object);
-            
+
         // Default Pattern Service Setup
         _patternServiceMock.Setup(x => x.DetermineLayer(It.IsAny<GraphNode>()))
             .Returns(ArchitecturalLayerType.Unknown);
         _patternServiceMock.Setup(x => x.RecognizePattern(It.IsAny<ModuleNode>(), It.IsAny<EnhancedDependencyGraph>()))
             .Returns(new ArchitecturalPattern { Type = ArchitecturalPatternType.Unknown });
     }
+
+    private Mock<ILogger<HierarchicalDecompositionService>> _loggerMock;
+    private Mock<IEnhancedDependencyGraphService> _graphServiceMock;
+    private Mock<IArchitecturalPatternService> _patternServiceMock;
+    private Mock<IProgressService> _progressServiceMock;
+    private HierarchicalDecompositionService _service;
 
     [Test]
     [TestCase("Program.cs", "public static void Main(string[] args)", "C#")]
@@ -55,21 +53,22 @@ public class HierarchicalDecompositionLanguageTests
     {
         // Arrange
         var graph = new EnhancedDependencyGraph();
-        var metadata = new NodeMetadata 
-        { 
-            Type = "File", 
+        var metadata = new NodeMetadata
+        {
+            Type = "File",
             Language = language,
             FilePath = fileName,
             ContentSnippet = contentSnippet // We assume we'll add this field or similar logic
         };
-        
+
         graph.AddNode(fileName, metadata);
 
         _graphServiceMock.Setup(x => x.GetComponentsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CodeComponent>());
         _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
-        _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x =>
+                x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
 
         // Act
@@ -78,10 +77,11 @@ public class HierarchicalDecompositionLanguageTests
         // Assert
         var entryNode = result.Nodes.Values.FirstOrDefault(n => n.Components.Contains(fileName));
         Assert.That(entryNode, Is.Not.Null);
-        
+
         // Check if it was marked as containing an entry point in metadata
         Assert.That(entryNode.Metadata.ContainsKey("HasEntryPoint"), Is.True, "Metadata should contain HasEntryPoint");
-        Assert.That(entryNode.Metadata["HasEntryPoint"], Is.EqualTo("true"), $"File {fileName} should be identified as EntryPoint");
+        Assert.That(entryNode.Metadata["HasEntryPoint"], Is.EqualTo("true"),
+            $"File {fileName} should be identified as EntryPoint");
     }
 
     [Test]
@@ -89,19 +89,22 @@ public class HierarchicalDecompositionLanguageTests
     {
         // Arrange
         var graph = new EnhancedDependencyGraph();
-        
+
         // C++ Core
-        graph.AddNode("core.cpp", new NodeMetadata { Language = "C++", FilePath = "core.cpp", ContentSnippet = "int main() {}" });
-        
+        graph.AddNode("core.cpp",
+            new NodeMetadata { Language = "C++", FilePath = "core.cpp", ContentSnippet = "int main() {}" });
+
         // Python Wrapper
-        graph.AddNode("wrapper.py", new NodeMetadata { Language = "Python", FilePath = "wrapper.py", ContentSnippet = "import core" });
-        
+        graph.AddNode("wrapper.py",
+            new NodeMetadata { Language = "Python", FilePath = "wrapper.py", ContentSnippet = "import core" });
+
         // Dependency
         graph.AddEdge("wrapper.py", "core.cpp", EdgeType.Dependency, 1.0);
 
         _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
-        _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x =>
+                x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
 
         // Act
@@ -113,7 +116,7 @@ public class HierarchicalDecompositionLanguageTests
 
         // Check Entry Point detection
         Assert.That(cppNode.Metadata.GetValueOrDefault("HasEntryPoint"), Is.EqualTo("true"));
-        
+
         // Python wrapper might not be an entry point if it just imports, but let's check structure
         Assert.That(result.Nodes.Count, Is.GreaterThanOrEqualTo(1));
     }

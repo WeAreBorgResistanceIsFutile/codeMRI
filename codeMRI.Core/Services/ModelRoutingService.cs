@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 namespace codeMRI.Core.Services;
 
 /// <summary>
-/// Routes documentation tasks to specialized models based on task type.
+///     Routes documentation tasks to specialized models based on task type.
 /// </summary>
 public class ModelRoutingService : IModelRoutingService
 {
@@ -19,7 +19,7 @@ public class ModelRoutingService : IModelRoutingService
         _logger = logger;
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public string? SelectModelForTask(DocumentationTaskType taskType)
     {
         if (!_config.EnableModelRouting)
@@ -38,17 +38,15 @@ public class ModelRoutingService : IModelRoutingService
         };
 
         if (selectedModel != null)
-        {
-            _logger.LogInformation("Selected model {Model} for task type {TaskType}", 
+            _logger.LogInformation("Selected model {Model} for task type {TaskType}",
                 selectedModel, taskType);
-        }
 
         return selectedModel;
     }
 }
 
 /// <summary>
-/// Configuration for model routing (injected from Infrastructure layer).
+///     Configuration for model routing (injected from Infrastructure layer).
 /// </summary>
 public class ModelRoutingConfig
 {

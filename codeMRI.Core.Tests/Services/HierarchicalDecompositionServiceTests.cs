@@ -3,19 +3,12 @@ using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
-using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services;
 
 [TestFixture]
 public class HierarchicalDecompositionServiceTests
 {
-    private Mock<ILogger<HierarchicalDecompositionService>> _loggerMock;
-    private Mock<IEnhancedDependencyGraphService> _graphServiceMock;
-    private Mock<IArchitecturalPatternService> _patternServiceMock;
-    private Mock<IProgressService> _progressServiceMock;
-    private HierarchicalDecompositionService _service;
-
     [SetUp]
     public void Setup()
     {
@@ -33,12 +26,18 @@ public class HierarchicalDecompositionServiceTests
             _graphServiceMock.Object,
             _patternServiceMock.Object,
             _progressServiceMock.Object);
-            
+
         _patternServiceMock.Setup(x => x.DetermineLayer(It.IsAny<GraphNode>()))
             .Returns(ArchitecturalLayerType.Unknown);
         _patternServiceMock.Setup(x => x.RecognizePattern(It.IsAny<ModuleNode>(), It.IsAny<EnhancedDependencyGraph>()))
             .Returns(new ArchitecturalPattern { Type = ArchitecturalPatternType.Unknown });
     }
+
+    private Mock<ILogger<HierarchicalDecompositionService>> _loggerMock;
+    private Mock<IEnhancedDependencyGraphService> _graphServiceMock;
+    private Mock<IArchitecturalPatternService> _patternServiceMock;
+    private Mock<IProgressService> _progressServiceMock;
+    private HierarchicalDecompositionService _service;
 
     [Test]
     public async Task DecomposeHierarchicallyAsync_ShouldPerformRecursivePartitioning_WhenModulesAreTooLarge()
@@ -47,20 +46,16 @@ public class HierarchicalDecompositionServiceTests
         var graph = new EnhancedDependencyGraph();
         // Create a large graph that exceeds token limit
         // Limit is 32768, so let's make a module with 40000 tokens
-        for (int i = 0; i < 40; i++)
-        {
+        for (var i = 0; i < 40; i++)
             graph.AddNode($"Node_{i}", new NodeMetadata { EstimatedTokens = 1000, FilePath = $"src/Node_{i}.cs" });
-        }
-        
+
         // All nodes connected to form a single cluster if not split
-        for (int i = 0; i < 39; i++)
-        {
-            graph.AddEdge($"Node_{i}", $"Node_{i+1}", EdgeType.Dependency, 1.0);
-        }
+        for (var i = 0; i < 39; i++) graph.AddEdge($"Node_{i}", $"Node_{i + 1}", EdgeType.Dependency, 1.0);
 
         _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
-        _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x =>
+                x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
 
         // Act
@@ -71,12 +66,10 @@ public class HierarchicalDecompositionServiceTests
         // Depth should be > 1 (Root -> Level1 -> Level2)
         var maxLevel = result.Nodes.Values.Max(n => n.Level);
         Assert.That(maxLevel, Is.GreaterThan(1), "Should have decomposed recursively to at least level 2");
-        
+
         var leaves = result.GetAllLeaves();
-        foreach(var leaf in leaves)
-        {
+        foreach (var leaf in leaves)
             Assert.That(leaf.EstimatedTokens, Is.LessThanOrEqualTo(32768), "All leaves should respect token limit");
-        }
     }
 
     [Test]
@@ -85,16 +78,20 @@ public class HierarchicalDecompositionServiceTests
         // Arrange
         var graph = new EnhancedDependencyGraph();
         // Feature A
-        graph.AddNode("Features/Auth/LoginController.cs", new NodeMetadata { FilePath = "Features/Auth/LoginController.cs" });
+        graph.AddNode("Features/Auth/LoginController.cs",
+            new NodeMetadata { FilePath = "Features/Auth/LoginController.cs" });
         graph.AddNode("Features/Auth/LoginService.cs", new NodeMetadata { FilePath = "Features/Auth/LoginService.cs" });
-        
+
         // Feature B
-        graph.AddNode("Features/Orders/OrderController.cs", new NodeMetadata { FilePath = "Features/Orders/OrderController.cs" });
-        graph.AddNode("Features/Orders/OrderService.cs", new NodeMetadata { FilePath = "Features/Orders/OrderService.cs" });
+        graph.AddNode("Features/Orders/OrderController.cs",
+            new NodeMetadata { FilePath = "Features/Orders/OrderController.cs" });
+        graph.AddNode("Features/Orders/OrderService.cs",
+            new NodeMetadata { FilePath = "Features/Orders/OrderService.cs" });
 
         _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
-        _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x =>
+                x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
 
         // Act
@@ -103,19 +100,22 @@ public class HierarchicalDecompositionServiceTests
         // Assert
         // We expect modules named "Auth" and "Orders" or similar, even if they have no edges, 
         // because the directory structure implies cohesion (Feature-Oriented Decomposition).
-        
-        var authModule = result.Nodes.Values.FirstOrDefault(n => n.Name.Contains("Auth") || n.Components.Any(c => c.Contains("Auth")));
-        var ordersModule = result.Nodes.Values.FirstOrDefault(n => n.Name.Contains("Orders") || n.Components.Any(c => c.Contains("Orders")));
-        
+
+        var authModule =
+            result.Nodes.Values.FirstOrDefault(n =>
+                n.Name.Contains("Auth") || n.Components.Any(c => c.Contains("Auth")));
+        var ordersModule = result.Nodes.Values.FirstOrDefault(n =>
+            n.Name.Contains("Orders") || n.Components.Any(c => c.Contains("Orders")));
+
         Assert.That(authModule, Is.Not.Null);
         Assert.That(ordersModule, Is.Not.Null);
         Assert.That(authModule != ordersModule, Is.True, "Features should be separated");
     }
-    
+
     [Test]
     public async Task DecomposeHierarchicallyAsync_ShouldCalculateQualityMetrics_IncludingInstabilityAndAbstractness()
     {
-         // Arrange
+        // Arrange
         var graph = new EnhancedDependencyGraph();
         graph.AddNode("Interface1", new NodeMetadata { Type = "Interface", EstimatedTokens = 10 });
         graph.AddNode("Impl1", new NodeMetadata { Type = "Class", EstimatedTokens = 50 });
@@ -125,15 +125,16 @@ public class HierarchicalDecompositionServiceTests
 
         _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
-        _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x =>
+                x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
-            
+
         // Mock strict grouping
         _patternServiceMock.Setup(x => x.DetermineLayer(It.Is<GraphNode>(n => n.ComponentId == "Interface1")))
             .Returns(ArchitecturalLayerType.Domain);
         _patternServiceMock.Setup(x => x.DetermineLayer(It.Is<GraphNode>(n => n.ComponentId == "Impl1")))
             .Returns(ArchitecturalLayerType.Domain);
-         _patternServiceMock.Setup(x => x.DetermineLayer(It.Is<GraphNode>(n => n.ComponentId == "External")))
+        _patternServiceMock.Setup(x => x.DetermineLayer(It.Is<GraphNode>(n => n.ComponentId == "External")))
             .Returns(ArchitecturalLayerType.Presentation);
 
         // Act
@@ -146,6 +147,7 @@ public class HierarchicalDecompositionServiceTests
         // Abstractness = 1 / 2 = 0.5
         Assert.That(domain.QualityMetrics.Abstractness, Is.EqualTo(0.5).Within(0.01));
     }
+
     [Test]
     public async Task DecomposeHierarchicallyAsync_ShouldUseRelativePaths_ForDirectoryClusters()
     {
@@ -157,10 +159,11 @@ public class HierarchicalDecompositionServiceTests
 
         var graph = new EnhancedDependencyGraph();
         graph.AddNode("Component1", new NodeMetadata { FilePath = filePath });
-        
+
         _graphServiceMock.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
-        _graphServiceMock.Setup(x => x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
+        _graphServiceMock.Setup(x =>
+                x.AnalyzeGraphAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GraphAnalysisResult());
 
         // Act
@@ -169,11 +172,12 @@ public class HierarchicalDecompositionServiceTests
         // Assert
         // The module name should come from "Src/FeatureA", converted to "Src Featurea"
         // It definitely should NOT contain the temp path root.
-        
+
         var module = result.Nodes.Values.FirstOrDefault(n => n.Name.Contains("Src Featurea"));
-        
+
         Assert.That(module, Is.Not.Null, "Should have created a module for Src Featurea");
-        Assert.That(module.Name, Does.Not.Contain("TestRepo"), "Module name should be relative, not containing repo root");
+        Assert.That(module.Name, Does.Not.Contain("TestRepo"),
+            "Module name should be relative, not containing repo root");
         Assert.That(module.Name, Is.EqualTo("Src Featurea"));
     }
 }

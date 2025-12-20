@@ -144,43 +144,44 @@ public class BaseAgentTests
         Assert.That(result!.Reason, Contains.Substring("CyclomaticComplexity"));
     }
 
-        [Test]
-        public async Task CalculateComplexity_ShouldUseAstService_WhenAvailable()
+    [Test]
+    public async Task CalculateComplexity_ShouldUseAstService_WhenAvailable()
+    {
+        // Arrange
+        var code = "public class Test { public void Method() { } }";
+
+        // Mock the AST service to return high complexity metrics
+        // Now that ASTMetrics is reverted to object, we mock an anonymous type
+        var mockedMetrics = new
         {
-            // Arrange
-            var code = "public class Test { public void Method() { } }";
-            
-            // Mock the AST service to return high complexity metrics
-            // Now that ASTMetrics is reverted to object, we mock an anonymous type
-            var mockedMetrics = new
-            {
-                TokenCount = 500, // Reverted to TokenCount for this test's assertion
-                CyclomaticComplexity = 25,
-                NestingDepth = 8
-            };
-    
-            var astResult = new ASTParseResult 
-            {
-                Language = "csharp", 
-                Metrics = mockedMetrics 
-            };
-    
-            _mockAstService.Setup(s => s.ParseCodeAsync(code, "csharp", "", It.IsAny<CancellationToken>()))
-                .ReturnsAsync(astResult);
-    
-            // Act
-            var result = await _agent.CalculateComplexityInternal(code, CancellationToken.None);
-    
-            // Assert
-            Assert.That(result, Is.Not.Null);
-            // Verify that the values from the AST service are returned, NOT the fallback calculation
-            // Fallback for this code string would be very low complexity.
-            Assert.That(result.TokenCount, Is.EqualTo(500));
-            Assert.That(result.CyclomaticComplexity, Is.EqualTo(25));
-            Assert.That(result.NestingDepth, Is.EqualTo(8));
-    
-            _mockAstService.Verify(s => s.ParseCodeAsync(code, "csharp", "", It.IsAny<CancellationToken>()), Times.Once);
-        }
+            TokenCount = 500, // Reverted to TokenCount for this test's assertion
+            CyclomaticComplexity = 25,
+            NestingDepth = 8
+        };
+
+        var astResult = new ASTParseResult
+        {
+            Language = "csharp",
+            Metrics = mockedMetrics
+        };
+
+        _mockAstService.Setup(s => s.ParseCodeAsync(code, "csharp", "", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(astResult);
+
+        // Act
+        var result = await _agent.CalculateComplexityInternal(code, CancellationToken.None);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        // Verify that the values from the AST service are returned, NOT the fallback calculation
+        // Fallback for this code string would be very low complexity.
+        Assert.That(result.TokenCount, Is.EqualTo(500));
+        Assert.That(result.CyclomaticComplexity, Is.EqualTo(25));
+        Assert.That(result.NestingDepth, Is.EqualTo(8));
+
+        _mockAstService.Verify(s => s.ParseCodeAsync(code, "csharp", "", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Test]
     public async Task CalculateComplexity_ShouldFallback_WhenAstServiceFails()
     {

@@ -1,9 +1,9 @@
+using System.Text.Json;
 using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 
 namespace codeMRI.Agents.Agents;
 
@@ -85,10 +85,7 @@ public abstract class BaseAgent : IAgent
                 {
                     var json = JsonSerializer.Serialize(result.Metrics);
                     var metrics = JsonSerializer.Deserialize<CodeComplexityMetrics>(json);
-                    if (metrics != null)
-                    {
-                        return metrics;
-                    }
+                    if (metrics != null) return metrics;
                 }
             }
             catch (Exception ex)
@@ -157,7 +154,7 @@ public abstract class BaseAgent : IAgent
         {
             SenderId = Id,
             MessageType = AgentMessageTypes.TaskCompleted,
-            Content = new { TaskId = task.Id, Role, Success = result.Success, Timestamp = DateTime.UtcNow }
+            Content = new { TaskId = task.Id, Role, result.Success, Timestamp = DateTime.UtcNow }
         });
     }
 

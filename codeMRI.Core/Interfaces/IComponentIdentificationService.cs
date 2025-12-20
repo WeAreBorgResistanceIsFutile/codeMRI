@@ -1,5 +1,3 @@
-using codeMRI.Core.Models;
-
 namespace codeMRI.Core.Interfaces;
 
 public interface IComponentIdentificationService

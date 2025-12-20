@@ -26,13 +26,13 @@ public class TextSplitterTests
     {
         var text = "0123456789";
         var result = TextSplitter.Split(text, 5, 2);
-        
+
         // Chunk 1: "01234" (0 to 5)
         // Next start: 5 - 2 = 3
         // Chunk 2: "34567" (3 to 5)
         // Next start: 3 + 5 - 2 = 6
         // Chunk 3: "6789" (6 to 4)
-        
+
         Assert.That(result, Has.Count.EqualTo(3));
         Assert.That(result[0], Is.EqualTo("01234"));
         Assert.That(result[1], Is.EqualTo("34567"));
@@ -44,7 +44,7 @@ public class TextSplitterTests
     {
         var text = "0123456789";
         var result = TextSplitter.Split(text, 5, 0);
-        
+
         Assert.That(result, Has.Count.EqualTo(2));
         Assert.That(result[0], Is.EqualTo("01234"));
         Assert.That(result[1], Is.EqualTo("56789"));

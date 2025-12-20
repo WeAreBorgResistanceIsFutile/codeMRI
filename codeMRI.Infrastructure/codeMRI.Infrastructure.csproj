@@ -1,17 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-        <ProjectReference Include="..\codeMRI.Agents\codeMRI.Agents.csproj" />
-        <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj" />
-        <ProjectReference Include="..\codeMRI.Visualization\codeMRI.Visualization.csproj" />
+        <ProjectReference Include="..\codeMRI.Agents\codeMRI.Agents.csproj"/>
+        <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj"/>
+        <ProjectReference Include="..\codeMRI.Visualization\codeMRI.Visualization.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Dapper" Version="2.1.66" />
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
-        <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.1" />
-        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.1" />
-        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.1" />
+        <PackageReference Include="Dapper" Version="2.1.66"/>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0"/>
+        <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.1"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.1"/>
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.1"/>
     </ItemGroup>
 
     <PropertyGroup>

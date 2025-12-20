@@ -74,7 +74,7 @@ public class ASTServiceClient : IASTServiceClient
                 var success = response.IsSuccessStatusCode;
 
                 if (success) _failureCount = 0; // Reset failure count on success
-                
+
                 _logger.LogInformation("AST Service health check result: {Success}", success);
                 return success;
             }
@@ -109,7 +109,7 @@ public class ASTServiceClient : IASTServiceClient
             var content = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<SupportedLanguagesResponse>(content, _jsonOptions);
             var languages = result?.Languages ?? new List<string>();
-            
+
             _logger.LogInformation("AST Service supported languages: {Languages}", string.Join(", ", languages));
             return languages;
         }
@@ -124,11 +124,10 @@ public class ASTServiceClient : IASTServiceClient
         CancellationToken cancellationToken = default)
     {
         // 0. Use local Roslyn parser for C#
-        if (language.Equals("C#", StringComparison.OrdinalIgnoreCase) || 
+        if (language.Equals("C#", StringComparison.OrdinalIgnoreCase) ||
             language.Equals("CSharp", StringComparison.OrdinalIgnoreCase) ||
             filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            try 
+            try
             {
                 return _csharpParser.Parse(code, filePath);
             }
@@ -137,9 +136,8 @@ public class ASTServiceClient : IASTServiceClient
                 _logger.LogError(ex, "Failed to parse C# code using Roslyn parser locally for {FilePath}", filePath);
                 // Optionally fall back to remote or return null?
                 // Let's assume remote might handle it differently but user specified Roslyn for C#.
-                return null; 
+                return null;
             }
-        }
 
         if (_circuitOpen)
         {
@@ -173,9 +171,10 @@ public class ASTServiceClient : IASTServiceClient
                 };
 
                 var json = JsonSerializer.Serialize(request, _jsonOptions);
-                _logger.LogInformation("Sending AST Parse request for {FilePath} ({Language}). Code length: {Length}", filePath, language, code.Length);
+                _logger.LogInformation("Sending AST Parse request for {FilePath} ({Language}). Code length: {Length}",
+                    filePath, language, code.Length);
                 _logger.LogInformation("AST Parse Request Body: {Body}", json);
-                
+
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 var response = await _httpClient.PostAsync("/api/ast/parse", content, cancellationToken);
@@ -227,15 +226,18 @@ public class ASTServiceClient : IASTServiceClient
                 var delay = TimeSpan.FromMilliseconds(baseDelayMs * Math.Pow(2, attempt - 1));
                 await Task.Delay(delay, cancellationToken);
             }
-            catch (HttpRequestException ex) when (ex.InnerException is System.IO.IOException)
+            catch (HttpRequestException ex) when (ex.InnerException is IOException)
             {
-                _logger.LogWarning(ex, "AST Service connection dropped (Response ended prematurely) for {FilePath} on attempt {Attempt}. Likely payload size issue.", filePath, attempt);
-                 if (attempt < maxRetries) 
-                 {
+                _logger.LogWarning(ex,
+                    "AST Service connection dropped (Response ended prematurely) for {FilePath} on attempt {Attempt}. Likely payload size issue.",
+                    filePath, attempt);
+                if (attempt < maxRetries)
+                {
                     await Task.Delay(1000 * attempt, cancellationToken);
                     continue;
-                 }
-                 throw;
+                }
+
+                throw;
             }
             catch (Exception ex)
             {
@@ -319,19 +321,23 @@ public class ASTServiceClient : IASTServiceClient
                 // Fallback: If no components found but file has content, treat as Script/Module
                 if (components.Count == 0 && astResult.Metrics is JsonElement metricsElement)
                 {
-                    int lines = 0;
-                    if (TryGetPropertyCaseInsensitive(metricsElement, "linesOfCode", out var linesProp) && linesProp.ValueKind == JsonValueKind.Number)
-                         lines = linesProp.GetInt32();
-                    else if (TryGetPropertyCaseInsensitive(metricsElement, "lines", out var linesProp2) && linesProp2.ValueKind == JsonValueKind.Number)
-                         lines = linesProp2.GetInt32();
+                    var lines = 0;
+                    if (TryGetPropertyCaseInsensitive(metricsElement, "linesOfCode", out var linesProp) &&
+                        linesProp.ValueKind == JsonValueKind.Number)
+                        lines = linesProp.GetInt32();
+                    else if (TryGetPropertyCaseInsensitive(metricsElement, "lines", out var linesProp2) &&
+                             linesProp2.ValueKind == JsonValueKind.Number)
+                        lines = linesProp2.GetInt32();
 
                     if (lines > 0)
                     {
-                        int complexity = 1;
-                        if (TryGetPropertyCaseInsensitive(metricsElement, "cyclomaticComplexity", out var compProp) && compProp.ValueKind == JsonValueKind.Number)
-                             complexity = compProp.GetInt32();
-                        else if (TryGetPropertyCaseInsensitive(metricsElement, "complexity", out var compProp2) && compProp2.ValueKind == JsonValueKind.Number)
-                             complexity = compProp2.GetInt32();
+                        var complexity = 1;
+                        if (TryGetPropertyCaseInsensitive(metricsElement, "cyclomaticComplexity", out var compProp) &&
+                            compProp.ValueKind == JsonValueKind.Number)
+                            complexity = compProp.GetInt32();
+                        else if (TryGetPropertyCaseInsensitive(metricsElement, "complexity", out var compProp2) &&
+                                 compProp2.ValueKind == JsonValueKind.Number)
+                            complexity = compProp2.GetInt32();
 
                         components.Add(new CodeComponent
                         {
@@ -400,39 +406,67 @@ public class ASTServiceClient : IASTServiceClient
 
                     components.Add(component);
                 }
-                
+
             // Fallback for dynamic: If no components found
             if (components.Count == 0)
             {
-                 dynamic metrics = astResult.Metrics;
-                 if (metrics != null)
-                 {
-                     int lines = 0;
-                     try { lines = metrics.linesOfCode; } catch {}
-                     if (lines == 0) try { lines = metrics.Lines; } catch {}
+                dynamic metrics = astResult.Metrics;
+                if (metrics != null)
+                {
+                    var lines = 0;
+                    try
+                    {
+                        lines = metrics.linesOfCode;
+                    }
+                    catch
+                    {
+                    }
 
-                     if (lines > 0)
-                     {
-                         int complexity = 1;
-                         try { complexity = metrics.cyclomaticComplexity; } catch {}
-                         if (complexity <= 0) try { complexity = metrics.Complexity; } catch {}
+                    if (lines == 0)
+                        try
+                        {
+                            lines = metrics.Lines;
+                        }
+                        catch
+                        {
+                        }
 
-                         components.Add(new CodeComponent
-                         {
-                             Id = $"{fileName}_script",
-                             Name = fileName,
-                             Type = "Script",
-                             FilePath = astResult.FilePath,
-                             Language = astResult.Language,
-                             LineCount = lines,
-                             ComplexityScore = complexity,
-                             Methods = new List<string>(),
-                             Properties = new List<string>(),
-                             Dependencies = ExtractDependenciesDynamic(astResult),
-                             Description = $"Script {fileName} in {astResult.Language} with {lines} lines of code"
-                         });
-                     }
-                 }
+                    if (lines > 0)
+                    {
+                        var complexity = 1;
+                        try
+                        {
+                            complexity = metrics.cyclomaticComplexity;
+                        }
+                        catch
+                        {
+                        }
+
+                        if (complexity <= 0)
+                            try
+                            {
+                                complexity = metrics.Complexity;
+                            }
+                            catch
+                            {
+                            }
+
+                        components.Add(new CodeComponent
+                        {
+                            Id = $"{fileName}_script",
+                            Name = fileName,
+                            Type = "Script",
+                            FilePath = astResult.FilePath,
+                            Language = astResult.Language,
+                            LineCount = lines,
+                            ComplexityScore = complexity,
+                            Methods = new List<string>(),
+                            Properties = new List<string>(),
+                            Dependencies = ExtractDependenciesDynamic(astResult),
+                            Description = $"Script {fileName} in {astResult.Language} with {lines} lines of code"
+                        });
+                    }
+                }
             }
         }
         catch (Exception ex)

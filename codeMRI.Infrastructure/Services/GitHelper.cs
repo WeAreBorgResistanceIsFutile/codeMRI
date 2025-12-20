@@ -4,12 +4,11 @@ namespace codeMRI.Infrastructure.Services;
 
 public static class GitHelper
 {
-    public static async Task<string> CloneRepositoryAsync(string gitUrl, string? targetDir = null, CancellationToken cancellationToken = default)
+    public static async Task<string> CloneRepositoryAsync(string gitUrl, string? targetDir = null,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(targetDir))
-        {
             targetDir = Path.Combine(Path.GetTempPath(), "codeMRI_" + Guid.NewGuid().ToString("N"));
-        }
 
         Directory.CreateDirectory(targetDir);
 
@@ -25,15 +24,15 @@ public static class GitHelper
         };
 
         using var process = new Process { StartInfo = startInfo };
-        
+
         var output = new List<string>();
         var errors = new List<string>();
-        
-        process.OutputDataReceived += (sender, e) => 
+
+        process.OutputDataReceived += (sender, e) =>
         {
             if (!string.IsNullOrEmpty(e.Data)) output.Add(e.Data);
         };
-        process.ErrorDataReceived += (sender, e) => 
+        process.ErrorDataReceived += (sender, e) =>
         {
             if (!string.IsNullOrEmpty(e.Data)) errors.Add(e.Data);
         };
@@ -56,24 +55,22 @@ public static class GitHelper
     public static bool IsGitUrl(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return false;
-        
+
         // Check for common remote Git patterns
-        if (input.StartsWith("http", StringComparison.OrdinalIgnoreCase) || 
-            input.StartsWith("git@") || 
+        if (input.StartsWith("http", StringComparison.OrdinalIgnoreCase) ||
+            input.StartsWith("git@") ||
             input.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
-        {
             return true;
-        }
 
         // Check if it's a valid local directory (allowing re-ingestion from local path)
         try
         {
-            if (Directory.Exists(input))
-            {
-                return true;
-            }
+            if (Directory.Exists(input)) return true;
         }
-        catch { /* Ignore invalid path syntax */ }
+        catch
+        {
+            /* Ignore invalid path syntax */
+        }
 
         return false;
     }
@@ -95,19 +92,17 @@ public static class GitHelper
 
             using var process = new Process { StartInfo = startInfo };
             process.Start();
-            
+
             var output = await process.StandardOutput.ReadToEndAsync();
             await process.WaitForExitAsync();
 
-            if (process.ExitCode == 0)
-            {
-                return output.Trim();
-            }
+            if (process.ExitCode == 0) return output.Trim();
         }
-        catch 
+        catch
         {
             // Ignore errors, return empty
         }
+
         return string.Empty;
     }
 }

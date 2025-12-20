@@ -271,7 +271,7 @@ Return only valid JSON.";
         try
         {
             var cleanResponse = CleanJsonString(response);
-            
+
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
@@ -301,36 +301,29 @@ Return only valid JSON.";
         if (string.IsNullOrWhiteSpace(response)) return response;
 
         var cleaned = response.Trim();
-        
+
         // Remove markdown code blocks if present
         if (cleaned.Contains("```json"))
         {
             var start = cleaned.IndexOf("```json") + 7;
             var end = cleaned.LastIndexOf("```");
-            if (end > start)
-            {
-                cleaned = cleaned.Substring(start, end - start);
-            }
+            if (end > start) cleaned = cleaned.Substring(start, end - start);
         }
         else if (cleaned.StartsWith("```"))
         {
             var firstLineBreak = cleaned.IndexOf('\n');
             var lastBackticks = cleaned.LastIndexOf("```");
             if (firstLineBreak > 0 && lastBackticks > firstLineBreak)
-            {
                 cleaned = cleaned.Substring(firstLineBreak + 1, lastBackticks - firstLineBreak - 1);
-            }
         }
-        
+
         // Sometimes LLMs add text before or after the JSON even without code blocks
         // Find the first '{' and last '}'
         var firstBrace = cleaned.IndexOf('{');
         var lastBrace = cleaned.LastIndexOf('}');
         if (firstBrace >= 0 && lastBrace > firstBrace)
-        {
             cleaned = cleaned.Substring(firstBrace, lastBrace - firstBrace + 1);
-        }
-        
+
         return cleaned.Trim();
     }
 

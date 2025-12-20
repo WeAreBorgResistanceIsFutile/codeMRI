@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
@@ -40,17 +41,13 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
 
         // Sub-progress for Identification (0-20%)
         List<CodeComponent> components = null!;
-        await _progressService.WithScalingAsync(0, 20, async () => 
-        {
-             components = await _graphService.GetComponentsAsync(repositoryPath, cancellationToken);
-        });
-        
+        await _progressService.WithScalingAsync(0, 20,
+            async () => { components = await _graphService.GetComponentsAsync(repositoryPath, cancellationToken); });
+
         // Sub-progress for Graph Build (20-100%)
         EnhancedDependencyGraph graph = null!;
-        await _progressService.WithScalingAsync(20, 80, async () => 
-        {
-             graph = await _graphService.BuildGraphAsync(components, cancellationToken);
-        });
+        await _progressService.WithScalingAsync(20, 80,
+            async () => { graph = await _graphService.BuildGraphAsync(components, cancellationToken); });
 
         // Identify Entry Points
         IdentifyEntryPoints(graph);
@@ -81,13 +78,11 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     private void IdentifyEntryPoints(EnhancedDependencyGraph graph)
     {
         foreach (var node in graph.GetNodes())
-        {
             if (IsEntryPoint(node))
             {
                 node.Metadata.Properties["Role"] = "EntryPoint";
                 _logger.LogDebug("Identified entry point: {Id}", node.ComponentId);
             }
-        }
     }
 
     private bool IsEntryPoint(GraphNode node)
@@ -97,25 +92,19 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
 
         if (string.IsNullOrEmpty(content)) return false;
 
-        if (lang.Equals("C#", StringComparison.OrdinalIgnoreCase) || lang.Equals("Java", StringComparison.OrdinalIgnoreCase))
-        {
+        if (lang.Equals("C#", StringComparison.OrdinalIgnoreCase) ||
+            lang.Equals("Java", StringComparison.OrdinalIgnoreCase))
             return Regex.IsMatch(content, @"public\s+static\s+void\s+Main\s*\(", RegexOptions.IgnoreCase);
-        }
         if (lang.Equals("Python", StringComparison.OrdinalIgnoreCase))
-        {
             return content.Contains("if __name__ == \"__main__\":") || content.Contains("if __name__ == '__main__':");
-        }
-        if (lang.Equals("JavaScript", StringComparison.OrdinalIgnoreCase) || lang.Equals("TypeScript", StringComparison.OrdinalIgnoreCase))
-        {
+        if (lang.Equals("JavaScript", StringComparison.OrdinalIgnoreCase) ||
+            lang.Equals("TypeScript", StringComparison.OrdinalIgnoreCase))
             // Express, React, etc. common patterns
-            return Regex.IsMatch(content, @"app\.listen\s*\(") || 
+            return Regex.IsMatch(content, @"app\.listen\s*\(") ||
                    Regex.IsMatch(content, @"ReactDOM\.render") ||
                    content.Contains("bootstrap()");
-        }
-        if (lang.Equals("C", StringComparison.OrdinalIgnoreCase) || lang.Equals("C++", StringComparison.OrdinalIgnoreCase))
-        {
-            return Regex.IsMatch(content, @"int\s+main\s*\(");
-        }
+        if (lang.Equals("C", StringComparison.OrdinalIgnoreCase) ||
+            lang.Equals("C++", StringComparison.OrdinalIgnoreCase)) return Regex.IsMatch(content, @"int\s+main\s*\(");
 
         return false;
     }
@@ -185,14 +174,14 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
 
         // 2. Feature/Directory Clustering for remaining nodes
         var unassignedForDir = graph.GetNodes()
-             .Where(n => !assignedNodes.Contains(n.ComponentId))
-             .ToList();
+            .Where(n => !assignedNodes.Contains(n.ComponentId))
+            .ToList();
 
         var dirClusters = PerformDirectoryClustering(unassignedForDir, repositoryPath);
-        foreach(var kvp in dirClusters)
+        foreach (var kvp in dirClusters)
         {
             clusters[kvp.Key] = kvp.Value;
-            foreach(var n in kvp.Value) assignedNodes.Add(n);
+            foreach (var n in kvp.Value) assignedNodes.Add(n);
         }
 
         var unassignedNodes = graph.GetNodes()
@@ -213,25 +202,26 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     private Dictionary<string, List<string>> PerformDirectoryClustering(List<GraphNode> nodes, string repositoryPath)
     {
         var clusters = new Dictionary<string, List<string>>();
-        
+
         // Group by directory
         var groups = nodes
-            .GroupBy(n => {
+            .GroupBy(n =>
+            {
                 var dir = Path.GetDirectoryName(n.Metadata.FilePath);
                 if (string.IsNullOrEmpty(dir)) return "Root";
-                
+
                 // Use relative path for grouping to avoid full system paths in names
                 var relativeDir = Path.GetRelativePath(repositoryPath, dir);
                 return relativeDir == "." ? "Root" : relativeDir;
             })
             .ToList();
 
-        foreach(var group in groups)
+        foreach (var group in groups)
         {
             // If a directory has significant content, make it a cluster.
             // We can use a heuristic: at least 2 files or > 1000 tokens?
             // For now, purely directory based is a strong signal for Feature grouping.
-            
+
             // Clean up name
             var rawName = group.Key;
             if (string.IsNullOrEmpty(rawName) || rawName == "." || rawName == "Root")
@@ -242,11 +232,11 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             {
                 // Replace path separators and underscores with spaces, then capitalize
                 rawName = rawName.Replace(Path.DirectorySeparatorChar, ' ')
-                                 .Replace(Path.AltDirectorySeparatorChar, ' ')
-                                 .Replace('_', ' ');
-                
+                    .Replace(Path.AltDirectorySeparatorChar, ' ')
+                    .Replace('_', ' ');
+
                 // Title Case / Capitalization
-                rawName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(rawName.ToLower());
+                rawName = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(rawName.ToLower());
             }
 
             clusters[rawName] = group.Select(n => n.ComponentId).ToList();
@@ -320,11 +310,11 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                     var bestComm = currentComm;
                     double maxDeltaQ = 0;
 
-                    var neighborCommunities = new Dictionary<int, double>(); 
+                    var neighborCommunities = new Dictionary<int, double>();
                     var nodeObj = graph.GetNode(nodeId);
                     if (nodeObj == null) continue;
 
-                    double k_i = 0; 
+                    double k_i = 0;
 
                     // Outgoing
                     foreach (var target in nodeObj.OutEdges)
@@ -361,7 +351,7 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                             if (peer != null) sigma_tot += peer.InEdges.Count + peer.OutEdges.Count;
                         }
 
-                        var term1 = k_i_in / m; 
+                        var term1 = k_i_in / m;
                         var term2 = sigma_tot * k_i / (2 * m * m);
                         var deltaQ = term1 - term2;
 
@@ -422,12 +412,10 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                     module.Components.Add(componentId);
                     module.EstimatedTokens += node.Metadata.EstimatedTokens;
                     module.ComplexityScore += node.Metadata.CyclomaticComplexity;
-                    
-                    if (node.Metadata.Properties.ContainsKey("Role") && 
+
+                    if (node.Metadata.Properties.ContainsKey("Role") &&
                         node.Metadata.Properties["Role"].ToString() == "EntryPoint")
-                    {
                         module.Metadata["HasEntryPoint"] = "true";
-                    }
                 }
             }
 
@@ -481,38 +469,39 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         _logger.LogInformation("Splitting module {ModuleId} (Tokens: {Tokens})", module.Id, module.EstimatedTokens);
 
         var subGraph = await CreateSubgraphAsync(graph, module.Components, cancellationToken);
-        
+
         // Strategy: 
         // 1. Try Directory Splitting first (refine directory grouping if they were grouped by top level)
         // 2. If single directory, use Louvain.
-        
+
         Dictionary<string, List<string>> subClusters = new();
-        
+
         // Check if components are in different subdirectories relative to common root
         var components = module.Components.Select(c => graph.GetNode(c)).OfType<GraphNode>().ToList();
         var commonPath = GetCommonPath(components.Select(c => c.Metadata.FilePath));
-        
-        var bySubDir = components.GroupBy(c => {
+
+        var bySubDir = components.GroupBy(c =>
+        {
             var rel = Path.GetRelativePath(commonPath, c.Metadata.FilePath);
             var parts = rel.Split(Path.DirectorySeparatorChar);
             return parts.Length > 1 ? parts[0] : "Root";
         }).ToList();
-        
+
         if (bySubDir.Count > 1)
         {
             subClusters = bySubDir.ToDictionary(g => g.Key, g => g.Select(n => n.ComponentId).ToList());
         }
         else
         {
-             // Fallback to Louvain
-             var louvainResults = await PerformLouvainClusteringAsync(subGraph, module.Components, cancellationToken);
-             subClusters = louvainResults.ToDictionary(k => k.Key.ToString(), v => v.Value);
+            // Fallback to Louvain
+            var louvainResults = await PerformLouvainClusteringAsync(subGraph, module.Components, cancellationToken);
+            subClusters = louvainResults.ToDictionary(k => k.Key.ToString(), v => v.Value);
         }
 
         // Logic to split logic...
         module.Components.Clear();
         module.IsLeaf = false;
-        module.EstimatedTokens = 0; 
+        module.EstimatedTokens = 0;
 
         foreach (var (clusterKey, componentIds) in subClusters)
         {
@@ -550,17 +539,15 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             if (childModule.EstimatedTokens > MaxTokensPerModule) modulesToSplit.Enqueue(childModule);
         }
     }
-    
+
     private string GetCommonPath(IEnumerable<string> paths)
     {
         var list = paths.Where(p => !string.IsNullOrEmpty(p)).ToList();
         if (!list.Any()) return string.Empty;
-        
+
         var common = Path.GetDirectoryName(list[0]);
         while (!string.IsNullOrEmpty(common) && list.Any(p => !p.StartsWith(common)))
-        {
             common = Path.GetDirectoryName(common);
-        }
         return common ?? string.Empty;
     }
 
@@ -647,8 +634,8 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     private void CalculateModuleMetrics(ModuleNode module, EnhancedDependencyGraph graph)
     {
         var internalEdges = 0;
-        var efferentCoupling = 0; 
-        var afferentCoupling = 0; 
+        var efferentCoupling = 0;
+        var afferentCoupling = 0;
 
         var componentCount = module.Components.Count;
         var abstractComponents = 0;
@@ -710,5 +697,4 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         return node.Metadata.Type.Contains("Interface", StringComparison.OrdinalIgnoreCase) ||
                node.Metadata.Type.Contains("Abstract", StringComparison.OrdinalIgnoreCase);
     }
-
 }

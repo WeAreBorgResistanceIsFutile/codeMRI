@@ -1,8 +1,8 @@
 using System.Data;
 using System.Text.Json;
-using Dapper;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using Dapper;
 using Microsoft.Data.Sqlite;
 
 namespace codeMRI.Infrastructure.Services;
@@ -33,12 +33,9 @@ public class SqliteWikiRepository : IWikiRepository
     public async Task<WikiStructure?> GetStructureAsync(string repoPath)
     {
         using var connection = new SqliteConnection(_connectionString);
-        
+
         var repoId = await GetRepoIdAsync(connection, repoPath);
-        if (repoId == null)
-        {
-            return null;
-        }
+        if (repoId == null) return null;
 
         var json = await connection.QuerySingleOrDefaultAsync<string>(
             "SELECT JsonContent FROM WikiStructures WHERE RepoId = @RepoId", new { RepoId = repoId });
@@ -178,17 +175,65 @@ public class SqliteWikiRepository : IWikiRepository
                 new { RepoId = repoId });
     }
 
+    public async Task<List<string>> GetAllRepositoriesAsync()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repos = await connection.QueryAsync<string>("SELECT RepoPath FROM Repositories ORDER BY id DESC");
+        return repos.ToList();
+    }
+
+    public async Task<List<RepositorySummary>> GetAllRepositorySummariesAsync()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var query = @"
+            SELECT r.RepoPath as Path, 
+                   r.RemoteUrl,
+                   (CASE WHEN w.RepoId IS NOT NULL THEN 1 ELSE 0 END) as IsIngested 
+            FROM Repositories r 
+            LEFT JOIN WikiStructures w ON r.Id = w.RepoId 
+            ORDER BY r.Id DESC";
+
+        var summaries = await connection.QueryAsync<RepositorySummary>(query);
+
+        var result = summaries.ToList();
+        foreach (var s in result) s.Name = Path.GetFileName(s.Path);
+        // Timestamps not available in current schema, leaving default
+        return result;
+    }
+
+    public async Task<List<WikiPage>> GetAllPagesAsync(string repoPath)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetRepoIdAsync(connection, repoPath);
+        if (repoId == null) return new List<WikiPage>();
+
+        var jsonPages = await connection.QueryAsync<string>(
+            "SELECT JsonContent FROM WikiPages WHERE RepoId = @RepoId ORDER BY Title",
+            new { RepoId = repoId });
+
+        return jsonPages
+            .Select(json => JsonSerializer.Deserialize<WikiPage>(json))
+            .Where(page => page != null)
+            .Cast<WikiPage>()
+            .ToList();
+    }
+
+    public async Task SetRepositoryRemoteUrlAsync(string repoPath, string remoteUrl)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var repoId = await GetOrCreateRepoIdAsync(connection, repoPath);
+        await connection.ExecuteAsync("UPDATE Repositories SET RemoteUrl = @RemoteUrl WHERE Id = @Id",
+            new { RemoteUrl = remoteUrl, Id = repoId });
+    }
+
     private void InitializeDatabase()
     {
         var builder = new SqliteConnectionStringBuilder(_connectionString);
         var dbPath = builder.DataSource;
         if (!string.IsNullOrWhiteSpace(dbPath) && dbPath != ":memory:")
         {
-             var dir = Path.GetDirectoryName(dbPath);
-             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) 
-             {
-                 Directory.CreateDirectory(dir);
-             }
+            var dir = Path.GetDirectoryName(dbPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
         }
 
         using var connection = new SqliteConnection(_connectionString);
@@ -233,11 +278,11 @@ public class SqliteWikiRepository : IWikiRepository
         connection.Execute("PRAGMA foreign_keys = ON;");
 
         // Migration: Add RemoteUrl if missing
-        try 
+        try
         {
             connection.Execute("ALTER TABLE Repositories ADD COLUMN RemoteUrl TEXT");
         }
-        catch 
+        catch
         {
             // Ignore if column already exists
         }
@@ -261,60 +306,5 @@ public class SqliteWikiRepository : IWikiRepository
     {
         return await connection.QuerySingleOrDefaultAsync<int?>(
             "SELECT Id FROM Repositories WHERE RepoPath = @RepoPath", new { RepoPath = repoPath });
-    }
-
-    public async Task<List<string>> GetAllRepositoriesAsync()
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repos = await connection.QueryAsync<string>("SELECT RepoPath FROM Repositories ORDER BY id DESC");
-        return repos.ToList();
-    }
-
-    public async Task<List<RepositorySummary>> GetAllRepositorySummariesAsync()
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var query = @"
-            SELECT r.RepoPath as Path, 
-                   r.RemoteUrl,
-                   (CASE WHEN w.RepoId IS NOT NULL THEN 1 ELSE 0 END) as IsIngested 
-            FROM Repositories r 
-            LEFT JOIN WikiStructures w ON r.Id = w.RepoId 
-            ORDER BY r.Id DESC";
-
-        var summaries = await connection.QueryAsync<RepositorySummary>(query);
-        
-        var result = summaries.ToList();
-        foreach (var s in result)
-        {
-            s.Name = Path.GetFileName(s.Path);
-            // Timestamps not available in current schema, leaving default
-        }
-        
-        return result;
-    }
-
-    public async Task<List<WikiPage>> GetAllPagesAsync(string repoPath)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetRepoIdAsync(connection, repoPath);
-        if (repoId == null) return new List<WikiPage>();
-
-        var jsonPages = await connection.QueryAsync<string>(
-            "SELECT JsonContent FROM WikiPages WHERE RepoId = @RepoId ORDER BY Title",
-            new { RepoId = repoId });
-
-        return jsonPages
-            .Select(json => JsonSerializer.Deserialize<WikiPage>(json))
-            .Where(page => page != null)
-            .Cast<WikiPage>()
-            .ToList();
-    }
-
-    public async Task SetRepositoryRemoteUrlAsync(string repoPath, string remoteUrl)
-    {
-        using var connection = new SqliteConnection(_connectionString);
-        var repoId = await GetOrCreateRepoIdAsync(connection, repoPath);
-        await connection.ExecuteAsync("UPDATE Repositories SET RemoteUrl = @RemoteUrl WHERE Id = @Id", 
-            new { RemoteUrl = remoteUrl, Id = repoId });
     }
 }

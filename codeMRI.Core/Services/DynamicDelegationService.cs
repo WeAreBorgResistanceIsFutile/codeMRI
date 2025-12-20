@@ -6,18 +6,17 @@ using Microsoft.Extensions.Options;
 namespace codeMRI.Core.Services;
 
 /// <summary>
-/// Implementation of dynamic delegation for adaptive scalability.
-/// When module complexity exceeds single-pass capacity, this service
-/// delegates by subdividing the module into smaller sub-modules.
-/// 
-/// Based on CodeWiki paper's "Dynamic Delegation" mechanism.
+///     Implementation of dynamic delegation for adaptive scalability.
+///     When module complexity exceeds single-pass capacity, this service
+///     delegates by subdividing the module into smaller sub-modules.
+///     Based on CodeWiki paper's "Dynamic Delegation" mechanism.
 /// </summary>
 public class DynamicDelegationService : IDelegationService
 {
-    private readonly ILogger<DynamicDelegationService> _logger;
-    private readonly IAgentTelemetryService _telemetryService;
-    private readonly DelegationOptions _options;
     private readonly int _llmContextSize;
+    private readonly ILogger<DynamicDelegationService> _logger;
+    private readonly DelegationOptions _options;
+    private readonly IAgentTelemetryService _telemetryService;
 
     public DynamicDelegationService(
         ILogger<DynamicDelegationService> logger,
@@ -32,17 +31,14 @@ public class DynamicDelegationService : IDelegationService
     }
 
     /// <summary>
-    /// Evaluates whether a module requires delegation based on:
-    /// 1. Token count exceeding context window capacity
-    /// 2. Cyclomatic complexity exceeding threshold
-    /// 3. High semantic diversity (many distinct subcomponents)
+    ///     Evaluates whether a module requires delegation based on:
+    ///     1. Token count exceeding context window capacity
+    ///     2. Cyclomatic complexity exceeding threshold
+    ///     3. High semantic diversity (many distinct subcomponents)
     /// </summary>
     public DelegationDecision EvaluateDelegation(ModuleNode module, EnhancedDependencyGraph graph, int currentDepth)
     {
-        if (!_options.EnableDelegation)
-        {
-            return DelegationDecision.NoDelegation();
-        }
+        if (!_options.EnableDelegation) return DelegationDecision.NoDelegation();
 
         // Check max depth first
         if (currentDepth >= _options.MaxDelegationDepth)
@@ -54,10 +50,7 @@ public class DynamicDelegationService : IDelegationService
         }
 
         // Must have multiple components to subdivide
-        if (module.Components.Count <= 1)
-        {
-            return DelegationDecision.NoDelegation();
-        }
+        if (module.Components.Count <= 1) return DelegationDecision.NoDelegation();
 
         var effectiveMaxTokens = _options.GetEffectiveMaxTokens(_llmContextSize);
 
@@ -93,12 +86,12 @@ public class DynamicDelegationService : IDelegationService
     }
 
     /// <summary>
-    /// Performs delegation by subdividing the module into smaller sub-modules.
-    /// Uses directory structure first, then falls back to dependency clustering.
+    ///     Performs delegation by subdividing the module into smaller sub-modules.
+    ///     Uses directory structure first, then falls back to dependency clustering.
     /// </summary>
     public async Task<List<ModuleNode>> DelegateModuleAsync(
-        ModuleNode module, 
-        EnhancedDependencyGraph graph, 
+        ModuleNode module,
+        EnhancedDependencyGraph graph,
         CancellationToken cancellationToken)
     {
         _logger.LogInformation(
@@ -109,7 +102,7 @@ public class DynamicDelegationService : IDelegationService
 
         // Strategy 1: Try directory-based subdivision
         var directoryClusters = ClusterByDirectory(module, graph);
-        
+
         if (directoryClusters.Count > 1)
         {
             _logger.LogDebug("Using directory-based subdivision for {ModuleName}: {Count} clusters",
@@ -120,7 +113,7 @@ public class DynamicDelegationService : IDelegationService
         {
             // Strategy 2: Use dependency-based clustering
             var dependencyClusters = await ClusterByDependenciesAsync(module, graph, cancellationToken);
-            
+
             if (dependencyClusters.Count > 1)
             {
                 _logger.LogDebug("Using dependency-based subdivision for {ModuleName}: {Count} clusters",
@@ -143,13 +136,11 @@ public class DynamicDelegationService : IDelegationService
 
         // Track delegation
         foreach (var subModule in subModules)
-        {
             _telemetryService.TrackDelegation(
                 module.Id,
                 subModule.Id,
                 $"Subdivided for scalability ({subModule.Components.Count} components)",
                 module.Id);
-        }
 
         _logger.LogInformation(
             "Delegation complete for {ModuleName}: created {Count} sub-modules",
@@ -159,10 +150,10 @@ public class DynamicDelegationService : IDelegationService
     }
 
     /// <summary>
-    /// Calculates semantic diversity based on:
-    /// - Number of distinct directories
-    /// - Variation in component types
-    /// - Weak internal coupling
+    ///     Calculates semantic diversity based on:
+    ///     - Number of distinct directories
+    ///     - Variation in component types
+    ///     - Weak internal coupling
     /// </summary>
     private double CalculateSemanticDiversity(ModuleNode module, EnhancedDependencyGraph graph)
     {
@@ -192,27 +183,23 @@ public class DynamicDelegationService : IDelegationService
         // Factor 3: Internal coupling (inverse - low coupling = high diversity)
         var internalEdges = 0;
         var totalPossibleEdges = components.Count * (components.Count - 1);
-        
+
         foreach (var comp in components)
-        {
-            foreach (var outEdge in comp!.OutEdges)
-            {
-                if (module.Components.Contains(outEdge))
-                    internalEdges++;
-            }
-        }
-        
-        var couplingRatio = totalPossibleEdges > 0 
-            ? (double)internalEdges / totalPossibleEdges 
+        foreach (var outEdge in comp!.OutEdges)
+            if (module.Components.Contains(outEdge))
+                internalEdges++;
+
+        var couplingRatio = totalPossibleEdges > 0
+            ? (double)internalEdges / totalPossibleEdges
             : 0;
         var couplingDiversity = 1 - couplingRatio; // Low coupling = high diversity
 
         // Weighted average
-        return (dirDiversity * 0.4) + (typeDiversity * 0.3) + (couplingDiversity * 0.3);
+        return dirDiversity * 0.4 + typeDiversity * 0.3 + couplingDiversity * 0.3;
     }
 
     /// <summary>
-    /// Clusters components by their directory structure
+    ///     Clusters components by their directory structure
     /// </summary>
     private Dictionary<string, List<string>> ClusterByDirectory(ModuleNode module, EnhancedDependencyGraph graph)
     {
@@ -240,7 +227,6 @@ public class DynamicDelegationService : IDelegationService
             var clusterKey = "Root";
 
             if (!string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(commonPath))
-            {
                 try
                 {
                     var relativePath = Path.GetRelativePath(commonPath, dir);
@@ -251,11 +237,10 @@ public class DynamicDelegationService : IDelegationService
                 {
                     clusterKey = Path.GetFileName(dir) ?? "Root";
                 }
-            }
 
             if (!clusters.ContainsKey(clusterKey))
                 clusters[clusterKey] = new List<string>();
-            
+
             clusters[clusterKey].Add(id);
         }
 
@@ -263,10 +248,10 @@ public class DynamicDelegationService : IDelegationService
     }
 
     /// <summary>
-    /// Clusters components by their dependency relationships using a simple algorithm
+    ///     Clusters components by their dependency relationships using a simple algorithm
     /// </summary>
     private Task<Dictionary<string, List<string>>> ClusterByDependenciesAsync(
-        ModuleNode module, 
+        ModuleNode module,
         EnhancedDependencyGraph graph,
         CancellationToken cancellationToken)
     {
@@ -300,12 +285,8 @@ public class DynamicDelegationService : IDelegationService
 
                 // Add connected components that are within this module
                 foreach (var neighbor in node.OutEdges.Concat(node.InEdges))
-                {
                     if (module.Components.Contains(neighbor) && !assigned.Contains(neighbor))
-                    {
                         queue.Enqueue(neighbor);
-                    }
-                }
             }
 
             if (cluster.Count > 0)
@@ -319,13 +300,13 @@ public class DynamicDelegationService : IDelegationService
     }
 
     /// <summary>
-    /// Simple split by size when other strategies fail
+    ///     Simple split by size when other strategies fail
     /// </summary>
     private Dictionary<string, List<string>> SplitBySize(ModuleNode module)
     {
         var clusters = new Dictionary<string, List<string>>();
         var components = module.Components.ToList();
-        
+
         // Target ~2-4 sub-modules
         var targetSize = Math.Max(2, components.Count / 3);
         var clusterIndex = 0;
@@ -341,11 +322,11 @@ public class DynamicDelegationService : IDelegationService
     }
 
     /// <summary>
-    /// Creates sub-modules from clusters and attaches them to the parent
+    ///     Creates sub-modules from clusters and attaches them to the parent
     /// </summary>
     private List<ModuleNode> CreateSubModules(
-        ModuleNode parent, 
-        Dictionary<string, List<string>> clusters, 
+        ModuleNode parent,
+        Dictionary<string, List<string>> clusters,
         EnhancedDependencyGraph graph)
     {
         var subModules = new List<ModuleNode>();
@@ -385,12 +366,8 @@ public class DynamicDelegationService : IDelegationService
 
         var common = list[0];
         foreach (var path in list.Skip(1))
-        {
             while (!string.IsNullOrEmpty(common) && !path.StartsWith(common))
-            {
                 common = Path.GetDirectoryName(common) ?? "";
-            }
-        }
 
         return common;
     }

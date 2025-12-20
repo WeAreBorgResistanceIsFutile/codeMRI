@@ -28,7 +28,7 @@ public class WireUp
                 { "LineCount", 500 }
             };
         });
-        
+
         // Configure DelegationOptions (can be overridden via appsettings)
         services.Configure<DelegationOptions>(options =>
         {
@@ -39,7 +39,7 @@ public class WireUp
             options.EnableDelegation = true;
             options.ContextUtilizationRatio = 0.8;
         });
-        
+
         services.AddSingleton<ICSharpParser, RoslynCSharpParser>();
         services.AddSingleton<AgentMessageBus>();
         services.AddSingleton<IAgentTelemetryService, AgentTelemetryService>();
@@ -62,10 +62,8 @@ public class WireUp
             var settings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
             var docModel = settings.DocumentationModel;
             if (string.IsNullOrWhiteSpace(docModel))
-            {
                 throw new InvalidOperationException("DocumentationModel is not configured in OllamaSettings.");
-            }
-            
+
             return new WikiGenerationService(
                 sp.GetRequiredService<ILLMClient>(),
                 sp.GetRequiredService<IDiagramGenerator>(),
@@ -73,19 +71,21 @@ public class WireUp
                 sp.GetRequiredService<IDocumentationSynthesisService>(),
                 sp.GetRequiredService<IReferenceManagementService>(),
                 sp.GetRequiredService<ILogger<WikiGenerationService>>(),
+                sp.GetRequiredService<IOptions<CodeWikiOptions>>(),
                 docModel,
                 sp.GetService<IModelRoutingService>(),
                 sp.GetService<IMultiModelOrchestrationService>());
         });
         services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
         services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();
+        services.AddScoped<IHierarchicalSummaryService, HierarchicalSummaryService>();
         services.AddScoped<IDocumentationRevisionService, DocumentationRevisionService>();
         services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();
         services.AddScoped<IEvaluationPromptBuilder, DefaultEvaluationPromptBuilder>();
         services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
         services.AddScoped<IRubricGenerationService, RubricGenerationService>();
         services.AddScoped<IProgressService, ProgressService>();
-        
+
         // Multi-Model Services with configuration injection
         services.AddSingleton<IModelRoutingService>(sp =>
         {
@@ -99,7 +99,7 @@ public class WireUp
             };
             return new ModelRoutingService(config, sp.GetRequiredService<ILogger<ModelRoutingService>>());
         });
-        
+
         services.AddScoped<IMultiModelOrchestrationService>(sp =>
         {
             var ollamaSettings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
@@ -113,9 +113,10 @@ public class WireUp
                 sp.GetRequiredService<ILLMClient>(),
                 sp.GetRequiredService<IModelRoutingService>(),
                 config,
-                sp.GetRequiredService<ILogger<MultiModelOrchestrationService>>());
+                sp.GetRequiredService<ILogger<MultiModelOrchestrationService>>(),
+                sp.GetRequiredService<IOptions<CodeWikiOptions>>());
         });
-        
+
         // Dynamic Delegation Service with LLM context size from configuration
         services.AddScoped<IDelegationService, DynamicDelegationService>(sp =>
         {

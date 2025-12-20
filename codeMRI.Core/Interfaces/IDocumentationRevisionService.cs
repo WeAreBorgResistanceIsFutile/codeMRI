@@ -3,13 +3,13 @@ using codeMRI.Core.Models;
 namespace codeMRI.Core.Interfaces;
 
 /// <summary>
-/// Service for revising parent documentation based on insights from child module documentation.
-/// Implements the revision loop from Algorithm 1 in the CodeWiki paper.
+///     Service for revising parent documentation based on insights from child module documentation.
+///     Implements the revision loop from Algorithm 1 in the CodeWiki paper.
 /// </summary>
 public interface IDocumentationRevisionService
 {
     /// <summary>
-    /// Revises a parent page based on detailed insights from child documentation.
+    ///     Revises a parent page based on detailed insights from child documentation.
     /// </summary>
     /// <param name="parentPage">The initial synthesized parent page</param>
     /// <param name="parentModule">The parent module being documented</param>

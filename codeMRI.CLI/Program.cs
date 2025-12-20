@@ -1,39 +1,38 @@
 using System.CommandLine;
-using System.CommandLine.Invocation;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.AspNetCore.SignalR.Client;
 using codeMRI.Infrastructure.Services;
+using Microsoft.AspNetCore.SignalR.Client;
 
 namespace codeMRI.CLI;
 
-class Program
+internal class Program
 {
-    static async Task<int> Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         var rootCommand = new RootCommand("codeMRI CLI (Thin Client)");
 
         var inputOption = new Option<string>(
-            aliases: new[] { "--input", "-i" },
-            description: "Path to local repository or Git URL")
-        { IsRequired = true };
+                new[] { "--input", "-i" },
+                "Path to local repository or Git URL")
+            { IsRequired = true };
 
         var serverOption = new Option<string>(
-            aliases: new[] { "--server", "-s" },
+            new[] { "--server", "-s" },
             description: "URL of the codeMRI Server",
             getDefaultValue: () => "http://localhost:5247");
 
         var verboseOption = new Option<bool>(
-            aliases: new[] { "--verbose", "-v" },
-            description: "Enable verbose logging");
+            new[] { "--verbose", "-v" },
+            "Enable verbose logging");
 
         var forceOption = new Option<bool>(
-            aliases: new[] { "--force", "-f" },
-            description: "Force regeneration of documentation (ignore cache)");
+            new[] { "--force", "-f" },
+            "Force regeneration of documentation (ignore cache)");
 
         var outputOption = new Option<string?>(
-            aliases: new[] { "--output", "-o" },
-            description: "Directory to save the generated Markdown files");
+            new[] { "--output", "-o" },
+            "Directory to save the generated Markdown files");
 
         rootCommand.AddOption(inputOption);
         rootCommand.AddOption(serverOption);
@@ -41,15 +40,16 @@ class Program
         rootCommand.AddOption(forceOption);
         rootCommand.AddOption(outputOption);
 
-        rootCommand.SetHandler(async (string input, string serverUrl, bool verbose, bool force, string? output) =>
-        {
-            await RunAsync(input, serverUrl, verbose, force, output);
-        }, inputOption, serverOption, verboseOption, forceOption, outputOption);
+        rootCommand.SetHandler(
+            async (input, serverUrl, verbose, force, output) =>
+            {
+                await RunAsync(input, serverUrl, verbose, force, output);
+            }, inputOption, serverOption, verboseOption, forceOption, outputOption);
 
         return await rootCommand.InvokeAsync(args);
     }
 
-    static async Task RunAsync(string input, string serverUrl, bool verbose, bool force, string? output)
+    private static async Task RunAsync(string input, string serverUrl, bool verbose, bool force, string? output)
     {
         using var client = new HttpClient();
         client.BaseAddress = new Uri(serverUrl);
@@ -57,13 +57,13 @@ class Program
 
         if (verbose) Console.WriteLine($"Connecting to {serverUrl}...");
 
-        string targetPath = input;
-        bool isTemp = false;
+        var targetPath = input;
+        var isTemp = false;
 
         // 1. Handle Git Cloning (Client-side preparation)
         if (GitHelper.IsGitUrl(input))
         {
-            try 
+            try
             {
                 if (verbose) Console.WriteLine($"Cloning {input}...");
                 targetPath = await GitHelper.CloneRepositoryAsync(input);
@@ -92,7 +92,7 @@ class Program
             .WithAutomaticReconnect()
             .Build();
 
-        hubConnection.On<ProgressInfo>("ReceiveProgress", (info) =>
+        hubConnection.On<ProgressInfo>("ReceiveProgress", info =>
         {
             // Clear current line if possible to make it look like a progress bar, or just write lines
             // Simple approach: [Phase] Message (Percentage%)
@@ -109,7 +109,9 @@ class Program
         }
         catch (Exception ex)
         {
-             if (verbose) Console.WriteLine($"Warning: Could not connect to progress hub: {ex.Message}. functionality will be limited.");
+            if (verbose)
+                Console.WriteLine(
+                    $"Warning: Could not connect to progress hub: {ex.Message}. functionality will be limited.");
         }
 
         // 3. Call Server
@@ -131,10 +133,10 @@ class Program
             if (response.IsSuccessStatusCode)
             {
                 Console.WriteLine("Success! Documentation generated.");
-                
+
                 if (!string.IsNullOrEmpty(output))
                 {
-                    try 
+                    try
                     {
                         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                         var structure = await response.Content.ReadFromJsonAsync<WikiStructure>(options);
@@ -148,15 +150,16 @@ class Program
                                 Console.WriteLine("Pages:");
                                 foreach (var p in structure.Pages) Console.WriteLine($"- {p.Title}");
                             }
-                            
+
                             Console.WriteLine($"Saving pages to {output}...");
-                            
-                            foreach(var page in structure.Pages)
+
+                            foreach (var page in structure.Pages)
                             {
                                 var safeTitle = string.Join("_", page.Title.Split(Path.GetInvalidFileNameChars()));
                                 var filePath = Path.Combine(output, $"{safeTitle}.md");
                                 await File.WriteAllTextAsync(filePath, page.Content);
                             }
+
                             Console.WriteLine($"Saved files to {output}");
                         }
                         else
@@ -178,12 +181,12 @@ class Program
                 {
                     if (verbose)
                     {
-                         var json = await response.Content.ReadAsStringAsync();
-                         Console.WriteLine("Server Response: " + json);
+                        var json = await response.Content.ReadAsStringAsync();
+                        Console.WriteLine("Server Response: " + json);
                     }
                     else
                     {
-                         Console.WriteLine("You can view it now in the Web UI.");
+                        Console.WriteLine("You can view it now in the Web UI.");
                     }
                 }
             }
@@ -196,19 +199,20 @@ class Program
         }
         catch (HttpRequestException ex)
         {
-             Console.WriteLine($"Error connecting to server: {ex.Message}");
-             Console.WriteLine("Is codeMRI.Server running?");
+            Console.WriteLine($"Error connecting to server: {ex.Message}");
+            Console.WriteLine("Is codeMRI.Server running?");
         }
         catch (Exception ex)
         {
-             Console.WriteLine($"Unexpected error: {ex.Message}");
+            Console.WriteLine($"Unexpected error: {ex.Message}");
         }
         finally
         {
             if (isTemp)
             {
-                 Console.WriteLine($"Note: Repository was cloned to temporary path: {targetPath}");
-                 Console.WriteLine("It is required for viewing file contents in the UI. Do not delete it manually if you plan to browse source code.");
+                Console.WriteLine($"Note: Repository was cloned to temporary path: {targetPath}");
+                Console.WriteLine(
+                    "It is required for viewing file contents in the UI. Do not delete it manually if you plan to browse source code.");
             }
         }
     }

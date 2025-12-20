@@ -15,19 +15,19 @@ public class DocumenterAgent : BaseAgent, IDisposable
         : base(messageBus, logger, astService)
     {
         // Subscribe to analysis results for potential use
-        _analysisHandler = async (message) =>
+        _analysisHandler = async message =>
         {
             _logger.LogDebug("Received analysis results: {Content}", message.Content);
         };
         messageBus.Subscribe(AgentMessageTypes.AnalysisComplete, _analysisHandler);
     }
 
+    public override string Role => "Documenter";
+
     public void Dispose()
     {
         _messageBus.Unsubscribe(AgentMessageTypes.AnalysisComplete, _analysisHandler);
     }
-
-    public override string Role => "Documenter";
 
     public override async Task<AgentResult> ExecuteAsync(AgentTask task, CancellationToken cancellationToken)
     {

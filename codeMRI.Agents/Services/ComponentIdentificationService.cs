@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
-using codeMRI.Core.Services;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Agents.Services;
@@ -9,7 +9,7 @@ namespace codeMRI.Agents.Services;
 public class ComponentIdentificationService : IComponentIdentificationService
 {
     private readonly IASTServiceClient? _astServiceClient;
-    
+
     private readonly Dictionary<string, string> _languagePatterns = new()
     {
         { ".cs", "C#" },
@@ -24,8 +24,8 @@ public class ComponentIdentificationService : IComponentIdentificationService
     };
 
     private readonly ILogger<ComponentIdentificationService> _logger;
-    private readonly RoslynCSharpAnalyzer _roslynAnalyzer;
     private readonly IProgressService _progressService;
+    private readonly RoslynCSharpAnalyzer _roslynAnalyzer;
 
     public ComponentIdentificationService(
         ILogger<ComponentIdentificationService> logger,
@@ -68,17 +68,17 @@ public class ComponentIdentificationService : IComponentIdentificationService
             .ToDictionary(g => g.Key, g => g.Count());
 
         structure.Language = structure.FileExtensions
-            .Where(kvp => _languagePatterns.ContainsKey(kvp.Key))
-            .OrderByDescending(kvp => kvp.Value)
-            .FirstOrDefault().Key switch
-        {
-            ".cs" => "C#",
-            ".java" => "Java",
-            ".py" => "Python",
-            ".js" => "JavaScript",
-            ".ts" => "TypeScript",
-            _ => "Mixed"
-        };
+                .Where(kvp => _languagePatterns.ContainsKey(kvp.Key))
+                .OrderByDescending(kvp => kvp.Value)
+                .FirstOrDefault().Key switch
+            {
+                ".cs" => "C#",
+                ".java" => "Java",
+                ".py" => "Python",
+                ".js" => "JavaScript",
+                ".ts" => "TypeScript",
+                _ => "Mixed"
+            };
 
         return await Task.FromResult(structure);
     }
@@ -91,21 +91,21 @@ public class ComponentIdentificationService : IComponentIdentificationService
             .Where(f => (IsSourceFile(f) || IsInfrastructureFile(f)) && !IsIgnoredPath(f))
             .ToList();
 
-        int totalDocs = files.Count;
-        int processed = 0;
+        var totalDocs = files.Count;
+        var processed = 0;
 
         foreach (var file in files)
         {
             processed++;
             if (_progressService != null && totalDocs > 0)
             {
-               int pct = (int)((double)processed / totalDocs * 100);
-               _progressService.Report(new ProgressInfo 
-               { 
-                   Phase = "Decomposition", 
-                   Message = $"Analyzed {Path.GetFileName(file)} ({processed}/{totalDocs})",
-                   Percentage = pct 
-               }); 
+                var pct = (int)((double)processed / totalDocs * 100);
+                _progressService.Report(new ProgressInfo
+                {
+                    Phase = "Decomposition",
+                    Message = $"Analyzed {Path.GetFileName(file)} ({processed}/{totalDocs})",
+                    Percentage = pct
+                });
             }
 
             if (IsInfrastructureFile(file))
@@ -156,7 +156,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
             .Where(c => c.Type != "Configuration")
             .Select(c => c.Id)
             .ToHashSet();
-        
+
         var dependentComponents = relationships.Dependencies
             .Select(d => d.ToComponent)
             .ToHashSet();
@@ -600,16 +600,18 @@ public class ComponentIdentificationService : IComponentIdentificationService
         var extension = Path.GetExtension(path).ToLowerInvariant();
 
         // General/Generic
-        var infraFiles = new HashSet<string> { 
-            ".gitignore", ".dockerignore", "dockerfile", "docker-compose.yml", 
-            ".env", ".env.example", "license", "readme.md", "contributing.md", "changelog.md" 
+        var infraFiles = new HashSet<string>
+        {
+            ".gitignore", ".dockerignore", "dockerfile", "docker-compose.yml",
+            ".env", ".env.example", "license", "readme.md", "contributing.md", "changelog.md"
         };
         if (infraFiles.Contains(fileName)) return true;
 
         // JS/TS
-        var jsInfra = new HashSet<string> { 
-            "package.json", "package-lock.json", "tsconfig.json", "jsconfig.json", 
-            "eslint.config.js" 
+        var jsInfra = new HashSet<string>
+        {
+            "package.json", "package-lock.json", "tsconfig.json", "jsconfig.json",
+            "eslint.config.js"
         };
         if (jsInfra.Contains(fileName)) return true;
         if (fileName.StartsWith(".eslintrc") || fileName.StartsWith(".prettierrc")) return true;
@@ -624,11 +626,13 @@ public class ComponentIdentificationService : IComponentIdentificationService
         if (javaInfra.Contains(fileName)) return true;
 
         // Python
-        var pyInfra = new HashSet<string> { "requirements.txt", "setup.py", "pyproject.toml", "pipfile", "pipfile.lock" };
+        var pyInfra = new HashSet<string>
+            { "requirements.txt", "setup.py", "pyproject.toml", "pipfile", "pipfile.lock" };
         if (pyInfra.Contains(fileName)) return true;
 
         // C/C++
-        if (fileName == "makefile" || fileName == "cmakelists.txt" || fileName == "conanfile.txt" || fileName == "vcpkg.json") return true;
+        if (fileName == "makefile" || fileName == "cmakelists.txt" || fileName == "conanfile.txt" ||
+            fileName == "vcpkg.json") return true;
 
         // Go
         if (fileName == "go.mod" || fileName == "go.sum") return true;

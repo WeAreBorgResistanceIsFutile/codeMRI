@@ -1,19 +1,13 @@
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
 using Moq;
-using NUnit.Framework;
 
 namespace codeMRI.Core.Tests;
 
 [TestFixture]
 public class InfrastructureFileTests
 {
-    private Mock<ILogger<ComponentIdentificationService>> _mockLogger;
-    private ComponentIdentificationService _service;
-    private string _testRepoPath;
-
     [SetUp]
     public void Setup()
     {
@@ -21,8 +15,9 @@ public class InfrastructureFileTests
         var mockProgress = new Mock<IProgressService>();
         var mockLoggerFactory = new Mock<ILoggerFactory>();
         var mockAst = new Mock<IASTServiceClient>();
-        
-        _service = new ComponentIdentificationService(_mockLogger.Object, mockProgress.Object, mockLoggerFactory.Object, mockAst.Object);
+
+        _service = new ComponentIdentificationService(_mockLogger.Object, mockProgress.Object, mockLoggerFactory.Object,
+            mockAst.Object);
         _testRepoPath = Path.Combine(Path.GetTempPath(), "test_repo_infra_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_testRepoPath);
     }
@@ -32,6 +27,10 @@ public class InfrastructureFileTests
     {
         if (Directory.Exists(_testRepoPath)) Directory.Delete(_testRepoPath, true);
     }
+
+    private Mock<ILogger<ComponentIdentificationService>> _mockLogger;
+    private ComponentIdentificationService _service;
+    private string _testRepoPath;
 
     [Test]
     public async Task IdentifyComponentsAsync_ShouldProcessInfrastructureFilesAsConfigurationComponents()
@@ -52,7 +51,7 @@ public class InfrastructureFileTests
         Assert.That(infraComponents.Any(c => c.Name == ".gitignore"), Is.True);
         Assert.That(infraComponents.Any(c => c.Name == "package.json"), Is.True);
         Assert.That(infraComponents.Any(c => c.Name == "appsettings.json"), Is.True);
-        
+
         var codeComponents = result.Where(c => c.Type != "Configuration").ToList();
         Assert.That(codeComponents.Any(c => c.Name == "Program"), Is.True);
     }
@@ -64,13 +63,15 @@ public class InfrastructureFileTests
         await File.WriteAllTextAsync(Path.Combine(_testRepoPath, "package.json"), "{}");
         var codeFile = Path.Combine(_testRepoPath, "Code.cs");
         await File.WriteAllTextAsync(codeFile, "public class Code { // refers to package.json but should be ignored }");
-        
+
         var components = await _service.IdentifyComponentsAsync(_testRepoPath);
 
         // Act
         var result = await _service.AnalyzeRelationshipsAsync(_testRepoPath, components);
 
         // Assert
-        Assert.That(result.Dependencies.Any(d => d.FromComponent.Contains("package.json") || d.ToComponent.Contains("package.json")), Is.False);
+        Assert.That(
+            result.Dependencies.Any(d =>
+                d.FromComponent.Contains("package.json") || d.ToComponent.Contains("package.json")), Is.False);
     }
 }

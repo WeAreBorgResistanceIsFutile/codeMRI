@@ -2,9 +2,8 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
-using Moq;
-
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace codeMRI.Core.Tests.Services;
 
@@ -16,11 +15,11 @@ public class EvaluationMetricsSystemWithJudgesTests
     {
         _mockLogger = new Mock<ILogger<EvaluationMetricsSystem>>();
         _mockJudgeAgent = new Mock<IJudgeAgent>();
-        
+
         var options = new CodeWikiOptions { MaxDegreeOfParallelism = 5 };
         _mockOptions = new Mock<IOptions<CodeWikiOptions>>();
         _mockOptions.Setup(o => o.Value).Returns(options);
-        
+
         _service = new EvaluationMetricsSystem(_mockLogger.Object, _mockJudgeAgent.Object, _mockOptions.Object);
     }
 
@@ -256,7 +255,7 @@ public class EvaluationMetricsSystemWithJudgesTests
         // Arrange
         var page = CreateTestWikiPage();
         var rubric = CreateTestEvaluationRubric();
-        
+
         // Set up the existing mock to return good scores for our test rubric
         _mockJudgeAgent.Setup(j => j.EvaluateRequirementAsync(
                 It.IsAny<WikiPage>(), It.Is<RubricRequirement>(r => r.Title == "Clarity")))
@@ -271,7 +270,7 @@ public class EvaluationMetricsSystemWithJudgesTests
                 It.IsAny<WikiPage>(), It.Is<RubricRequirement>(r => r.Title == "Examples")))
             .ReturnsAsync(new RequirementScore
             {
-                RequirementId = "Examples", 
+                RequirementId = "Examples",
                 Score = 80.0,
                 Reasoning = "Good examples evaluation"
             });
@@ -403,9 +402,9 @@ public class EvaluationMetricsSystemWithJudgesTests
         };
 
         // Act & Assert
-        var ex = await ThrowsAsync<InvalidOperationException>(
-            () => _service.EvaluateWithMultipleJudgesAsync(page, rubric, judges));
-        
+        var ex = await ThrowsAsync<InvalidOperationException>(() =>
+            _service.EvaluateWithMultipleJudgesAsync(page, rubric, judges));
+
         Assert.That(ex.Message, Is.EqualTo("All judge evaluations failed"));
     }
 
@@ -418,8 +417,7 @@ public class EvaluationMetricsSystemWithJudgesTests
         var judges = new List<IJudgeAgent> { CreateMockJudge("Judge1", 85.0) };
 
         // Act & Assert
-        await ThrowsAsync<ArgumentNullException>(
-            () => _service.EvaluateWithMultipleJudgesAsync(page!, rubric, judges));
+        await ThrowsAsync<ArgumentNullException>(() => _service.EvaluateWithMultipleJudgesAsync(page!, rubric, judges));
     }
 
     [Test]
@@ -431,8 +429,7 @@ public class EvaluationMetricsSystemWithJudgesTests
         var judges = new List<IJudgeAgent> { CreateMockJudge("Judge1", 85.0) };
 
         // Act & Assert
-        await ThrowsAsync<ArgumentNullException>(
-            () => _service.EvaluateWithMultipleJudgesAsync(page, rubric!, judges));
+        await ThrowsAsync<ArgumentNullException>(() => _service.EvaluateWithMultipleJudgesAsync(page, rubric!, judges));
     }
 
     [Test]
@@ -444,9 +441,9 @@ public class EvaluationMetricsSystemWithJudgesTests
         var judges = new List<IJudgeAgent>();
 
         // Act & Assert
-        var ex = await ThrowsAsync<ArgumentException>(
-            () => _service.EvaluateWithMultipleJudgesAsync(page, rubric, judges));
-        
+        var ex = await ThrowsAsync<ArgumentException>(() =>
+            _service.EvaluateWithMultipleJudgesAsync(page, rubric, judges));
+
         Assert.That(ex.Message, Does.Contain("At least one judge agent must be provided"));
     }
 
@@ -460,7 +457,7 @@ public class EvaluationMetricsSystemWithJudgesTests
         {
             CreateMockJudgeWithReliability("Judge1", 90.0, 0.9), // High reliability, high score
             CreateMockJudgeWithReliability("Judge2", 70.0, 0.5), // Low reliability, low score
-            CreateMockJudgeWithReliability("Judge3", 80.0, 0.8)  // Medium reliability, medium score
+            CreateMockJudgeWithReliability("Judge3", 80.0, 0.8) // Medium reliability, medium score
         };
 
         // Act
@@ -496,7 +493,7 @@ public class EvaluationMetricsSystemWithJudgesTests
         Assert.That(result.MeetsMinimumJudgeRequirement, Is.True);
         Assert.That(result.IndividualScores, Has.Count.EqualTo(5));
         Assert.That(result.JudgeReliabilities, Has.Count.EqualTo(5));
-        
+
         // With more judges, consensus should be more stable
         Assert.That(result.ConsensusScore, Is.GreaterThan(0));
     }
@@ -520,11 +517,11 @@ public class EvaluationMetricsSystemWithJudgesTests
         // Assert
         Assert.That(result.Breakdown, Is.Not.Null);
         Assert.That(result.Breakdown.ContainsKey("Clarity"), Is.True);
-        
+
         var clarityScore = result.Breakdown["Clarity"].Score;
         var expectedClarityAverage = (90.0 + 85.0 + 88.0) / 3.0;
         Assert.That(clarityScore, Is.EqualTo(expectedClarityAverage).Within(0.01));
-        
+
         Assert.That(result.Breakdown["Clarity"].Reasoning, Does.Contain("Aggregated from 3 judges"));
     }
 
@@ -575,7 +572,8 @@ public class EvaluationMetricsSystemWithJudgesTests
         return mock.Object;
     }
 
-    private IJudgeAgent CreateMockJudgeWithDetailedBreakdown(string judgeId, double overallScore, string requirementTitle, double requirementScore)
+    private IJudgeAgent CreateMockJudgeWithDetailedBreakdown(string judgeId, double overallScore,
+        string requirementTitle, double requirementScore)
     {
         var mock = new Mock<IJudgeAgent>();
         mock.Setup(j => j.EvaluateRequirementAsync(It.IsAny<WikiPage>(), It.IsAny<RubricRequirement>()))
@@ -664,6 +662,4 @@ public class EvaluationMetricsSystemWithJudgesTests
             return ex;
         }
     }
-
-
 }

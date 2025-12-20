@@ -58,12 +58,12 @@ public class AgentCoordinator : IAgentCoordinator
             {
                 SenderId = agent.Id,
                 MessageType = AgentMessageTypes.TaskDelegated,
-                Content = new 
-                { 
+                Content = new
+                {
                     TaskId = task.Id,
                     FromAgent = agent.Role,
                     ToAgent = delegationRequest.TargetAgentType,
-                    Reason = delegationRequest.Reason,
+                    delegationRequest.Reason,
                     Timestamp = DateTime.UtcNow
                 }
             });

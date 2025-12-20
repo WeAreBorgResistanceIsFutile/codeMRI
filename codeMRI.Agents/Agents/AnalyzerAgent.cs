@@ -32,7 +32,7 @@ public class AnalyzerAgent : BaseAgent
             {
                 await PublishStatusAsync("Analyzing repository structure", task.Id);
                 var structure = await _componentService.AnalyzeRepositoryAsync(path);
-                
+
                 await PublishStatusAsync("Identifying components", task.Id);
                 var components = await _componentService.IdentifyComponentsAsync(path);
 
@@ -55,7 +55,8 @@ public class AnalyzerAgent : BaseAgent
                 return result;
             }
 
-            var failureResult = new AgentResult { TaskId = task.Id, Success = false, Errors = { "Invalid payload for Analyzer" } };
+            var failureResult = new AgentResult
+                { TaskId = task.Id, Success = false, Errors = { "Invalid payload for Analyzer" } };
             await PublishTaskCompletedAsync(task, failureResult);
             return failureResult;
         }

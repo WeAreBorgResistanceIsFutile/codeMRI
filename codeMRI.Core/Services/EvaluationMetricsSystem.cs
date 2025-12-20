@@ -23,7 +23,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
     private readonly SemaphoreSlim _semaphore;
 
     public EvaluationMetricsSystem(
-        ILogger<EvaluationMetricsSystem> logger, 
+        ILogger<EvaluationMetricsSystem> logger,
         IJudgeAgent judgeAgent,
         IOptions<CodeWikiOptions> options)
     {
@@ -135,7 +135,8 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         var breakdown = new ConcurrentDictionary<string, RequirementScore>();
         var scoresByCategory = new ConcurrentDictionary<string, ConcurrentBag<double>>();
 
-        var (overallScore, overallUncertainty) = await EvaluateRubricNodeAsync(page, rubric, breakdown, scoresByCategory);
+        var (overallScore, overallUncertainty) =
+            await EvaluateRubricNodeAsync(page, rubric, breakdown, scoresByCategory);
 
         var (reliability, stdDeviation) = CalculateReliabilityMetrics(scoresByCategory);
 
@@ -148,20 +149,23 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             Uncertainty = overallUncertainty
         };
 
-        _logger.LogInformation("Single judge-based evaluation completed with score: {Score}, reliability: {Reliability}, uncertainty: {Uncertainty}",
+        _logger.LogInformation(
+            "Single judge-based evaluation completed with score: {Score}, reliability: {Reliability}, uncertainty: {Uncertainty}",
             overallScore, reliability, overallUncertainty);
 
         return qualityScore;
     }
 
-    public async Task<ConsensusQualityScore> EvaluateWithMultipleJudgesAsync(WikiPage page, EvaluationRubric rubric, List<IJudgeAgent> judges)
+    public async Task<ConsensusQualityScore> EvaluateWithMultipleJudgesAsync(WikiPage page, EvaluationRubric rubric,
+        List<IJudgeAgent> judges)
     {
         if (page == null) throw new ArgumentNullException(nameof(page));
         if (rubric == null) throw new ArgumentNullException(nameof(rubric));
         if (judges == null || !judges.Any())
             throw new ArgumentException("At least one judge agent must be provided", nameof(judges));
 
-        _logger.LogInformation("Starting multi-judge consensus evaluation for page: {PageTitle} with {JudgeCount} judges", 
+        _logger.LogInformation(
+            "Starting multi-judge consensus evaluation for page: {PageTitle} with {JudgeCount} judges",
             page.Title, judges.Count);
 
         const int MINIMUM_JUDGES_REQUIRED = 3;
@@ -169,7 +173,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
         var judgeTasks = new List<Task<(string JudgeId, QualityScore? Score)>>();
 
-        for (int i = 0; i < judges.Count; i++)
+        for (var i = 0; i < judges.Count; i++)
         {
             var judge = judges[i];
             var judgeId = $"Judge_{i + 1}";
@@ -179,10 +183,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         var results = await Task.WhenAll(judgeTasks);
         var validResults = results.Where(r => r.Score != null).ToList();
 
-        if (!validResults.Any())
-        {
-            throw new InvalidOperationException("All judge evaluations failed");
-        }
+        if (!validResults.Any()) throw new InvalidOperationException("All judge evaluations failed");
 
         var individualScores = new List<IndividualJudgeScore>();
         var judgeReliabilities = new Dictionary<string, double>();
@@ -202,7 +203,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             individualScores.Add(individualScore);
             judgeReliabilities[judgeId] = score.Reliability;
 
-            _logger.LogInformation("{JudgeId} completed evaluation with score: {Score}, reliability: {Reliability}", 
+            _logger.LogInformation("{JudgeId} completed evaluation with score: {Score}, reliability: {Reliability}",
                 judgeId, score.OverallScore, score.Reliability);
         }
 
@@ -228,13 +229,16 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         // Aggregate breakdown scores across all judges
         consensusQualityScore.Breakdown = AggregateJudgeBreakdowns(individualScores);
 
-        _logger.LogInformation("Multi-judge consensus evaluation completed. Overall: {OverallScore}, Consensus: {ConsensusScore}, Status: {Status}",
-            consensusQualityScore.OverallScore, consensusQualityScore.ConsensusScore, consensusQualityScore.ConsensusStatus);
+        _logger.LogInformation(
+            "Multi-judge consensus evaluation completed. Overall: {OverallScore}, Consensus: {ConsensusScore}, Status: {Status}",
+            consensusQualityScore.OverallScore, consensusQualityScore.ConsensusScore,
+            consensusQualityScore.ConsensusStatus);
 
         return consensusQualityScore;
     }
 
-    private async Task<(string JudgeId, QualityScore? Score)> EvaluateJudgeSafeAsync(WikiPage page, EvaluationRubric rubric, IJudgeAgent judge, string judgeId)
+    private async Task<(string JudgeId, QualityScore? Score)> EvaluateJudgeSafeAsync(WikiPage page,
+        EvaluationRubric rubric, IJudgeAgent judge, string judgeId)
     {
         try
         {
@@ -249,7 +253,8 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         }
     }
 
-    private async Task<QualityScore> EvaluateWithSpecificJudgeAsync(WikiPage page, EvaluationRubric rubric, IJudgeAgent judge)
+    private async Task<QualityScore> EvaluateWithSpecificJudgeAsync(WikiPage page, EvaluationRubric rubric,
+        IJudgeAgent judge)
     {
         var breakdown = new ConcurrentDictionary<string, RequirementScore>();
         var scoresByCategory = new ConcurrentDictionary<string, ConcurrentBag<double>>();
@@ -298,33 +303,31 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
                 return score.Score;
             }
-            
+
             // Return -1 to signal this should be excluded from weighted average
             return -1.0;
         }
 
         if (node.Children != null && node.Children.Any())
         {
-            var tasks = node.Children.Select(async child => 
+            var tasks = node.Children.Select(async child =>
             {
                 var s = await EvaluateRubricNodeWithJudgeAsync(page, child, breakdown, scoresByCategory, judge);
-                return (Score: s, Weight: child.Weight);
+                return (Score: s, child.Weight);
             });
 
             var results = await Task.WhenAll(tasks);
-            
+
             var childScores = new List<double>();
             var childWeights = new List<double>();
 
             foreach (var result in results)
-            {
-                 // Only include successful evaluations
+                // Only include successful evaluations
                 if (result.Score >= 0)
                 {
                     childScores.Add(result.Score);
                     childWeights.Add(result.Weight);
                 }
-            }
 
             return childScores.Any() ? CalculateWeightedAverage(childScores, childWeights) : 0.0;
         }
@@ -332,7 +335,8 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         return 0.0;
     }
 
-    private (double WeightedAverageScore, double ConsensusValue, double OverallReliability, Dictionary<string, double> CategoryStandardDeviations, double OverallUncertainty) 
+    private (double WeightedAverageScore, double ConsensusValue, double OverallReliability, Dictionary<string, double>
+        CategoryStandardDeviations, double OverallUncertainty)
         CalculateConsensusScore(List<IndividualJudgeScore> individualScores)
     {
         if (!individualScores.Any())
@@ -344,7 +348,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
         // Calculate reliability-weighted average score
         var totalReliabilityWeight = reliabilities.Sum();
-        var weightedAverageScore = totalReliabilityWeight > 0 
+        var weightedAverageScore = totalReliabilityWeight > 0
             ? scores.Zip(reliabilities, (score, reliability) => score * reliability).Sum() / totalReliabilityWeight
             : scores.Average();
 
@@ -353,9 +357,9 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         var scoreVariance = scores.Select(s => Math.Pow(s - meanScore, 2)).Average();
         var scoreStandardDeviation = Math.Sqrt(scoreVariance);
         var scoreRange = scores.Max() - scores.Min();
-        
+
         // Consensus value: 1.0 = perfect agreement, 0.0 = no agreement
-        var consensusValue = scoreRange > 0 ? Math.Max(0, 1.0 - (scoreStandardDeviation / scoreRange)) : 1.0;
+        var consensusValue = scoreRange > 0 ? Math.Max(0, 1.0 - scoreStandardDeviation / scoreRange) : 1.0;
 
         // Overall reliability combines individual reliabilities with consensus
         var averageIndividualReliability = reliabilities.Average();
@@ -368,13 +372,14 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
         // Use the standard deviation of scores as the overall uncertainty
         var overallUncertainty = scoreStandardDeviation;
 
-        return (weightedAverageScore, consensusValue, overallReliability, categoryStandardDeviations, overallUncertainty);
+        return (weightedAverageScore, consensusValue, overallReliability, categoryStandardDeviations,
+            overallUncertainty);
     }
 
     private Dictionary<string, double> CalculateCategoryStandardDeviations(List<IndividualJudgeScore> individualScores)
     {
         var categoryStandardDeviations = new Dictionary<string, double>();
-        
+
         if (!individualScores.Any())
             return categoryStandardDeviations;
 
@@ -420,10 +425,10 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
         if (scoreRange <= 10.0) // High agreement
             return "Strong Consensus";
-        else if (scoreRange <= 25.0) // Moderate agreement
+        if (scoreRange <= 25.0) // Moderate agreement
             return "Moderate Consensus";
-        else // Low agreement
-            return "Low Consensus";
+        // Low agreement
+        return "Low Consensus";
     }
 
     private Dictionary<string, RequirementScore> AggregateJudgeBreakdowns(List<IndividualJudgeScore> individualScores)
@@ -449,7 +454,8 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             if (requirementScores.Any())
             {
                 var averageScore = requirementScores.Average(rs => rs.Score);
-                var combinedReasoning = string.Join(" | ", requirementScores.Select(rs => rs.Reasoning).Where(r => !string.IsNullOrWhiteSpace(r)));
+                var combinedReasoning = string.Join(" | ",
+                    requirementScores.Select(rs => rs.Reasoning).Where(r => !string.IsNullOrWhiteSpace(r)));
 
                 aggregatedBreakdown[requirementTitle] = new RequirementScore
                 {
@@ -482,7 +488,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             {
                 _semaphore.Release();
             }
-            
+
             breakdown[requirement.Title] = score;
 
             var category = GetParentCategory(node);
@@ -495,14 +501,14 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
         if (node.Children != null && node.Children.Any())
         {
-            var tasks = node.Children.Select(async child => 
+            var tasks = node.Children.Select(async child =>
             {
                 var (s, u) = await EvaluateRubricNodeAsync(page, child, breakdown, scoresByCategory);
-                return (Score: s, Uncertainty: u, Weight: child.Weight);
+                return (Score: s, Uncertainty: u, child.Weight);
             });
 
             var results = await Task.WhenAll(tasks);
-            
+
             var childScores = new List<double>();
             var childUncertainties = new List<double>();
             var childWeights = new List<double>();
@@ -516,7 +522,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
             var weightedScore = CalculateWeightedAverage(childScores, childWeights);
             var propagatedUncertainty = CalculatePropagatedUncertainty(childUncertainties, childWeights);
-            
+
             return (weightedScore, propagatedUncertainty);
         }
 
@@ -525,38 +531,26 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
 
     private static double CalculateWeightedAverage(List<double> scores, List<double> weights)
     {
-        if (!scores.Any() || !weights.Any() || scores.Count != weights.Count)
-        {
-            return 0.0;
-        }
+        if (!scores.Any() || !weights.Any() || scores.Count != weights.Count) return 0.0;
 
         var totalWeight = weights.Sum();
-        if (totalWeight <= 0.0)
-        {
-            return 0.0;
-        }
+        if (totalWeight <= 0.0) return 0.0;
 
         var weightedSum = scores.Select((score, index) => score * weights[index]).Sum();
         return weightedSum / totalWeight;
     }
 
     /// <summary>
-    /// Propagates uncertainty from child nodes to parent using weighted quadrature sum.
-    /// Formula: σ_parent = sqrt(Σ(w_i² * σ_i²)) / Σ(w_i)
-    /// This follows standard uncertainty propagation for weighted averages.
+    ///     Propagates uncertainty from child nodes to parent using weighted quadrature sum.
+    ///     Formula: σ_parent = sqrt(Σ(w_i² * σ_i²)) / Σ(w_i)
+    ///     This follows standard uncertainty propagation for weighted averages.
     /// </summary>
     private static double CalculatePropagatedUncertainty(List<double> uncertainties, List<double> weights)
     {
-        if (!uncertainties.Any() || !weights.Any() || uncertainties.Count != weights.Count)
-        {
-            return 0.0;
-        }
+        if (!uncertainties.Any() || !weights.Any() || uncertainties.Count != weights.Count) return 0.0;
 
         var totalWeight = weights.Sum();
-        if (totalWeight <= 0.0)
-        {
-            return 0.0;
-        }
+        if (totalWeight <= 0.0) return 0.0;
 
         // Weighted quadrature sum: sqrt(Σ(w_i² * σ_i²)) / Σ(w_i)
         var weightedVarianceSum = uncertainties

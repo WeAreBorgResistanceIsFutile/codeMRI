@@ -44,12 +44,10 @@ public class AgentMessageBus
     public void Unsubscribe(string messageType, Func<AgentMessage, Task> handler)
     {
         if (_subscribers.TryGetValue(messageType, out var handlers))
-        {
             lock (handlers)
             {
                 handlers.Remove(handler);
             }
-        }
     }
 
     private async Task ProcessMessagesAsync()
@@ -59,28 +57,23 @@ public class AgentMessageBus
             {
                 // Collect all handlers for this specific message type
                 var allHandlers = new List<Func<AgentMessage, Task>>();
-                
+
                 // Add specific message type handlers
                 if (_subscribers.TryGetValue(message.MessageType, out var handlers))
-                {
                     lock (handlers)
                     {
                         allHandlers.AddRange(handlers.ToList());
                     }
-                }
-                
+
                 // Add wildcard handlers (subscribe to all message types)
                 if (_subscribers.TryGetValue("*", out var wildcardHandlers))
-                {
                     lock (wildcardHandlers)
                     {
                         allHandlers.AddRange(wildcardHandlers.ToList());
                     }
-                }
 
                 // Invoke all handlers
                 foreach (var handler in allHandlers)
-                {
                     try
                     {
                         await handler(message);
@@ -89,7 +82,6 @@ public class AgentMessageBus
                     {
                         _logger.LogError(ex, "Error handling message {MessageType}", message.MessageType);
                     }
-                }
             }
             catch (Exception ex)
             {

@@ -577,7 +577,7 @@ p:focus,
         gap: 12px;
     }
 
-    .list-group-item>div:last-child {
+    .list-group-item > div:last-child {
         width: 100%;
         justify-content: flex-end;
     }

@@ -1,20 +1,19 @@
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
-using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services;
 
 [TestFixture]
 public class ReferenceManagementServiceTests
 {
-    private IReferenceManagementService _service;
-
     [SetUp]
     public void Setup()
     {
         _service = new ReferenceManagementService();
     }
+
+    private IReferenceManagementService _service;
 
     [Test]
     public void RegisterComponent_ShouldAddComponentToRegistry()
@@ -83,7 +82,7 @@ public class ReferenceManagementServiceTests
         // Arrange
         _service.RegisterComponent("id-1", "UserService", "/src/UserService.cs", "docs/UserService.md");
         _service.RegisterComponent("id-2", "Logger", "/src/Logger.cs", "docs/Logger.md");
-        
+
         var content = "The UserService uses the Logger to record events.";
         var sourceId = "id-3"; // Some other component
 
@@ -159,7 +158,7 @@ public class ReferenceManagementServiceTests
         var source = _service.GetComponent(sourceId);
         Assert.That(source!.RelatedComponentIds, Contains.Item(targetId));
     }
-    
+
     [Test]
     public void EnrichContentWithLinks_ShouldPrioritizeLongerNames()
     {
@@ -168,20 +167,20 @@ public class ReferenceManagementServiceTests
         // NOTE: Simple replacement might break links if not careful.
         // Example: "User" -> [User](...)
         // "SuperUser" -> Super[User](...) if "User" is processed first and "SuperUser" is not detected or handled poorly.
-        
+
         _service.RegisterComponent("id-1", "User", "path", "docs/User.md");
         _service.RegisterComponent("id-2", "SuperUser", "path", "docs/SuperUser.md");
-        
+
         var content = "The SuperUser inherits from User.";
-        
+
         // Act
         var result = _service.EnrichContentWithLinks(content, "source-id");
-        
+
         // Assert
         // Ideally: "The [SuperUser](docs/SuperUser.md) inherits from [User](docs/User.md)."
         // If naive replace "User" first: "The Super[User](docs/User.md) inherits from [User](docs/User.md)." (Bad)
         // If naive replace "SuperUser" first: "The [SuperUser](docs/SuperUser.md) inherits from User." -> Then replace User -> "The [SuperUser](docs/SuperUser.md) inherits from [User](docs/User.md)." (Good)
-        
+
         Assert.That(result, Contains.Substring("[SuperUser](docs/SuperUser.md)"));
         Assert.That(result, Contains.Substring("[User](docs/User.md)"));
     }

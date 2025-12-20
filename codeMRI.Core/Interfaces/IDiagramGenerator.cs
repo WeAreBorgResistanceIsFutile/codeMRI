@@ -7,9 +7,10 @@ public interface IDiagramGenerator
     Task<string> GenerateArchitectureDiagramAsync(ModuleTree moduleTree, EnhancedDependencyGraph graph);
 
     /// <summary>
-    /// Generates a deployment/system context diagram using Mermaid C4 syntax.
+    ///     Generates a deployment/system context diagram using Mermaid C4 syntax.
     /// </summary>
     Task<string> GenerateDeploymentDiagramAsync(ModuleNode module, EnhancedDependencyGraph graph);
+
     Task<string> GenerateComponentDiagramAsync(EnhancedDependencyGraph graph, string? focusComponentId = null);
     Task<string> GenerateSequenceDiagramAsync(EnhancedDependencyGraph graph, string entryPointId);
     Task<string> GenerateDataFlowDiagramAsync(EnhancedDependencyGraph graph, string focusComponentId);

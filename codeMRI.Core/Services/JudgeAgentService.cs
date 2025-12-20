@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace codeMRI.Core.Services;
 
@@ -10,11 +11,13 @@ public class JudgeAgentService : IJudgeAgent
 {
     private readonly ILLMClient _llmClient;
     private readonly ILogger<IJudgeAgent> _logger;
+    private readonly CodeWikiOptions _options;
 
-    public JudgeAgentService(ILogger<IJudgeAgent> logger, ILLMClient llmClient)
+    public JudgeAgentService(ILogger<IJudgeAgent> logger, ILLMClient llmClient, IOptions<CodeWikiOptions> options)
     {
         _logger = logger;
         _llmClient = llmClient;
+        _options = options.Value;
     }
 
     public async Task<RequirementScore> EvaluateRequirementAsync(WikiPage page, RubricRequirement? requirement)
@@ -28,21 +31,26 @@ public class JudgeAgentService : IJudgeAgent
         {
             var systemPrompt = BuildSystemPrompt();
             var userPrompt = BuildEvaluationPrompt(page, requirement);
-            
+
             string response;
-            int threshold = (int)(_llmClient.ContextSize * 3.5);
+            var threshold = (int)(_llmClient.ContextSize * 3.5);
             if (userPrompt.Length > threshold)
             {
-                _logger.LogInformation("Evaluation prompt too large ({Length}). Using findings-based evaluation.", userPrompt.Length);
+                _logger.LogInformation("Evaluation prompt too large ({Length}). Using findings-based evaluation.",
+                    userPrompt.Length);
                 response = await _llmClient.ChatWithFindingsAsync(
                     systemPrompt,
                     $"Evaluate if identifying information for requirement '{requirement.Title}' exists in following content. Requirement: {requirement.Description}",
-                    userPrompt);
+                    userPrompt,
+                    null,
+                    default,
+                    _options.UseSemanticChunking);
             }
             else
             {
                 response = await _llmClient.ChatAsync(systemPrompt, userPrompt, new List<ChatMessage>());
             }
+
             var result = ParseEvaluationResponse(response, requirement.Title);
 
             _logger.LogInformation("Evaluation completed for {Requirement}: Score={Score}",
@@ -56,7 +64,7 @@ public class JudgeAgentService : IJudgeAgent
             return new RequirementScore
             {
                 RequirementId = requirement.Title,
-                Score = 0.0,  // Not used when EvaluationFailed is true
+                Score = 0.0, // Not used when EvaluationFailed is true
                 Reasoning = string.Empty,
                 EvaluationFailed = true,
                 FailureReason = $"Error evaluating requirement: {ex.Message}",
@@ -68,38 +76,37 @@ public class JudgeAgentService : IJudgeAgent
     private static string BuildSystemPrompt()
     {
         return """
-            You are an expert technical documentation evaluator. Your task is to evaluate documentation against specific requirements.
-            
-            You must provide a binary decision (Yes/No) followed by your reasoning. However, if the documentation partially meets the requirement,
-            you may provide a confidence score between 0.0 and 1.0.
-            
-            Guidelines:
-            - Answer "Yes" if the documentation fully satisfies the requirement
-            - Answer "No" if the documentation does not satisfy the requirement
-            - Provide a percentage or decimal score (e.g., "75%", "0.6") for partial satisfaction
-            - Always explain your reasoning clearly
-            - Be objective and consistent in your evaluations
-            """;
+               You are an expert technical documentation evaluator. Your task is to evaluate documentation against specific requirements.
+
+               You must provide a binary decision (Yes/No) followed by your reasoning. However, if the documentation partially meets the requirement,
+               you may provide a confidence score between 0.0 and 1.0.
+
+               Guidelines:
+               - Answer "Yes" if the documentation fully satisfies the requirement
+               - Answer "No" if the documentation does not satisfy the requirement
+               - Provide a percentage or decimal score (e.g., "75%", "0.6") for partial satisfaction
+               - Always explain your reasoning clearly
+               - Be objective and consistent in your evaluations
+               """;
     }
 
     private static string BuildEvaluationPrompt(WikiPage page, RubricRequirement requirement)
     {
         return $"""
-            Documentation Content:
-            {page.Content}
+                Documentation Content:
+                {page.Content}
 
-            Requirement: {requirement.Description}
+                Requirement: {requirement.Description}
 
-            Please evaluate if this documentation satisfies the requirement above.
-            
-            Answer with either "Yes" or "No" (or a confidence score like "75%") and provide detailed reasoning.
-            """;
+                Please evaluate if this documentation satisfies the requirement above.
+
+                Answer with either "Yes" or "No" (or a confidence score like "75%") and provide detailed reasoning.
+                """;
     }
 
     private static RequirementScore ParseEvaluationResponse(string response, string requirementId)
     {
         if (string.IsNullOrWhiteSpace(response))
-        {
             return new RequirementScore
             {
                 RequirementId = requirementId,
@@ -107,20 +114,19 @@ public class JudgeAgentService : IJudgeAgent
                 Reasoning = "No response provided",
                 Uncertainty = 0.0
             };
-        }
 
         var trimmedResponse = response.Trim();
-        
+
         // Try to extract percentage scores first (e.g., "75%", "90 percent")
-        var percentageMatch = Regex.Match(trimmedResponse, @"(\d+(?:\.\d+)?)\s*%|(\d+(?:\.\d+)?)\s*percent", RegexOptions.IgnoreCase);
+        var percentageMatch = Regex.Match(trimmedResponse, @"(\d+(?:\.\d+)?)\s*%|(\d+(?:\.\d+)?)\s*percent",
+            RegexOptions.IgnoreCase);
         if (percentageMatch.Success)
         {
-            var percentageValue = percentageMatch.Groups[1].Success ? 
-                percentageMatch.Groups[1].Value : 
-                percentageMatch.Groups[2].Value;
-            
+            var percentageValue = percentageMatch.Groups[1].Success
+                ? percentageMatch.Groups[1].Value
+                : percentageMatch.Groups[2].Value;
+
             if (double.TryParse(percentageValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var percentage))
-            {
                 return new RequirementScore
                 {
                     RequirementId = requirementId,
@@ -128,17 +134,16 @@ public class JudgeAgentService : IJudgeAgent
                     Reasoning = trimmedResponse,
                     Uncertainty = 0.0
                 };
-            }
         }
 
         // Try to extract decimal scores with various patterns
         // Pattern 1: "score: 0.85", "rating: 0.72", "score is 0.45"
-        var decimalMatch = Regex.Match(trimmedResponse, @"(?:score|rating)\s*(?:is|=|:)?\s*(-?\d+(?:\.\d+)?)", RegexOptions.IgnoreCase);
+        var decimalMatch = Regex.Match(trimmedResponse, @"(?:score|rating)\s*(?:is|=|:)?\s*(-?\d+(?:\.\d+)?)",
+            RegexOptions.IgnoreCase);
         if (decimalMatch.Success)
         {
             var scoreText = decimalMatch.Groups[1].Value.TrimEnd('.');
             if (double.TryParse(scoreText, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalScore))
-            {
                 return new RequirementScore
                 {
                     RequirementId = requirementId,
@@ -146,16 +151,16 @@ public class JudgeAgentService : IJudgeAgent
                     Reasoning = trimmedResponse,
                     Uncertainty = 0.0
                 };
-            }
         }
 
         // Pattern 2: "scores 0.7", "score of -0.2", "give it a score of 1.2" - look for score-related words followed by numbers
-        var scoreContextMatch = Regex.Match(trimmedResponse, @"(?:scores?|gives?|rate[sd]?)\s+(?:it\s+)?(?:a\s+)?(?:score\s+)?(?:of\s+)?(-?\d+(?:\.\d+)?)", RegexOptions.IgnoreCase);
+        var scoreContextMatch = Regex.Match(trimmedResponse,
+            @"(?:scores?|gives?|rate[sd]?)\s+(?:it\s+)?(?:a\s+)?(?:score\s+)?(?:of\s+)?(-?\d+(?:\.\d+)?)",
+            RegexOptions.IgnoreCase);
         if (scoreContextMatch.Success)
         {
             var scoreText = scoreContextMatch.Groups[1].Value.TrimEnd('.');
             if (double.TryParse(scoreText, NumberStyles.Float, CultureInfo.InvariantCulture, out var contextScore))
-            {
                 return new RequirementScore
                 {
                     RequirementId = requirementId,
@@ -163,18 +168,15 @@ public class JudgeAgentService : IJudgeAgent
                     Reasoning = trimmedResponse,
                     Uncertainty = 0.0
                 };
-            }
         }
 
         // Pattern 3: Look for any decimal numbers between 0 and 1 (including negative for clamping)
         var decimalMatches = Regex.Matches(trimmedResponse, @"\b(-?\d+(?:\.\d+)?)\b");
         foreach (Match match in decimalMatches)
-        {
-            if (double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var standaloneScore))
-            {
+            if (double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture,
+                    out var standaloneScore))
                 // Only consider numbers that could be valid scores (0-1 range or close to it)
                 if (Math.Abs(standaloneScore) <= 1.5) // Allow some tolerance for numbers like 1.2
-                {
                     return new RequirementScore
                     {
                         RequirementId = requirementId,
@@ -182,19 +184,15 @@ public class JudgeAgentService : IJudgeAgent
                         Reasoning = trimmedResponse,
                         Uncertainty = 0.0
                     };
-                }
-            }
-        }
 
         // Check for Yes/No answers
         var normalizedResponse = trimmedResponse.ToLowerInvariant();
-        
-        if (normalizedResponse.StartsWith("yes") || 
+
+        if (normalizedResponse.StartsWith("yes") ||
             normalizedResponse.Contains("\nyes") ||
             normalizedResponse.StartsWith("yes,") ||
             normalizedResponse.StartsWith("yes:") ||
             normalizedResponse.StartsWith("yes "))
-        {
             return new RequirementScore
             {
                 RequirementId = requirementId,
@@ -202,14 +200,12 @@ public class JudgeAgentService : IJudgeAgent
                 Reasoning = ExtractReasoning(trimmedResponse, "yes"),
                 Uncertainty = 0.0
             };
-        }
 
-        if (normalizedResponse.StartsWith("no") || 
+        if (normalizedResponse.StartsWith("no") ||
             normalizedResponse.Contains("\nno") ||
             normalizedResponse.StartsWith("no,") ||
             normalizedResponse.StartsWith("no:") ||
             normalizedResponse.StartsWith("no "))
-        {
             return new RequirementScore
             {
                 RequirementId = requirementId,
@@ -217,7 +213,6 @@ public class JudgeAgentService : IJudgeAgent
                 Reasoning = ExtractReasoning(trimmedResponse, "no"),
                 Uncertainty = 0.0
             };
-        }
 
         // Default case - couldn't parse a clear score
         return new RequirementScore
@@ -232,9 +227,9 @@ public class JudgeAgentService : IJudgeAgent
     private static string ExtractReasoning(string response, string prefix)
     {
         var lines = response.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        
+
         // Look for the line with the Yes/No answer
-        for (int i = 0; i < lines.Length; i++)
+        for (var i = 0; i < lines.Length; i++)
         {
             var line = lines[i].Trim().ToLowerInvariant();
             if (line.StartsWith(prefix))
@@ -248,7 +243,7 @@ public class JudgeAgentService : IJudgeAgent
                     if (!string.IsNullOrWhiteSpace(sameLineReasoning))
                         return sameLineReasoning;
                 }
-                
+
                 // Use subsequent lines as reasoning
                 if (i + 1 < lines.Length)
                 {
@@ -257,7 +252,7 @@ public class JudgeAgentService : IJudgeAgent
                 }
             }
         }
-        
+
         return response.Trim();
     }
 }

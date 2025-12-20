@@ -32,12 +32,10 @@ public class ReferenceManagementService : IReferenceManagementService
     public void RegisterRelationship(string sourceId, string targetId, EdgeType type)
     {
         if (_registry.TryGetValue(sourceId, out var source))
-        {
             lock (source.RelatedComponentIds)
             {
                 source.RelatedComponentIds.Add(targetId);
             }
-        }
     }
 
     public RegisteredComponent? GetComponent(string id)
@@ -63,7 +61,6 @@ public class ReferenceManagementService : IReferenceManagementService
             var pattern = $@"\b{Regex.Escape(component.Name)}\b";
             var matches = Regex.Matches(content, pattern);
             foreach (Match match in matches)
-            {
                 references.Add(new CrossReference
                 {
                     SourceId = sourceComponentId,
@@ -74,7 +71,6 @@ public class ReferenceManagementService : IReferenceManagementService
                     Length = match.Length,
                     Context = GetContext(content, match.Index)
                 });
-            }
         }
 
         return references;
@@ -102,19 +98,19 @@ public class ReferenceManagementService : IReferenceManagementService
         // A simple approach for TDD: split by existing markdown links or process carefully.
         // For now, we'll use a placeholder strategy or just regex replace if we assume plain text input.
         // The test case inputs are simple plain text.
-        
+
         foreach (var component in potentialLinks)
         {
             var pattern = $@"\b{Regex.Escape(component.Name)}\b";
-            
+
             // Check if the name is present
             if (Regex.IsMatch(result, pattern))
             {
                 var link = $"[{component.Name}]({component.DocPath})";
                 // Only replace if not already linked? 
                 // Regex lookarounds: (?<!\[)Name(?!\(\)) might work to avoid double linking
-                
-                 result = Regex.Replace(result, $"(?<!\\[)\\b{Regex.Escape(component.Name)}\\b(?!\\])", link);
+
+                result = Regex.Replace(result, $"(?<!\\[)\\b{Regex.Escape(component.Name)}\\b(?!\\])", link);
             }
         }
 

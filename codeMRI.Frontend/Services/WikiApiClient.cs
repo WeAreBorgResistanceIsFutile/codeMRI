@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using codeMRI.Server.Api;
 
@@ -14,54 +15,55 @@ public class WikiApiClient
 
     public async Task<WikiStructure> GenerateStructureAsync(string repoPath)
     {
-        var response = await _http.PostAsJsonAsync("api/Wiki/structure", new StructureRequest 
-        { 
+        var response = await _http.PostAsJsonAsync("api/Wiki/structure", new StructureRequest
+        {
             RepoPath = repoPath,
             ForceRegenerate = false // Default to cached
         });
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<WikiStructure>() 
+        return await response.Content.ReadFromJsonAsync<WikiStructure>()
                ?? throw new Exception("Failed to deserialize structure");
     }
 
     public async Task<WikiStructure> GenerateAdvancedStructureAsync(string repoPath, string? connectionId = null)
     {
-        var response = await _http.PostAsJsonAsync("api/Wiki/generate-advanced", new StructureRequest 
-        { 
+        var response = await _http.PostAsJsonAsync("api/Wiki/generate-advanced", new StructureRequest
+        {
             RepoPath = repoPath,
-            ForceRegenerate = true, 
+            ForceRegenerate = true,
             ConnectionId = connectionId,
             Audience = AudienceType.Developer // Default for now, or update signature if needed
         });
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<WikiStructure>() 
+        return await response.Content.ReadFromJsonAsync<WikiStructure>()
                ?? throw new Exception("Failed to deserialize structure");
     }
 
-    public async Task<WikiPage> GeneratePageAsync(string repoPath, string title, List<string> contextFiles, bool forceRegenerate = false)
+    public async Task<WikiPage> GeneratePageAsync(string repoPath, string title, List<string> contextFiles,
+        bool forceRegenerate = false)
     {
-        var response = await _http.PostAsJsonAsync("api/Wiki/page", new PageGenerationRequest 
-        { 
+        var response = await _http.PostAsJsonAsync("api/Wiki/page", new PageGenerationRequest
+        {
             RepoPath = repoPath,
             Title = title,
             FilePaths = contextFiles ?? new List<string>(),
             ForceRegenerate = forceRegenerate
         });
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<WikiPage>() 
+        return await response.Content.ReadFromJsonAsync<WikiPage>()
                ?? throw new Exception("Failed to deserialize page");
     }
-    
+
     public async Task<List<string>> GetRepositoriesAsync()
     {
-         return await _http.GetFromJsonAsync<List<string>>("api/Wiki/repositories") 
-                ?? new List<string>();
+        return await _http.GetFromJsonAsync<List<string>>("api/Wiki/repositories")
+               ?? new List<string>();
     }
 
     public async Task<List<RepositorySummary>> GetRepositorySummariesAsync()
     {
-         return await _http.GetFromJsonAsync<List<RepositorySummary>>("api/Wiki/repositories-summary") 
-                ?? new List<RepositorySummary>();
+        return await _http.GetFromJsonAsync<List<RepositorySummary>>("api/Wiki/repositories-summary")
+               ?? new List<RepositorySummary>();
     }
 
     public async Task<string> ChatAsync(List<ChatMessage> history)
@@ -82,33 +84,30 @@ public class WikiApiClient
     {
         var encoded = Uri.EscapeDataString(repoPath);
         var result = await _http.GetAsync($"api/Wiki/navigation?repoPath={encoded}");
-        
-        if (result.StatusCode == System.Net.HttpStatusCode.NoContent)
-        {
-            return null;
-        }
-        
+
+        if (result.StatusCode == HttpStatusCode.NoContent) return null;
+
         result.EnsureSuccessStatusCode();
-        
+
         return await result.Content.ReadFromJsonAsync<WikiStructure>()
                ?? throw new Exception("Failed to get navigation structure");
     }
 
-    
+
     public async Task<IngestionJob> StartIngestionAsync(string gitUrl, AudienceType audience = AudienceType.Developer)
     {
         var request = new IngestionRequest { Url = gitUrl, Audience = audience };
         var response = await _http.PostAsJsonAsync("api/Wiki/ingest", request);
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<StartIngestionResponse>()
-               ?? throw new Exception("Failed to start ingestion");
-        
+                     ?? throw new Exception("Failed to start ingestion");
+
         return new IngestionJob { Id = result.JobId, Status = Enum.Parse<IngestionStatus>(result.Status) };
     }
 
     public async Task<IngestionJob?> GetIngestionJobAsync(string jobId)
     {
-         return await _http.GetFromJsonAsync<IngestionJob>($"api/Wiki/ingestion/{jobId}");
+        return await _http.GetFromJsonAsync<IngestionJob>($"api/Wiki/ingestion/{jobId}");
     }
 
     public async Task CancelIngestionAsync(string jobId)
@@ -119,8 +118,8 @@ public class WikiApiClient
 
     public async Task<List<IngestionJob>> ListActiveIngestionsAsync()
     {
-         return await _http.GetFromJsonAsync<List<IngestionJob>>("api/Wiki/ingestions/active") 
-                ?? new List<IngestionJob>();
+        return await _http.GetFromJsonAsync<List<IngestionJob>>("api/Wiki/ingestions/active")
+               ?? new List<IngestionJob>();
     }
 
     // Deprecated but kept for compatibility if needed (simplified wrapper)
@@ -130,10 +129,11 @@ public class WikiApiClient
         return new IngestionResult { Name = "", Path = "" }; // Placeholder as this flow is changing
     }
 
-    public async Task<WikiStructure> IngestRepositoryAsync(string repoPath, bool forceRegenerate = false, string? connectionId = null)
+    public async Task<WikiStructure> IngestRepositoryAsync(string repoPath, bool forceRegenerate = false,
+        string? connectionId = null)
     {
-        var response = await _http.PostAsJsonAsync("api/Wiki/generate-advanced", new StructureRequest 
-        { 
+        var response = await _http.PostAsJsonAsync("api/Wiki/generate-advanced", new StructureRequest
+        {
             RepoPath = repoPath,
             ForceRegenerate = forceRegenerate,
             ConnectionId = connectionId

@@ -1,8 +1,11 @@
+using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Models;
 using codeMRI.Infrastructure;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
-
+using codeMRI.Server.Hubs;
+using Microsoft.Data.Sqlite;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,7 +26,7 @@ builder.Services.AddSwaggerGen();
 // Configuration
 builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<ASTServiceSettings>(builder.Configuration.GetSection("ASTService"));
-builder.Services.Configure<codeMRI.Core.Models.CodeWikiOptions>(builder.Configuration.GetSection("CodeWiki"));
+builder.Services.Configure<CodeWikiOptions>(builder.Configuration.GetSection("CodeWiki"));
 
 // Infrastructure
 builder.Services.AddHttpClient();
@@ -35,31 +38,33 @@ WireUp.Registered(builder.Services);
 
 builder.Services.AddSingleton<IWikiRepository>(sp =>
 {
-    var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
+    var appDataPath =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
     if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
-    
+
     var connectionString = builder.Configuration.GetConnectionString("WikiDb");
     if (string.IsNullOrEmpty(connectionString))
     {
         var dbPath = Path.Combine(appDataPath, "codemri.db");
         connectionString = $"Data Source={dbPath}";
     }
+
     return new SqliteWikiRepository(connectionString);
 });
 
-builder.Services.AddSingleton<IIngestionJobManager, DbIngestionManager>(sp => 
+builder.Services.AddSingleton<IIngestionJobManager, DbIngestionManager>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<DbIngestionManager>>();
-    var messageBus = sp.GetRequiredService<codeMRI.Agents.Services.AgentMessageBus>();
+    var messageBus = sp.GetRequiredService<AgentMessageBus>();
     var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
-    
+
     var connectionString = builder.Configuration.GetConnectionString("IngestionDb");
     string dbPath;
-    
+
     if (!string.IsNullOrEmpty(connectionString) && connectionString.Contains("Data Source="))
     {
         // Extract if it's a connection string
-        var builder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString);
+        var builder = new SqliteConnectionStringBuilder(connectionString);
         dbPath = builder.DataSource;
     }
     else if (!string.IsNullOrEmpty(connectionString))
@@ -70,11 +75,12 @@ builder.Services.AddSingleton<IIngestionJobManager, DbIngestionManager>(sp =>
     else
     {
         // Default
-        var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
+        var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "codeMRI");
         if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
         dbPath = Path.Combine(appDataPath, "ingestion.db");
     }
-    
+
     return new DbIngestionManager(logger, messageBus, scopeFactory, dbPath);
 });
 
@@ -101,7 +107,7 @@ app.UseCors("AllowAll");
 app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHub<codeMRI.Server.Hubs.WikiHub>("/wikiHub");
+app.MapHub<WikiHub>("/wikiHub");
 
 app.Run();
 

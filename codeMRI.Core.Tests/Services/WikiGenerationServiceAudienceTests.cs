@@ -2,11 +2,8 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
-using NUnit.Framework;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 
 #pragma warning disable CS8602
 
@@ -15,14 +12,6 @@ namespace codeMRI.Core.Tests.Services;
 [TestFixture]
 public class WikiGenerationServiceAudienceTests
 {
-    private Mock<ILLMClient>? _mockLlmClient;
-    private Mock<IDiagramGenerator>? _mockDiagramGenerator;
-    private Mock<IEnhancedDependencyGraphService>? _mockGraphService;
-    private Mock<IDocumentationSynthesisService>? _mockSynthesisService;
-    private Mock<IReferenceManagementService>? _mockRefService;
-    private Mock<ILogger<WikiGenerationService>>? _mockLogger;
-    private WikiGenerationService? _service;
-
     [SetUp]
     public void Setup()
     {
@@ -34,6 +23,8 @@ public class WikiGenerationServiceAudienceTests
         _mockSynthesisService = new Mock<IDocumentationSynthesisService>();
         _mockRefService = new Mock<IReferenceManagementService>();
 
+        var options = Options.Create(new CodeWikiOptions());
+
         _service = new WikiGenerationService(
             _mockLlmClient!.Object,
             _mockDiagramGenerator!.Object,
@@ -41,8 +32,17 @@ public class WikiGenerationServiceAudienceTests
             _mockSynthesisService!.Object,
             _mockRefService!.Object,
             _mockLogger!.Object,
+            options,
             "dummy_model");
     }
+
+    private Mock<ILLMClient>? _mockLlmClient;
+    private Mock<IDiagramGenerator>? _mockDiagramGenerator;
+    private Mock<IEnhancedDependencyGraphService>? _mockGraphService;
+    private Mock<IDocumentationSynthesisService>? _mockSynthesisService;
+    private Mock<IReferenceManagementService>? _mockRefService;
+    private Mock<ILogger<WikiGenerationService>>? _mockLogger;
+    private WikiGenerationService? _service;
 
     [Test]
     public async Task GenerateEnhancedPageAsync_ShouldUseUserGuidePrompt_WhenAudienceIsUser()
@@ -51,20 +51,23 @@ public class WikiGenerationServiceAudienceTests
         var module = new ModuleNode { Name = "TestModule", Components = new HashSet<string> { "File.cs" } };
         var context = new ModulePageContext();
         var fileContents = new Dictionary<string, string> { { "File.cs", "content" } };
-        
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .Callback<string, string, List<ChatMessage>, string?, CancellationToken>((sys, prompt, hist, model, token) => 
+
+        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, List<ChatMessage>, string?,
+                CancellationToken>((sys, prompt, hist, model, token) =>
             {
-                TestContext.WriteLine($"Generated System Prompt: {sys}");
-                TestContext.WriteLine($"Generated User Prompt: {prompt}");
+                TestContext.Out.WriteLine($"Generated System Prompt: {sys}");
+                TestContext.Out.WriteLine($"Generated User Prompt: {prompt}");
             })
             .ReturnsAsync("# TestModule\nUser guide content");
-            
+
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c);
 
         // Act
-        await _service.GenerateEnhancedPageAsync(module, null, context, fileContents, "English", null, AudienceType.User);
+        await _service.GenerateEnhancedPageAsync(module, null, context, fileContents, "English", null,
+            AudienceType.User);
 
         // Assert
         // Verify prompt contains audience specific text
@@ -74,11 +77,11 @@ public class WikiGenerationServiceAudienceTests
             It.IsAny<List<ChatMessage>>(),
             It.IsAny<string?>(),
             It.IsAny<CancellationToken>()), Times.Once);
-            
+
         // Verify Deployment Diagram IS generated for User audience
         var graph = new EnhancedDependencyGraph();
         graph.AddNode("Test", new NodeMetadata());
-        
+
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
 
@@ -94,33 +97,38 @@ public class WikiGenerationServiceAudienceTests
         var module = new ModuleNode { Name = "TestModule", Components = new HashSet<string> { "File.cs" } };
         var context = new ModulePageContext();
         var fileContents = new Dictionary<string, string> { { "File.cs", "content" } };
-        
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+
+        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("# TestModule\nUser guide content");
-            
+
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c);
 
         // Setup Graph Service to return a valid graph so diagram logic triggers
         var graph = new EnhancedDependencyGraph();
-        graph.AddNode("TestNode", new NodeMetadata()); 
+        graph.AddNode("TestNode", new NodeMetadata());
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph);
 
-        _mockDiagramGenerator.Setup(x => x.GenerateDeploymentDiagramAsync(It.IsAny<ModuleNode>(), It.IsAny<EnhancedDependencyGraph>()))
+        _mockDiagramGenerator.Setup(x =>
+                x.GenerateDeploymentDiagramAsync(It.IsAny<ModuleNode>(), It.IsAny<EnhancedDependencyGraph>()))
             .ReturnsAsync("C4Context\n...");
 
         // Act
-        await _service.GenerateEnhancedPageAsync(module, null, context, fileContents, "English", null, AudienceType.User);
+        await _service.GenerateEnhancedPageAsync(module, null, context, fileContents, "English", null,
+            AudienceType.User);
 
         // Assert
         // Verify Deployment Diagram is called
-        _mockDiagramGenerator.Verify(x => x.GenerateDeploymentDiagramAsync(module, It.IsAny<EnhancedDependencyGraph>()), Times.Once);
-        
+        _mockDiagramGenerator.Verify(x => x.GenerateDeploymentDiagramAsync(module, It.IsAny<EnhancedDependencyGraph>()),
+            Times.Once);
+
         // Verify Component Diagram is NOT called
-        _mockDiagramGenerator.Verify(x => x.GenerateComponentDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>()), Times.Never);
+        _mockDiagramGenerator.Verify(
+            x => x.GenerateComponentDiagramAsync(It.IsAny<EnhancedDependencyGraph>(), It.IsAny<string>()), Times.Never);
     }
-    
+
     [Test]
     public async Task GenerateEnhancedPageAsync_ShouldIngestHumanContext_AndPassToPrompt()
     {
@@ -143,18 +151,21 @@ public class WikiGenerationServiceAudienceTests
 
             // Setup LLM to capture prompt
             string? capturedPrompt = null;
-            _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-                .Callback<string, string, List<ChatMessage>, string?, CancellationToken>((sys, prompt, hist, model, token) => 
+            _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                    It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .Callback<string, string, List<ChatMessage>, string?, CancellationToken>((sys, prompt, hist, model,
+                    token) =>
                 {
                     capturedPrompt = prompt;
                 })
                 .ReturnsAsync("# Generated content");
-                
+
             _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
-                 .Returns<string, string>((c, id) => c);
-            
-            _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
-                 .ReturnsAsync(new EnhancedDependencyGraph());
+                .Returns<string, string>((c, id) => c);
+
+            _mockGraphService.Setup(x =>
+                    x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new EnhancedDependencyGraph());
 
             // Act
             // Pass tempDir as repoPath
@@ -162,7 +173,8 @@ public class WikiGenerationServiceAudienceTests
             // We should create that file too to avoid warnings, though not strictly necessary for this test.
             await File.WriteAllTextAsync(Path.Combine(tempDir, "File.cs"), "code content");
 
-            await _service.GenerateEnhancedPageAsync(module, null, context, fileContents, "English", tempDir, AudienceType.User);
+            await _service.GenerateEnhancedPageAsync(module, null, context, fileContents, "English", tempDir,
+                AudienceType.User);
 
             // Assert
             Assert.That(capturedPrompt, Does.Contain("Human written readme content"));
@@ -173,7 +185,7 @@ public class WikiGenerationServiceAudienceTests
             if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
         }
     }
-    
+
     [Test]
     public async Task GenerateEnhancedPageAsync_ShouldUseDeveloperPrompt_WhenAudienceIsDeveloper()
     {
@@ -181,10 +193,11 @@ public class WikiGenerationServiceAudienceTests
         var module = new ModuleNode { Name = "TestModule", Components = new HashSet<string> { "File.cs" } };
         var context = new ModulePageContext();
         var fileContents = new Dictionary<string, string> { { "File.cs", "content" } };
-        
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+
+        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("# TestModule\nDev content");
-            
+
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c);
 
@@ -192,7 +205,7 @@ public class WikiGenerationServiceAudienceTests
             .ReturnsAsync(new EnhancedDependencyGraph()); // Empty graph but returning one to allow flow to continue
 
         // Act
-        await _service.GenerateEnhancedPageAsync(module, null, context, fileContents, "English", null, AudienceType.Developer);
+        await _service.GenerateEnhancedPageAsync(module, null, context, fileContents);
 
         // Assert
         // Verify prompt contains Developer specific metrics
@@ -202,10 +215,11 @@ public class WikiGenerationServiceAudienceTests
             It.IsAny<List<ChatMessage>>(),
             It.IsAny<string?>(),
             It.IsAny<CancellationToken>()), Times.Once);
-            
+
         // Verify attempt to generate diagrams (it tries, even if graph empty it calls BuildGraph, logic might skip actual diagram gen if node count 0 but intent is there)
         // My implementation adds Try-Catch block calling BuildGraph only if Audience == Developer.
-        _mockGraphService.Verify(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockGraphService.Verify(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Test]
@@ -215,10 +229,12 @@ public class WikiGenerationServiceAudienceTests
         var module = new ModuleNode { Name = "ParentModule" };
         var childPages = new List<WikiPage>();
         var audience = AudienceType.DevOps;
-        
-        _mockSynthesisService.Setup(x => x.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<bool>()))
+
+        _mockSynthesisService.Setup(x => x.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(),
+                It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<bool>(), It.IsAny<SynthesisStrategy?>(),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WikiPage { Content = "Content" });
-            
+
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c);
 
@@ -226,9 +242,13 @@ public class WikiGenerationServiceAudienceTests
         await _service.GenerateParentPageAsync(module, childPages, "English", audience);
 
         // Assert
-        _mockSynthesisService.Verify(x => x.SynthesizeParentPageAsync(module, childPages, "English", audience, It.IsAny<bool>()), Times.Once);
-        
+        _mockSynthesisService.Verify(
+            x => x.SynthesizeParentPageAsync(module, childPages, "English", audience, It.IsAny<bool>(),
+                It.IsAny<SynthesisStrategy?>(), It.IsAny<CancellationToken>()), Times.Once);
+
         // Assert Diagrams skipped for non-developer
-        _mockDiagramGenerator.Verify(x => x.GenerateArchitectureDiagramAsync(It.IsAny<ModuleTree>(), It.IsAny<EnhancedDependencyGraph>()), Times.Never);
+        _mockDiagramGenerator.Verify(
+            x => x.GenerateArchitectureDiagramAsync(It.IsAny<ModuleTree>(), It.IsAny<EnhancedDependencyGraph>()),
+            Times.Never);
     }
 }

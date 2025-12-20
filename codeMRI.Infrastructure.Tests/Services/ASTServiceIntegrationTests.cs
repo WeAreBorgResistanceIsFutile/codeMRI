@@ -1,30 +1,23 @@
 using System.Diagnostics;
-using System.Net;
-using System.Text.Json; // Added this
-using codeMRI.Core.Models;
+using System.Text.Json;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+// Added this
 
 namespace codeMRI.Infrastructure.Tests.Services;
 
 [TestFixture]
 public class ASTServiceIntegrationTests
 {
-    private const string AstServiceBaseUrl = "http://localhost:3002";
-    private Process? _astServiceProcess;
-    private HttpClient _httpClient = null!;
-    private ASTServiceClient _service = null!;
-    private Mock<ILogger<ASTServiceClient>> _loggerMock = null!;
-    private Mock<IOptions<ASTServiceSettings>> _settingsMock = null!;
-
     [OneTimeSetUp]
     public async Task OneTimeSetup()
     {
         // 1. Start the AST Service (Node.js application)
-        var astServicePath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "codeMRI.ASTService");
+        var astServicePath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..",
+            "codeMRI.ASTService");
         astServicePath = Path.GetFullPath(astServicePath);
 
         Console.WriteLine($"Starting AST Service from: {astServicePath}");
@@ -86,10 +79,7 @@ public class ASTServiceIntegrationTests
             }
         }
 
-        if (!isServiceHealthy)
-        {
-            throw new Exception("AST Service did not become healthy within the expected time.");
-        }
+        if (!isServiceHealthy) throw new Exception("AST Service did not become healthy within the expected time.");
         Console.WriteLine("AST Service is healthy.");
     }
 
@@ -102,6 +92,13 @@ public class ASTServiceIntegrationTests
         _httpClient.Dispose();
         Console.WriteLine("AST Service shut down.");
     }
+
+    private const string AstServiceBaseUrl = "http://localhost:3002";
+    private Process? _astServiceProcess;
+    private HttpClient _httpClient = null!;
+    private ASTServiceClient _service = null!;
+    private Mock<ILogger<ASTServiceClient>> _loggerMock = null!;
+    private Mock<IOptions<ASTServiceSettings>> _settingsMock = null!;
 
     [Test]
     public async Task ParseCodeAsync_WithSpecificPythonContent_ShouldReturnSuccess()
@@ -137,11 +134,13 @@ if not logger.hasHandlers():
         Assert.That(result.FilePath, Is.EqualTo(filePath), "Expected parsed file path to match");
         Assert.That(result.Tree, Is.Not.Null, "Expected AST tree to be present");
         Assert.That(result.Metrics, Is.Not.Null, "Expected metrics to be present");
-        
+
         // Access metrics properties using JsonElement
-        JsonElement metricsElement = (JsonElement)result.Metrics;
-        Assert.That(metricsElement.GetProperty("linesOfCode").GetInt32(), Is.GreaterThan(0), "Expected lines of code metric to be greater than 0");
-        Assert.That(metricsElement.GetProperty("cyclomaticComplexity").GetInt32(), Is.GreaterThanOrEqualTo(1), "Expected cyclomatic complexity to be at least 1");
+        var metricsElement = (JsonElement)result.Metrics;
+        Assert.That(metricsElement.GetProperty("linesOfCode").GetInt32(), Is.GreaterThan(0),
+            "Expected lines of code metric to be greater than 0");
+        Assert.That(metricsElement.GetProperty("cyclomaticComplexity").GetInt32(), Is.GreaterThanOrEqualTo(1),
+            "Expected cyclomatic complexity to be at least 1");
 
         Assert.That(result.DependencyGraph, Is.Not.Null, "Expected dependency graph to be present");
         Assert.That(result.HierarchicalStructure, Is.Not.Null, "Expected hierarchical structure to be present");
@@ -165,7 +164,8 @@ if not logger.hasHandlers():
             x => x.Log(
                 LogLevel.Error,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((o, t) => o.ToString()!.Contains($"Failed to parse code using AST Service for language: {language}")),
+                It.Is<It.IsAnyType>((o, t) =>
+                    o.ToString()!.Contains($"Failed to parse code using AST Service for language: {language}")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception, string>>()),
             Times.Once);

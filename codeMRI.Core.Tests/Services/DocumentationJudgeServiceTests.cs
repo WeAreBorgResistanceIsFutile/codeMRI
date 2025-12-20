@@ -4,19 +4,12 @@ using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
-using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services;
 
 [TestFixture]
 public class DocumentationJudgeServiceTests
 {
-    private Mock<ILLMClient> _mockLlmClient;
-    private Mock<ILogger<DocumentationJudgeService>> _mockLogger;
-    private Mock<IMeterFactory> _mockMeterFactory;
-    private Mock<IEvaluationPromptBuilder> _mockPromptBuilder;
-    private DocumentationJudgeService _service;
-
     [SetUp]
     public void Setup()
     {
@@ -25,21 +18,27 @@ public class DocumentationJudgeServiceTests
         _mockLogger = new Mock<ILogger<DocumentationJudgeService>>();
         _mockMeterFactory = new Mock<IMeterFactory>();
         _mockPromptBuilder = new Mock<IEvaluationPromptBuilder>();
-        
+
         // Setup meter factory to return a real meter for testing
         _mockMeterFactory.Setup(x => x.Create(It.IsAny<MeterOptions>()))
             .Returns(new Meter("TestMeter"));
-        
+
         // Setup prompt builder to return a basic prompt
         _mockPromptBuilder.Setup(x => x.BuildPrompt(It.IsAny<RubricRequirement>(), It.IsAny<WikiStructure>()))
             .Returns("Mock evaluation prompt");
-        
+
         _service = new DocumentationJudgeService(
-            _mockLogger.Object, 
-            _mockLlmClient.Object, 
+            _mockLogger.Object,
+            _mockLlmClient.Object,
             _mockMeterFactory.Object,
             _mockPromptBuilder.Object);
     }
+
+    private Mock<ILLMClient> _mockLlmClient;
+    private Mock<ILogger<DocumentationJudgeService>> _mockLogger;
+    private Mock<IMeterFactory> _mockMeterFactory;
+    private Mock<IEvaluationPromptBuilder> _mockPromptBuilder;
+    private DocumentationJudgeService _service;
 
     [Test]
     public async Task EvaluateRequirementsAsync_ShouldUseCorrectModelForEachJudge()
@@ -76,6 +75,7 @@ public class DocumentationJudgeServiceTests
             It.IsAny<List<ChatMessage>>(),
             "model-b", It.IsAny<CancellationToken>()), Times.Once, "Should call ChatAsync with model-b");
     }
+
     [Test]
     public async Task EvaluateRequirementAsync_ShouldParseJsonWithMarkdownFences()
     {
@@ -282,7 +282,8 @@ public class DocumentationJudgeServiceTests
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
         var structure = new WikiStructure();
-        var response = "Here's my analysis:\n```json\n{\"score\": 0.85, \"reasoning\": \"First JSON\"}\n```\nAnd another:\n```json\n{\"other\": \"data\"}\n```";
+        var response =
+            "Here's my analysis:\n```json\n{\"score\": 0.85, \"reasoning\": \"First JSON\"}\n```\nAnd another:\n```json\n{\"other\": \"data\"}\n```";
 
         _mockLlmClient.Setup(x => x.ChatAsync(
                 It.IsAny<string>(),
@@ -327,7 +328,8 @@ public class DocumentationJudgeServiceTests
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
         var structure = new WikiStructure();
-        var response = "Okay, I have analyzed the documentation. Here is the JSON you requested:\n\n{ \"score\": 0.95, \"reasoning\": \"Extremely clear\", \"evidence\": [] }\n\nHope this helps!";
+        var response =
+            "Okay, I have analyzed the documentation. Here is the JSON you requested:\n\n{ \"score\": 0.95, \"reasoning\": \"Extremely clear\", \"evidence\": [] }\n\nHope this helps!";
 
         _mockLlmClient.Setup(x => x.ChatAsync(
                 It.IsAny<string>(),
@@ -344,6 +346,7 @@ public class DocumentationJudgeServiceTests
         Assert.That(result.MeanScore, Is.EqualTo(0.95));
         Assert.That(result.Reasoning[0], Is.EqualTo("Extremely clear"));
     }
+
     [Test]
     public async Task EvaluateRequirementsAsync_ShouldRunCorrectlyWithConcurrencyParameter()
     {
@@ -365,7 +368,7 @@ public class DocumentationJudgeServiceTests
             .ReturnsAsync("{\"score\": 0.9, \"reasoning\": \"Fast\"}");
 
         // Act
-        var results = await _service.EvaluateRequirementsAsync(requirements, structure, judgeModels, maxConcurrency: 2);
+        var results = await _service.EvaluateRequirementsAsync(requirements, structure, judgeModels, 2);
 
         // Assert
         Assert.That(results, Has.Count.EqualTo(2));

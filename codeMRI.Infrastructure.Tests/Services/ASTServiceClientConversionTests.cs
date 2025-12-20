@@ -1,6 +1,5 @@
 using System.Text.Json;
 using codeMRI.Core.Interfaces;
-using codeMRI.Core.Models;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
@@ -12,12 +11,6 @@ namespace codeMRI.Infrastructure.Tests.Services;
 [TestFixture]
 public class ASTServiceClientConversionTests
 {
-    private ASTServiceClient _service;
-    private Mock<ILogger<ASTServiceClient>> _loggerMock;
-    private Mock<IOptions<ASTServiceSettings>> _settingsMock;
-    private Mock<HttpMessageHandler> _httpMessageHandlerMock;
-    private HttpClient _httpClient;
-
     [SetUp]
     public void Setup()
     {
@@ -29,9 +22,9 @@ public class ASTServiceClientConversionTests
 
         _loggerMock = new Mock<ILogger<ASTServiceClient>>();
         _settingsMock = new Mock<IOptions<ASTServiceSettings>>();
-        
-        _settingsMock.Setup(s => s.Value).Returns(new ASTServiceSettings 
-        { 
+
+        _settingsMock.Setup(s => s.Value).Returns(new ASTServiceSettings
+        {
             BaseUrl = "http://localhost:3000",
             Enabled = true
         });
@@ -39,12 +32,18 @@ public class ASTServiceClientConversionTests
         var csharpParserMock = new Mock<ICSharpParser>();
         _service = new ASTServiceClient(_httpClient, _loggerMock.Object, _settingsMock.Object, csharpParserMock.Object);
     }
-    
+
     [TearDown]
     public void TearDown()
     {
         _httpClient.Dispose();
     }
+
+    private ASTServiceClient _service;
+    private Mock<ILogger<ASTServiceClient>> _loggerMock;
+    private Mock<IOptions<ASTServiceSettings>> _settingsMock;
+    private Mock<HttpMessageHandler> _httpMessageHandlerMock;
+    private HttpClient _httpClient;
 
     [Test]
     public async Task ConvertToCodeComponentsAsync_ShouldHandleJsonElement_Correctly()
@@ -72,7 +71,7 @@ public class ASTServiceClientConversionTests
 
         // Deserialize to object to simulate what happens in ParseCodeAsync (it gets deserialized as JsonElement)
         var structure = JsonSerializer.Deserialize<object>(jsonStructure);
-        
+
         var astResult = new ASTParseResult
         {
             FilePath = "TestFile.cs",
@@ -114,7 +113,7 @@ public class ASTServiceClientConversionTests
         }";
 
         var structure = JsonSerializer.Deserialize<object>(jsonStructure);
-        
+
         // Explicitly deserialize as JsonElement to match runtime behavior for Metrics
         var metricsJson = @"{ ""linesOfCode"": 50, ""cyclomaticComplexity"": 10 }";
         var metricsElement = JsonSerializer.Deserialize<JsonElement>(metricsJson);

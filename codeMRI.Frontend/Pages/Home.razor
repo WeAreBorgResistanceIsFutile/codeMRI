@@ -33,6 +33,7 @@ else
 }
 
 @code {
+
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
         .Build();
@@ -51,15 +52,18 @@ else
             await JSRuntime.InvokeVoidAsync("renderMermaidDiagrams");
         }
     }
-    
+
     private void NavigateToRepositories()
     {
         Navigation.NavigateTo("/repositories");
     }
+
 }
 
 @implements IDisposable
+
 @functions {
+
     public void Dispose()
     {
         AppState.OnChange -= StateHasChanged;
@@ -69,21 +73,21 @@ else
     {
         AppState.SetCurrentPage(null!);
     }
-    
+
     [Inject] WikiApiClient WikiApi { get; set; } = default!;
 
     async Task RegeneratePage()
     {
         if (AppState.CurrentPage == null) return;
-        
+
         AppState.SetBusy(true, "Regenerating page...");
-        try 
+        try
         {
             var newPage = await WikiApi.GeneratePageAsync(
-                AppState.RepoPath, 
-                AppState.CurrentPage.Title, 
-                AppState.CurrentPage.RelevantFiles, 
-                forceRegenerate: true
+                AppState.RepoPath,
+                AppState.CurrentPage.Title,
+                AppState.CurrentPage.RelevantFiles,
+                true
             );
             AppState.SetCurrentPage(newPage);
         }
@@ -91,9 +95,10 @@ else
         {
             Console.WriteLine($"Error regenerating page: {ex.Message}");
         }
-        finally 
+        finally
         {
             AppState.SetBusy(false);
         }
     }
+
 }

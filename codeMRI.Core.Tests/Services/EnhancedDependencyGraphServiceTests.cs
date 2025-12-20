@@ -16,7 +16,8 @@ public class EnhancedDependencyGraphServiceTests
         _mockAstService = new Mock<IASTServiceClient>();
         _mockComponentService = new Mock<IComponentIdentificationService>();
         _mockProgressService = new Mock<IProgressService>();
-        _service = new EnhancedDependencyGraphService(_mockLogger.Object, _mockAstService.Object, _mockComponentService.Object, _mockProgressService.Object);
+        _service = new EnhancedDependencyGraphService(_mockLogger.Object, _mockAstService.Object,
+            _mockComponentService.Object, _mockProgressService.Object);
     }
 
     private Mock<ILogger<EnhancedDependencyGraphService>> _mockLogger;

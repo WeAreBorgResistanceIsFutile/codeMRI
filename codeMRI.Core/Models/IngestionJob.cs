@@ -1,5 +1,3 @@
-using System;
-
 namespace codeMRI.Core.Models;
 
 public enum IngestionStatus

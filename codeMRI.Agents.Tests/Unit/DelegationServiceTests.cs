@@ -13,14 +13,14 @@ namespace codeMRI.Agents.Tests.Unit;
 [TestFixture]
 public class DelegationServiceTests
 {
-    private Mock<ILogger<DelegationService>> _mockLogger = null!;
-    private DelegationService _service = null!;
-
     [SetUp]
     public void Setup()
     {
         _mockLogger = new Mock<ILogger<DelegationService>>();
     }
+
+    private Mock<ILogger<DelegationService>> _mockLogger = null!;
+    private DelegationService _service = null!;
 
     private DelegationService CreateService(AgentSettings settings)
     {
@@ -171,8 +171,8 @@ public class DelegationServiceTests
             EnableDelegation = true,
             ComplexityThresholds = new Dictionary<string, int>
             {
-                { "ComplexityScore", 5 },  // Lower threshold
-                { "LineCount", 300 }        // Lower threshold
+                { "ComplexityScore", 5 }, // Lower threshold
+                { "LineCount", 300 } // Lower threshold
             }
         };
         _service = CreateService(settings);
@@ -183,7 +183,7 @@ public class DelegationServiceTests
             Payload = new CodeComponent
             {
                 Name = "Component",
-                ComplexityScore = 6,  // Would be OK with default (8), but exceeds custom (5)
+                ComplexityScore = 6, // Would be OK with default (8), but exceeds custom (5)
                 LineCount = 100
             }
         };
@@ -212,7 +212,7 @@ public class DelegationServiceTests
             Payload = new CodeComponent
             {
                 Name = "Component",
-                ComplexityScore = 9,  // Above default (8)
+                ComplexityScore = 9, // Above default (8)
                 LineCount = 100
             }
         };
@@ -261,7 +261,7 @@ public class DelegationServiceTests
 
         var child1 = new ModuleNode { Id = "child1", Name = "Child1" };
         var child2 = new ModuleNode { Id = "child2", Name = "Child2" };
-        
+
         var moduleNode = new ModuleNode
         {
             Id = "parent",

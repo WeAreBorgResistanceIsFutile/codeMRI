@@ -1,35 +1,35 @@
-@using codeMRI.Frontend.Services
 @inject AppState AppState
 
 <div class="agent-dashboard mt-3">
     <!-- Active Agents Row -->
     <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3 mb-4">
-         @foreach (var agent in AppState.ActiveAgents.Values)
-         {
-             <div class="col">
-                 <AgentCard Agent="agent" />
-             </div>
-         }
-         @if (AppState.ActiveAgents.Count == 0)
-         {
-             <div class="col-12 text-center text-muted py-4">
-                 Waiting for agents to come online...
-             </div>
-         }
+        @foreach (var agent in AppState.ActiveAgents.Values)
+        {
+            <div class="col">
+                <AgentCard Agent="agent"/>
+            </div>
+        }
+        @if (AppState.ActiveAgents.Count == 0)
+        {
+            <div class="col-12 text-center text-muted py-4">
+                Waiting for agents to come online...
+            </div>
+        }
     </div>
 
     <!-- Details Row -->
     <div class="row g-3">
         <div class="col-md-6">
-            <DelegationTree />
+            <DelegationTree/>
         </div>
         <div class="col-md-6">
-             <ActivityLog />
+            <ActivityLog/>
         </div>
     </div>
 </div>
 
 @code {
+
     protected override void OnInitialized()
     {
         AppState.OnChange += StateHasChanged;
@@ -39,4 +39,5 @@
     {
         AppState.OnChange -= StateHasChanged;
     }
+
 }

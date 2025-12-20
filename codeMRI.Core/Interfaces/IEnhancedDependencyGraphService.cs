@@ -4,7 +4,8 @@ namespace codeMRI.Core.Interfaces;
 
 public interface IEnhancedDependencyGraphService
 {
-    Task<EnhancedDependencyGraph> BuildGraphAsync(List<CodeComponent> components, CancellationToken cancellationToken = default);
+    Task<EnhancedDependencyGraph> BuildGraphAsync(List<CodeComponent> components,
+        CancellationToken cancellationToken = default);
 
     Task<GraphAnalysisResult> AnalyzeGraphAsync(EnhancedDependencyGraph graph,
         CancellationToken cancellationToken = default);

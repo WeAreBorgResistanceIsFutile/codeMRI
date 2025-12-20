@@ -2,26 +2,28 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
-using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services;
 
 [TestFixture]
 public class DocumentationSynthesisServiceTests
 {
-    private Mock<ILLMClient> _mockLlmClient;
-    private Mock<ILogger<DocumentationSynthesisService>> _mockLogger;
-    private DocumentationSynthesisService _service;
-
     [SetUp]
     public void Setup()
     {
         _mockLlmClient = new Mock<ILLMClient>();
         _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
         _mockLogger = new Mock<ILogger<DocumentationSynthesisService>>();
-        _service = new DocumentationSynthesisService(_mockLlmClient.Object, _mockLogger.Object);
+
+        var options = Options.Create(new CodeWikiOptions());
+        _service = new DocumentationSynthesisService(_mockLlmClient.Object, _mockLogger.Object, options);
     }
+
+    private Mock<ILLMClient> _mockLlmClient;
+    private Mock<ILogger<DocumentationSynthesisService>> _mockLogger;
+    private DocumentationSynthesisService _service;
 
     [Test]
     public async Task SynthesizeParentPageAsync_ShouldUseParentPageSynthesisPrompt()
@@ -44,7 +46,7 @@ public class DocumentationSynthesisServiceTests
 
         // Mock the LLM response for the ParentPageSynthesisPrompt
         _mockLlmClient.Setup(x => x.ChatAsync(
-                It.Is<string>(s => s.Contains("technical documentation expert")),
+                It.Is<string>(s => s.Contains("master software architect")),
                 It.Is<string>(s => s.Contains("PaymentSystem") && s.Contains("Child Modules")),
                 It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("# PaymentSystem\n\nHigh level overview of the payment system architecture...");
@@ -57,7 +59,7 @@ public class DocumentationSynthesisServiceTests
         Assert.That(result.Title, Is.EqualTo("PaymentSystem"));
         Assert.That(result.Content, Does.Contain("# PaymentSystem"));
         Assert.That(result.Content, Does.Contain("High level overview"));
-        
+
         // Verify single LLM call was made (using ParentPageSynthesisPrompt)
         _mockLlmClient.Verify(x => x.ChatAsync(
             It.IsAny<string>(),
@@ -72,7 +74,8 @@ public class DocumentationSynthesisServiceTests
         var module = new ModuleNode { Id = "mod-empty", Name = "EmptyModule" };
         var childPages = new List<WikiPage>();
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("# EmptyModule\n\nNo children detected for this module.");
 
         // Act
@@ -85,10 +88,10 @@ public class DocumentationSynthesisServiceTests
     [Test]
     public async Task SynthesizeParentPageAsync_ShouldIncludeArchitecturalPatterns()
     {
-         // Arrange
+        // Arrange
         var module = new ModuleNode { Id = "mod-1", Name = "Core" };
         module.Metadata["ArchitecturalPattern"] = "MVC";
-        
+
         var childPages = new List<WikiPage> { new() { Title = "Child", Content = "Content" } };
 
         _mockLlmClient.Setup(x => x.ChatAsync(

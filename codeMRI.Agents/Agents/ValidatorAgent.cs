@@ -15,19 +15,19 @@ public class ValidatorAgent : BaseAgent, IDisposable
         : base(messageBus, logger, astService)
     {
         // Subscribe to documentation results
-        _documentationHandler = async (message) =>
+        _documentationHandler = async message =>
         {
             _logger.LogDebug("Received documentation complete notification: {Content}", message.Content);
         };
         messageBus.Subscribe(AgentMessageTypes.DocumentationComplete, _documentationHandler);
     }
 
+    public override string Role => "Validator";
+
     public void Dispose()
     {
         _messageBus.Unsubscribe(AgentMessageTypes.DocumentationComplete, _documentationHandler);
     }
-
-    public override string Role => "Validator";
 
     public override async Task<AgentResult> ExecuteAsync(AgentTask task, CancellationToken cancellationToken)
     {

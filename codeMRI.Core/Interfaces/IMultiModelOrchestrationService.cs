@@ -1,14 +1,12 @@
-using codeMRI.Core.Interfaces;
-
 namespace codeMRI.Core.Interfaces;
 
 /// <summary>
-/// Service for orchestrating multi-model documentation generation with ensemble synthesis.
+///     Service for orchestrating multi-model documentation generation with ensemble synthesis.
 /// </summary>
 public interface IMultiModelOrchestrationService
 {
     /// <summary>
-    /// Generates documentation using multiple models in parallel and synthesizes the results.
+    ///     Generates documentation using multiple models in parallel and synthesizes the results.
     /// </summary>
     /// <param name="systemPrompt">System prompt for the models</param>
     /// <param name="userPrompt">User prompt containing the documentation request</param>
@@ -23,60 +21,60 @@ public interface IMultiModelOrchestrationService
 }
 
 /// <summary>
-/// Result from multi-model ensemble generation containing synthesized content and metadata.
+///     Result from multi-model ensemble generation containing synthesized content and metadata.
 /// </summary>
 public class MultiModelResult
 {
     /// <summary>
-    /// Final synthesized content from the judge model combining the best elements.
+    ///     Final synthesized content from the judge model combining the best elements.
     /// </summary>
     public string SynthesizedContent { get; set; } = string.Empty;
-    
+
     /// <summary>
-    /// Individual outputs from each model in the ensemble.
+    ///     Individual outputs from each model in the ensemble.
     /// </summary>
     public List<ModelOutput> ModelOutputs { get; set; } = new();
-    
+
     /// <summary>
-    /// Agreement score (0.0-1.0) indicating how similar the model outputs were.
-    /// Higher score indicates stronger consensus.
+    ///     Agreement score (0.0-1.0) indicating how similar the model outputs were.
+    ///     Higher score indicates stronger consensus.
     /// </summary>
     public double AgreementScore { get; set; }
-    
+
     /// <summary>
-    /// Uncertainty metric (0.0-1.0) derived from model disagreement.
-    /// Lower agreement leads to higher uncertainty.
+    ///     Uncertainty metric (0.0-1.0) derived from model disagreement.
+    ///     Lower agreement leads to higher uncertainty.
     /// </summary>
     public double Uncertainty { get; set; }
-    
+
     /// <summary>
-    /// List of models that participated in generation.
+    ///     List of models that participated in generation.
     /// </summary>
     public List<string> ParticipatingModels { get; set; } = new();
 }
 
 /// <summary>
-/// Output from a single model in an ensemble.
+///     Output from a single model in an ensemble.
 /// </summary>
 public class ModelOutput
 {
     /// <summary>
-    /// Name of the model that generated this output.
+    ///     Name of the model that generated this output.
     /// </summary>
     public string ModelName { get; set; } = string.Empty;
-    
+
     /// <summary>
-    /// Generated content from this model.
+    ///     Generated content from this model.
     /// </summary>
     public string Content { get; set; } = string.Empty;
-    
+
     /// <summary>
-    /// Confidence score for this output (future use).
+    ///     Confidence score for this output (future use).
     /// </summary>
     public double ConfidenceScore { get; set; }
-    
+
     /// <summary>
-    /// Time taken to generate this output.
+    ///     Time taken to generate this output.
     /// </summary>
     public TimeSpan GenerationTime { get; set; }
 }

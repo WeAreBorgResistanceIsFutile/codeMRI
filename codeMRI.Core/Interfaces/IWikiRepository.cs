@@ -18,37 +18,37 @@ public interface IWikiRepository
     Task DeleteIngestionManifestAsync(string repoPath);
 
     /// <summary>
-    /// Saves the processing state for a repository ingestion
+    ///     Saves the processing state for a repository ingestion
     /// </summary>
     Task SaveIngestionProcessingStateAsync(string repoPath, IngestionProcessingState state);
 
     /// <summary>
-    /// Gets the processing state for a repository ingestion
+    ///     Gets the processing state for a repository ingestion
     /// </summary>
     Task<IngestionProcessingState> GetIngestionProcessingStateAsync(string repoPath);
 
     /// <summary>
-    /// Deletes the processing state for a repository ingestion
+    ///     Deletes the processing state for a repository ingestion
     /// </summary>
     Task DeleteIngestionProcessingStateAsync(string repoPath);
 
     /// <summary>
-    /// Gets a list of all repositories that have been processed/stored.
+    ///     Gets a list of all repositories that have been processed/stored.
     /// </summary>
     Task<List<string>> GetAllRepositoriesAsync();
 
     /// <summary>
-    /// Gets all pages for a repository
+    ///     Gets all pages for a repository
     /// </summary>
     Task<List<WikiPage>> GetAllPagesAsync(string repoPath);
 
     /// <summary>
-    /// Gets a list of repository summaries including ingestion status
+    ///     Gets a list of repository summaries including ingestion status
     /// </summary>
     Task<List<RepositorySummary>> GetAllRepositorySummariesAsync();
 
     /// <summary>
-    /// Updates the remote URL for a repository
+    ///     Updates the remote URL for a repository
     /// </summary>
     Task SetRepositoryRemoteUrlAsync(string repoPath, string remoteUrl);
 }

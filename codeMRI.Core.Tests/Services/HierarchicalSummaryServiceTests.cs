@@ -3,17 +3,12 @@ using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
-using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services;
 
 [TestFixture]
 public class HierarchicalSummaryServiceTests
 {
-    private Mock<ILLMClient> _mockLlmClient;
-    private Mock<ILogger<HierarchicalSummaryService>> _mockLogger;
-    private HierarchicalSummaryService _service;
-
     [SetUp]
     public void Setup()
     {
@@ -22,6 +17,10 @@ public class HierarchicalSummaryServiceTests
         _mockLogger = new Mock<ILogger<HierarchicalSummaryService>>();
         _service = new HierarchicalSummaryService(_mockLlmClient.Object, _mockLogger.Object);
     }
+
+    private Mock<ILLMClient> _mockLlmClient;
+    private Mock<ILogger<HierarchicalSummaryService>> _mockLogger;
+    private HierarchicalSummaryService _service;
 
     [Test]
     public void ExtractKeyEntities_ShouldExtractClassNames()

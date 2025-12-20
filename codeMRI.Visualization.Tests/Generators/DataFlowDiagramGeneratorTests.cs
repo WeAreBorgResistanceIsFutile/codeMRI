@@ -1,17 +1,15 @@
+using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Visualization.Services;
 using Moq;
-using codeMRI.Core.Interfaces;
-using System.Net.Http; // Added for HttpClient
+
+// Added for HttpClient
 
 namespace codeMRI.Visualization.Tests.Generators;
 
 [TestFixture]
 public class DataFlowDiagramGeneratorTests
 {
-    private DiagramGeneratorService _generator;
-    private EnhancedDependencyGraph _testGraph; // Added
-
     [SetUp]
     public void Setup()
     {
@@ -19,6 +17,9 @@ public class DataFlowDiagramGeneratorTests
         _generator = new DiagramGeneratorService(new HttpClient(), mockLlm.Object); // Modified
         _testGraph = new EnhancedDependencyGraph(); // Added
     }
+
+    private DiagramGeneratorService _generator;
+    private EnhancedDependencyGraph _testGraph; // Added
 
     [Test]
     public async Task GenerateDataFlowDiagramAsync_ShouldReturnGraphLR_ForComponent()

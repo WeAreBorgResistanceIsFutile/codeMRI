@@ -2,26 +2,28 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
-using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services;
 
 [TestFixture]
 public class DocumentationRevisionServiceTests
 {
-    private Mock<ILLMClient> _mockLlmClient;
-    private Mock<ILogger<DocumentationRevisionService>> _mockLogger;
-    private DocumentationRevisionService _service;
-
     [SetUp]
     public void Setup()
     {
         _mockLlmClient = new Mock<ILLMClient>();
         _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
         _mockLogger = new Mock<ILogger<DocumentationRevisionService>>();
-        _service = new DocumentationRevisionService(_mockLlmClient.Object, _mockLogger.Object);
+
+        var options = Options.Create(new CodeWikiOptions());
+        _service = new DocumentationRevisionService(_mockLlmClient.Object, _mockLogger.Object, options);
     }
+
+    private Mock<ILLMClient> _mockLlmClient;
+    private Mock<ILogger<DocumentationRevisionService>> _mockLogger;
+    private DocumentationRevisionService _service;
 
     [Test]
     public async Task ReviseParentDocumentationAsync_ShouldEnrichWithChildDetails()
@@ -33,18 +35,25 @@ public class DocumentationRevisionServiceTests
             Title = "DataModule",
             Content = "# DataModule\n\nThis module handles data processing."
         };
-        
+
         var parentModule = new ModuleNode
         {
             Id = "module-1",
             Name = "DataModule",
             Level = 1
         };
-        
+
         var childPages = new List<WikiPage>
         {
-            new() { Title = "InputValidator", Content = "# InputValidator\n\nValidates incoming data using `ValidationEngine`." },
-            new() { Title = "DataTransformer", Content = "# DataTransformer\n\nTransforms data using `TransformPipeline`." }
+            new()
+            {
+                Title = "InputValidator",
+                Content = "# InputValidator\n\nValidates incoming data using `ValidationEngine`."
+            },
+            new()
+            {
+                Title = "DataTransformer", Content = "# DataTransformer\n\nTransforms data using `TransformPipeline`."
+            }
         };
 
         // Setup LLM to return revised content
@@ -54,7 +63,8 @@ public class DocumentationRevisionServiceTests
                 It.IsAny<List<ChatMessage>>(),
                 It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# DataModule\n\nThis module orchestrates data processing through InputValidator and DataTransformer components.");
+            .ReturnsAsync(
+                "# DataModule\n\nThis module orchestrates data processing through InputValidator and DataTransformer components.");
 
         // Act
         var result = await _service.ReviseParentDocumentationAsync(parentPage, parentModule, childPages);
@@ -79,7 +89,7 @@ public class DocumentationRevisionServiceTests
             Title = "EmptyModule",
             Content = "# EmptyModule\n\nNo children."
         };
-        
+
         var parentModule = new ModuleNode { Id = "mod-1", Name = "EmptyModule" };
         var childPages = new List<WikiPage>(); // Empty
 
@@ -106,7 +116,7 @@ public class DocumentationRevisionServiceTests
             Title = "FailModule",
             Content = "# FailModule\n\nOriginal content."
         };
-        
+
         var parentModule = new ModuleNode { Id = "mod-1", Name = "FailModule" };
         var childPages = new List<WikiPage>
         {

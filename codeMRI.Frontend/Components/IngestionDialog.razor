@@ -1,4 +1,3 @@
-@using codeMRI.Frontend.Services
 @using codeMRI.Server.Api
 @inject WikiApiClient WikiApi
 @inject WikiHubClient WikiHub
@@ -16,31 +15,30 @@
                 <button type="button" class="btn-close" @onclick="Close"></button>
             </div>
             <div class="modal-body">
-                
+
                 <!-- Main Ingestion Form -->
                 @if (currentJob == null)
                 {
                     <div class="mb-4">
                         <label class="form-label fw-semibold">Repository Git URL</label>
-                        <input type="text" class="form-control form-control-lg" 
-                               placeholder="e.g., https://github.com/user/repo" 
-                               @bind="repoInput" @bind:event="oninput" />
+                        <input type="text" class="form-control form-control-lg"
+                               placeholder="e.g., https://github.com/user/repo"
+                               @bind="repoInput" @bind:event="oninput"/>
                         <div class="form-text">Enter a public Git repository URL.</div>
                     </div>
 
 
-                    
                     @if (!string.IsNullOrEmpty(errorMessage))
                     {
                         <div class="alert alert-danger" role="alert">
                             @errorMessage
                         </div>
                     }
-                    
+
                     <div class="d-flex justify-content-end mb-4">
-                         <button type="button" class="btn btn-primary btn-lg" 
-                                 @onclick="StartIngestion" 
-                                 disabled="@string.IsNullOrWhiteSpace(repoInput)">
+                        <button type="button" class="btn btn-primary btn-lg"
+                                @onclick="StartIngestion"
+                                disabled="@string.IsNullOrWhiteSpace(repoInput)">
                             Start Ingestion
                         </button>
                     </div>
@@ -50,18 +48,19 @@
                     <!-- Active Job Progress -->
                     <div class="text-center py-4">
                         <h5 class="mb-3">Ingesting @currentJob.RepoName</h5>
-                        
+
                         <div class="progress mb-3" style="height: 30px;">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated @GetStatusColor(currentJob.Status)" 
-                                 role="progressbar" 
-                                 style="width: @(currentJob.ProgressPercentage)%"
-                                 aria-valuenow="@currentJob.ProgressPercentage" 
-                                 aria-valuemin="0" 
-                                 aria-valuemax="100">
+                            <div
+                                class="progress-bar progress-bar-striped progress-bar-animated @GetStatusColor(currentJob.Status)"
+                                role="progressbar"
+                                style="width: @(currentJob.ProgressPercentage)%"
+                                aria-valuenow="@currentJob.ProgressPercentage"
+                                aria-valuemin="0"
+                                aria-valuemax="100">
                                 <strong>@currentJob.ProgressPercentage%</strong>
                             </div>
                         </div>
-                        
+
                         <div class="d-flex justify-content-between text-muted mb-4">
                             <span>@currentJob.CurrentPhase</span>
                             <small>@currentJob.Message</small>
@@ -76,10 +75,13 @@
                         }
                         else if (currentJob.Status == IngestionStatus.Completed)
                         {
-                             <div class="alert alert-success">
+                            <div class="alert alert-success">
                                 <strong>Success!</strong> Ingestion complete.
                             </div>
-                            <button class="btn btn-success" @onclick="() => OnIngestionComplete.InvokeAsync(currentJob.RepoPath)">Open Repository</button>
+                            <button class="btn btn-success"
+                                    @onclick="() => OnIngestionComplete.InvokeAsync(currentJob.RepoPath)">Open
+                                Repository
+                            </button>
                         }
                         else
                         {
@@ -91,37 +93,40 @@
                     </div>
                 }
 
-                <hr />
+                <hr/>
 
                 <!-- Active Ingestions List -->
                 <h6 class="mb-3 text-muted">Active Ingestions on Server</h6>
                 @if (activeJobs == null)
                 {
-                     <div class="text-center"><small>Loading...</small></div>
+                    <div class="text-center"><small>Loading...</small></div>
                 }
-                else if (!activeJobs.Any(j => (currentJob == null || j.Id != currentJob.Id) && 
-                                             j.Status != IngestionStatus.Completed && 
-                                             j.Status != IngestionStatus.Failed && 
-                                             j.Status != IngestionStatus.Cancelled))
+                else if (!activeJobs.Any(j => (currentJob == null || j.Id != currentJob.Id) &&
+                                              j.Status != IngestionStatus.Completed &&
+                                              j.Status != IngestionStatus.Failed &&
+                                              j.Status != IngestionStatus.Cancelled))
                 {
-                     <div class="text-center text-muted"><small>No other truly active ingestions.</small></div>
+                    <div class="text-center text-muted"><small>No other truly active ingestions.</small></div>
                 }
                 else
                 {
                     <div class="list-group list-group-flush small" style="max-height: 200px; overflow-y: auto;">
-                        @foreach (var job in activeJobs.Where(j => (currentJob == null || j.Id != currentJob.Id) && 
-                                                                j.Status != IngestionStatus.Completed && 
-                                                                j.Status != IngestionStatus.Failed && 
-                                                                j.Status != IngestionStatus.Cancelled))
+                        @foreach (var job in activeJobs.Where(j => (currentJob == null || j.Id != currentJob.Id) &&
+                                                                   j.Status != IngestionStatus.Completed &&
+                                                                   j.Status != IngestionStatus.Failed &&
+                                                                   j.Status != IngestionStatus.Cancelled))
                         {
                             <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
                                     <strong>@job.RepoUrl</strong>
-                                    <div class="text-muted">@job.Status - @job.CurrentPhase (@job.ProgressPercentage%)</div>
+                                    <div class="text-muted">@job.Status - @job.CurrentPhase (@job.ProgressPercentage%)
+                                    </div>
                                 </div>
                                 @if (job.Status != IngestionStatus.Completed && job.Status != IngestionStatus.Failed && job.Status != IngestionStatus.Cancelled)
                                 {
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => CancelJob(job.Id)">Cancel</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => CancelJob(job.Id)">
+                                        Cancel
+                                    </button>
                                 }
                             </div>
                         }
@@ -143,11 +148,11 @@
     [Parameter] public string DefaultValue { get; set; } = "";
 
     private string repoInput = "";
-    private AudienceType selectedAudience = AudienceType.All;
+    private readonly AudienceType selectedAudience = AudienceType.All;
     private string errorMessage = "";
-    private IngestionJob? currentJob = null;
+    private IngestionJob? currentJob;
     private List<IngestionJob>? activeJobs;
-    private System.Threading.Timer? _pollingTimer;
+    private Timer? _pollingTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -158,9 +163,9 @@
 
         await LoadActiveJobs();
         // Simple polling for the list update
-        _pollingTimer = new System.Threading.Timer(async _ => await InvokeAsync(LoadActiveJobs), null, 2000, 2000);
-        
-        WikiHub.OnAgentStatus += HandleHubMessage; 
+        _pollingTimer = new Timer(async _ => await InvokeAsync(LoadActiveJobs), null, 2000, 2000);
+
+        WikiHub.OnAgentStatus += HandleHubMessage;
     }
 
     private void HandleHubMessage(AgentMessage msg)
@@ -175,25 +180,26 @@
         try
         {
             activeJobs = await WikiApi.ListActiveIngestionsAsync();
-            
+
             // Also update current job if it exists
             if (currentJob != null)
             {
                 var updated = activeJobs.FirstOrDefault(j => j.Id == currentJob.Id);
                 if (updated != null)
                 {
-                     currentJob = updated;
-                     if (currentJob.Status == IngestionStatus.Completed)
-                     {
-                         // Stop polling aggressively if done, or auto-redirect
-                     }
+                    currentJob = updated;
+                    if (currentJob.Status == IngestionStatus.Completed)
+                    {
+                        // Stop polling aggressively if done, or auto-redirect
+                    }
                 }
             }
+
             StateHasChanged();
         }
-        catch (Exception ex) 
-        { 
-            Console.WriteLine("Failed to load jobs: " + ex.Message); 
+        catch (Exception ex)
+        {
+            Console.WriteLine("Failed to load jobs: " + ex.Message);
         }
     }
 
@@ -226,27 +232,30 @@
         repoInput = "";
         errorMessage = "";
     }
-    
+
     private async Task Close()
     {
         await OnClose.InvokeAsync();
     }
 
-    private string GetStatusColor(IngestionStatus status) => status switch
+    private string GetStatusColor(IngestionStatus status)
     {
-        IngestionStatus.Completed => "bg-success",
-        IngestionStatus.Failed => "bg-danger",
-        IngestionStatus.Cancelled => "bg-warning",
-        IngestionStatus.Cloning => "bg-info",
-        IngestionStatus.Analyzing => "bg-primary",
-        _ => "bg-primary"
-    };
+        return status switch
+        {
+            IngestionStatus.Completed => "bg-success",
+            IngestionStatus.Failed => "bg-danger",
+            IngestionStatus.Cancelled => "bg-warning",
+            IngestionStatus.Cloning => "bg-info",
+            IngestionStatus.Analyzing => "bg-primary",
+            _ => "bg-primary"
+        };
+    }
 
     public void Dispose()
     {
         _pollingTimer?.Dispose();
     }
-    
+
     [Inject] IJSRuntime? JSRuntime { get; set; }
 }
 

@@ -1,24 +1,27 @@
-using System.Text.Json;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace codeMRI.Core.Services;
 
 /// <summary>
-/// Implements parent documentation revision based on child module insights.
-/// Following Algorithm 1 from the CodeWiki paper, this service refines parent
-/// documentation after child modules have been fully documented.
+///     Implements parent documentation revision based on child module insights.
+///     Following Algorithm 1 from the CodeWiki paper, this service refines parent
+///     documentation after child modules have been fully documented.
 /// </summary>
 public class DocumentationRevisionService : IDocumentationRevisionService
 {
     private readonly ILLMClient _llmClient;
     private readonly ILogger<DocumentationRevisionService> _logger;
+    private readonly CodeWikiOptions _options;
 
-    public DocumentationRevisionService(ILLMClient llmClient, ILogger<DocumentationRevisionService> logger)
+    public DocumentationRevisionService(ILLMClient llmClient, ILogger<DocumentationRevisionService> logger,
+        IOptions<CodeWikiOptions> options)
     {
         _llmClient = llmClient;
         _logger = logger;
+        _options = options.Value;
     }
 
     /// <inheritdoc />
@@ -48,30 +51,33 @@ public class DocumentationRevisionService : IDocumentationRevisionService
         try
         {
             string revisedContent;
-        int maxCharLimit = (int)(_llmClient.ContextSize * 3.5);
-        
-        string systemPrompt = "You are an expert technical writer specializing in documentation refinement.";
+            var maxCharLimit = (int)(_llmClient.ContextSize * 3.5);
 
-        if (prompt.Length > maxCharLimit)
-        {
-            _logger.LogInformation("Revision prompt length ({Length}) exceeds threshold ({Threshold}). Using findings-based synthesis.", prompt.Length, maxCharLimit);
-            // We'll treat the prompt as the large content and use a minimal base prompt
-            revisedContent = await _llmClient.ChatWithFindingsAsync(
-                systemPrompt,
-                "Refine the following documentation based on the provided insights.",
-                prompt,
-                null,
-                cancellationToken);
-        }
-        else
-        {
-            revisedContent = await _llmClient.ChatAsync(
-                systemPrompt,
-                prompt,
-                new List<ChatMessage>(),
-                null,
-                cancellationToken);
-        }
+            var systemPrompt = "You are an expert technical writer specializing in documentation refinement.";
+
+            if (prompt.Length > maxCharLimit)
+            {
+                _logger.LogInformation(
+                    "Revision prompt length ({Length}) exceeds threshold ({Threshold}). Using findings-based synthesis.",
+                    prompt.Length, maxCharLimit);
+                // We'll treat the prompt as the large content and use a minimal base prompt
+                revisedContent = await _llmClient.ChatWithFindingsAsync(
+                    systemPrompt,
+                    "Refine the following documentation based on the provided insights.",
+                    prompt,
+                    null,
+                    cancellationToken,
+                    _options.UseSemanticChunking);
+            }
+            else
+            {
+                revisedContent = await _llmClient.ChatAsync(
+                    systemPrompt,
+                    prompt,
+                    new List<ChatMessage>(),
+                    null,
+                    cancellationToken);
+            }
 
             // Create revised page preserving metadata
             var revisedPage = new WikiPage
@@ -102,7 +108,7 @@ public class DocumentationRevisionService : IDocumentationRevisionService
     }
 
     /// <summary>
-    /// Cleans the revised content to ensure consistent formatting.
+    ///     Cleans the revised content to ensure consistent formatting.
     /// </summary>
     private string CleanRevisedContent(string content, string title)
     {
@@ -112,14 +118,8 @@ public class DocumentationRevisionService : IDocumentationRevisionService
         var cleaned = content.Trim();
 
         // Remove markdown code fences if the LLM wrapped the entire output
-        if (cleaned.StartsWith("```markdown"))
-        {
-            cleaned = cleaned.Substring("```markdown".Length).TrimStart('\n', '\r');
-        }
-        if (cleaned.EndsWith("```"))
-        {
-            cleaned = cleaned.Substring(0, cleaned.Length - 3).TrimEnd();
-        }
+        if (cleaned.StartsWith("```markdown")) cleaned = cleaned.Substring("```markdown".Length).TrimStart('\n', '\r');
+        if (cleaned.EndsWith("```")) cleaned = cleaned.Substring(0, cleaned.Length - 3).TrimEnd();
 
         // Ensure it starts with the title
         if (!cleaned.StartsWith($"# {title}"))
@@ -127,11 +127,9 @@ public class DocumentationRevisionService : IDocumentationRevisionService
             if (cleaned.StartsWith("# "))
             {
                 var firstNewline = cleaned.IndexOf('\n');
-                if (firstNewline > 0)
-                {
-                    cleaned = cleaned.Substring(firstNewline).TrimStart('\n', '\r');
-                }
+                if (firstNewline > 0) cleaned = cleaned.Substring(firstNewline).TrimStart('\n', '\r');
             }
+
             cleaned = $"# {title}\n\n{cleaned}";
         }
 

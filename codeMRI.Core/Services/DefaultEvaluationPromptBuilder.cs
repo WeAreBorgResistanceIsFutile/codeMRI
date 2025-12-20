@@ -5,8 +5,8 @@ using codeMRI.Core.Models;
 namespace codeMRI.Core.Services;
 
 /// <summary>
-/// Default implementation of prompt building for documentation evaluation.
-/// Uses a comprehensive prompt with scoring criteria and JSON format instructions.
+///     Default implementation of prompt building for documentation evaluation.
+///     Uses a comprehensive prompt with scoring criteria and JSON format instructions.
 /// </summary>
 public class DefaultEvaluationPromptBuilder : IEvaluationPromptBuilder
 {
@@ -58,8 +58,8 @@ Do not include ```json ... ``` markers or any introductory text. Just the raw JS
         {
             structure.Title,
             structure.Description,
-            Sections = structure.Sections,
-            Pages = structure.Pages.Select(p => new 
+            structure.Sections,
+            Pages = structure.Pages.Select(p => new
             {
                 p.Id,
                 p.Title,

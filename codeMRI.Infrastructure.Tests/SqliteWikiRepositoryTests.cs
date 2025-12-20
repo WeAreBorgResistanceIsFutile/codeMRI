@@ -117,7 +117,7 @@ public class SqliteWikiRepositoryTests
         // We want to fix it so it returns one of them (likely first found)
         WikiPage? result = null;
         Func<Task> act = async () => result = await sut.GetPageByTitleAsync(repoPath, "Duplicate");
-        
+
         await act.Should().NotThrowAsync();
         result.Should().NotBeNull();
         result!.Title.Should().Be("Duplicate");

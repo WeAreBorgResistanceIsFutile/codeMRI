@@ -82,7 +82,8 @@ public class DocumentationGenerationPipelineTests
 
         // Mock Wiki Gen
         _mockWikiGenService.Setup(s =>
-                s.GenerateParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(), It.IsAny<AudienceType>()))
+                s.GenerateParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(),
+                    It.IsAny<AudienceType>()))
             .ReturnsAsync(new WikiPage { Title = "RepoDoc" });
 
         // Act

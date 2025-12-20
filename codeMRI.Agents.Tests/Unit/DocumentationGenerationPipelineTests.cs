@@ -82,7 +82,8 @@ public class DocumentationGenerationPipelineTests
         var childWikiPage = new WikiPage { Title = "ChildDoc", Content = "Summary of Child" };
         _mockCoordinator.Setup(x =>
                 x.CoordinateTaskAsync(
-                    It.Is<AgentTask>(t => t.Type == "Documenter" && t.Payload != null && ((CodeComponent)t.Payload).Name == "ComponentA"),
+                    It.Is<AgentTask>(t =>
+                        t.Type == "Documenter" && t.Payload != null && ((CodeComponent)t.Payload).Name == "ComponentA"),
                     It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AgentResult { Success = true, Output = childWikiPage });
 

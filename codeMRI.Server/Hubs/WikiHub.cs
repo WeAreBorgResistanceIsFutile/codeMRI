@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.SignalR;
-using codeMRI.Core.Models;
 
 namespace codeMRI.Server.Hubs;
 

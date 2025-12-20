@@ -1,29 +1,28 @@
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
-using NUnit.Framework;
 
 namespace codeMRI.Core.Tests.Services;
 
 [TestFixture]
 public class DefaultEvaluationPromptBuilderTests
 {
-    private DefaultEvaluationPromptBuilder _builder;
-
     [SetUp]
     public void Setup()
     {
         _builder = new DefaultEvaluationPromptBuilder();
     }
 
+    private DefaultEvaluationPromptBuilder _builder;
+
     [Test]
     public void BuildPrompt_ShouldIncludeRequirementTitle()
     {
         // Arrange
-        var requirement = new RubricRequirement 
-        { 
-            Title = "API Documentation", 
-            Description = "Must document all public APIs" 
+        var requirement = new RubricRequirement
+        {
+            Title = "API Documentation",
+            Description = "Must document all public APIs"
         };
         var structure = new WikiStructure();
 
@@ -38,10 +37,10 @@ public class DefaultEvaluationPromptBuilderTests
     public void BuildPrompt_ShouldIncludeRequirementDescription()
     {
         // Arrange
-        var requirement = new RubricRequirement 
-        { 
-            Title = "Test Requirement", 
-            Description = "Custom description text" 
+        var requirement = new RubricRequirement
+        {
+            Title = "Test Requirement",
+            Description = "Custom description text"
         };
         var structure = new WikiStructure();
 
@@ -91,8 +90,8 @@ public class DefaultEvaluationPromptBuilderTests
     {
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
-        var structure = new WikiStructure 
-        { 
+        var structure = new WikiStructure
+        {
             Title = "Test Wiki",
             Pages = new List<WikiPage>()
         };

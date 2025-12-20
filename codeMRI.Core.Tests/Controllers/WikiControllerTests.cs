@@ -2,27 +2,20 @@ using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
 using codeMRI.Server.Api;
 using codeMRI.Server.Controllers;
-using Microsoft.AspNetCore.Mvc;
-using Moq;
-using Microsoft.Extensions.Logging;
 using codeMRI.Server.Hubs;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
+using Moq;
+using ProgressInfo = codeMRI.Core.Models.ProgressInfo;
+using WikiPage = codeMRI.Core.Models.WikiPage;
+using WikiStructure = codeMRI.Core.Models.WikiStructure;
 
 namespace codeMRI.Core.Tests.Controllers;
 
 [TestFixture]
 public class WikiControllerTests
 {
-    private Mock<IWikiGenerationService> _mockWikiService;
-    private Mock<IWikiRepository> _mockWikiRepo;
-    private Mock<ICodeWikiOrchestrator> _mockOrchestrator;
-    private Mock<IHubContext<WikiHub>> _mockHubContext;
-    private Mock<ILogger<WikiController>> _mockLogger;
-    private Mock<AgentMessageBus> _mockMessageBus;
-    private Mock<IAgentTelemetryService> _mockTelemetryService;
-    private Mock<IIngestionJobManager> _mockIngestionManager;
-    private WikiController _controller;
-
     [SetUp]
     public void Setup()
     {
@@ -35,15 +28,25 @@ public class WikiControllerTests
         _mockTelemetryService = new Mock<IAgentTelemetryService>();
         _mockIngestionManager = new Mock<IIngestionJobManager>();
         _controller = new WikiController(
-            _mockWikiService.Object, 
-            _mockWikiRepo.Object, 
-            _mockOrchestrator.Object, 
-            _mockHubContext.Object, 
-            _mockLogger.Object, 
-            _mockMessageBus.Object, 
+            _mockWikiService.Object,
+            _mockWikiRepo.Object,
+            _mockOrchestrator.Object,
+            _mockHubContext.Object,
+            _mockLogger.Object,
+            _mockMessageBus.Object,
             _mockTelemetryService.Object,
             _mockIngestionManager.Object);
     }
+
+    private Mock<IWikiGenerationService> _mockWikiService;
+    private Mock<IWikiRepository> _mockWikiRepo;
+    private Mock<ICodeWikiOrchestrator> _mockOrchestrator;
+    private Mock<IHubContext<WikiHub>> _mockHubContext;
+    private Mock<ILogger<WikiController>> _mockLogger;
+    private Mock<AgentMessageBus> _mockMessageBus;
+    private Mock<IAgentTelemetryService> _mockTelemetryService;
+    private Mock<IIngestionJobManager> _mockIngestionManager;
+    private WikiController _controller;
 
     [Test]
     public async Task GeneratePage_WhenPageExistsAndNotForced_ReturnsCachedPage()
@@ -56,10 +59,10 @@ public class WikiControllerTests
             ForceRegenerate = false
         };
 
-        var cachedPage = new codeMRI.Core.Models.WikiPage { Title = "Existing Page", Content = "Cached Content" };
+        var cachedPage = new WikiPage { Title = "Existing Page", Content = "Cached Content" };
 
         _mockWikiRepo.Setup(x => x.GetPageByTitleAsync(request.RepoPath, request.Title))
-                     .ReturnsAsync(cachedPage);
+            .ReturnsAsync(cachedPage);
 
         // Act
         var result = await _controller.GeneratePage(request);
@@ -67,14 +70,17 @@ public class WikiControllerTests
         // Assert
         Assert.That(result, Is.TypeOf<OkObjectResult>());
         var okResult = result as OkObjectResult;
-        var page = okResult!.Value as codeMRI.Core.Models.WikiPage;
-        
+        var page = okResult!.Value as WikiPage;
+
         Assert.That(page, Is.Not.Null);
         Assert.That(page!.Content, Is.EqualTo("Cached Content"));
 
         // Verify service was NOT called
         // Verify service was NOT called
-        _mockWikiService.Verify(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
+        _mockWikiService.Verify(
+            x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(),
+                It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<string?>()), Times.Never);
     }
 
     [Test]
@@ -88,10 +94,12 @@ public class WikiControllerTests
             ForceRegenerate = true
         };
 
-        var newPage = new codeMRI.Core.Models.WikiPage { Title = "Existing Page", Content = "New Content" };
+        var newPage = new WikiPage { Title = "Existing Page", Content = "New Content" };
 
-        _mockWikiService.Setup(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
-                        .ReturnsAsync(newPage);
+        _mockWikiService.Setup(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(),
+                It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<string?>()))
+            .ReturnsAsync(newPage);
 
         // Act
         var result = await _controller.GeneratePage(request);
@@ -99,14 +107,17 @@ public class WikiControllerTests
         // Assert
         Assert.That(result, Is.TypeOf<OkObjectResult>());
         var okResult = result as OkObjectResult;
-        var page = okResult!.Value as codeMRI.Core.Models.WikiPage;
-        
+        var page = okResult!.Value as WikiPage;
+
         Assert.That(page!.Content, Is.EqualTo("New Content"));
 
         // Verify service WAS called
         // Verify service WAS called
-        _mockWikiService.Verify(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Once);
-        
+        _mockWikiService.Verify(
+            x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(),
+                It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<string?>()), Times.Once);
+
         // Verify save was called
         _mockWikiRepo.Verify(x => x.SavePageAsync(request.RepoPath, newPage), Times.Once);
     }
@@ -123,10 +134,10 @@ public class WikiControllerTests
             FileContents = new Dictionary<string, string> { { "file1.cs", "New Code" } }
         };
 
-        var cachedPage = new codeMRI.Core.Models.WikiPage { Title = "Existing Page", Content = "Old Content based on Old Code" };
+        var cachedPage = new WikiPage { Title = "Existing Page", Content = "Old Content based on Old Code" };
 
         _mockWikiRepo.Setup(x => x.GetPageByTitleAsync(request.RepoPath, request.Title))
-                     .ReturnsAsync(cachedPage);
+            .ReturnsAsync(cachedPage);
 
         // Act
         var result = await _controller.GeneratePage(request);
@@ -134,14 +145,17 @@ public class WikiControllerTests
         // Assert
         Assert.That(result, Is.TypeOf<OkObjectResult>());
         var okResult = result as OkObjectResult;
-        var page = okResult!.Value as codeMRI.Core.Models.WikiPage;
-        
+        var page = okResult!.Value as WikiPage;
+
         // This confirms that it returns the OLD content even though we passed NEW code in the request
         Assert.That(page!.Content, Is.EqualTo("Old Content based on Old Code"));
 
         // Verify service was NOT called
         // Verify service was NOT called
-        _mockWikiService.Verify(x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
+        _mockWikiService.Verify(
+            x => x.GeneratePageAsync(It.IsAny<string>(), It.IsAny<List<string>>(),
+                It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<string?>()), Times.Never);
     }
 
     [Test]
@@ -149,10 +163,11 @@ public class WikiControllerTests
     {
         // Arrange
         var request = new StructureRequest { RepoPath = "/test/repo", Language = "C#" };
-        var expectedStructure = new codeMRI.Core.Models.WikiStructure { Title = "Advanced Wiki" };
+        var expectedStructure = new WikiStructure { Title = "Advanced Wiki" };
 
-        _mockOrchestrator.Setup(x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(), It.IsAny<IProgress<codeMRI.Core.Models.ProgressInfo>?>(), It.IsAny<CancellationToken>()))
-                         .ReturnsAsync(expectedStructure);
+        _mockOrchestrator.Setup(x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(),
+                It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedStructure);
 
         // Act
         var result = await _controller.GenerateAdvancedWiki(request);
@@ -160,14 +175,16 @@ public class WikiControllerTests
         // Assert
         Assert.That(result, Is.TypeOf<OkObjectResult>());
         var okResult = result as OkObjectResult;
-        var structure = okResult!.Value as codeMRI.Core.Models.WikiStructure;
+        var structure = okResult!.Value as WikiStructure;
 
         Assert.That(structure, Is.Not.Null);
         Assert.That(structure.Title, Is.EqualTo("Advanced Wiki"));
 
         // Verify Orchestrator was called
-        _mockOrchestrator.Verify(x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(), It.IsAny<IProgress<codeMRI.Core.Models.ProgressInfo>?>(), It.IsAny<CancellationToken>()), Times.Once);
-        
+        _mockOrchestrator.Verify(
+            x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(),
+                It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()), Times.Once);
+
         // Verify Save was called
         _mockWikiRepo.Verify(x => x.SaveStructureAsync(request.RepoPath, expectedStructure), Times.Once);
     }
