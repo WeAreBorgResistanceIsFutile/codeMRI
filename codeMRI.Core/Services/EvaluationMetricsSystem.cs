@@ -193,7 +193,7 @@ public class EvaluationMetricsSystem : IEvaluationMetricsSystem
             var individualScore = new IndividualJudgeScore
             {
                 JudgeId = judgeId,
-                OverallScore = score.OverallScore,
+                OverallScore = score!.OverallScore,
                 Breakdown = score.Breakdown ?? new Dictionary<string, RequirementScore>(),
                 Reliability = score.Reliability,
                 StandardDeviation = score.StandardDeviation ?? new Dictionary<string, double>(),

@@ -85,6 +85,7 @@ public class WireUp
         services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
         services.AddScoped<IRubricGenerationService, RubricGenerationService>();
         services.AddScoped<IProgressService, ProgressService>();
+        services.AddScoped<INavigationStructureService, NavigationStructureService>();
 
         // Multi-Model Services with configuration injection
         services.AddSingleton<IModelRoutingService>(sp =>
@@ -142,6 +143,7 @@ public class WireUp
                 sp.GetRequiredService<IProgressService>(),
                 sp.GetRequiredService<IAgentTelemetryService>(),
                 sp.GetRequiredService<IDelegationService>(),
+                sp.GetRequiredService<INavigationStructureService>(),
                 sp.GetRequiredService<IOptions<CodeWikiOptions>>(),
                 sp.GetRequiredService<ILogger<CodeWikiOrchestrator>>(),
                 // Use configured Judge model, or fall back to DocumentationModel, then to "llama3"

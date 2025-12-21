@@ -68,11 +68,12 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                     simplePrompt,
                     new List<ChatMessage>());
 
+            var simplePageTitle = GetFriendlyPageTitle(module.Name);
             return new WikiPage
             {
                 Id = Guid.NewGuid().ToString(),
-                Title = module.Name,
-                Content = CleanContent(simpleContent, module.Name),
+                Title = simplePageTitle,
+                Content = CleanContent(simpleContent, simplePageTitle),
                 RelevantFiles = new List<string>()
             };
         }
@@ -110,11 +111,12 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                     new List<ChatMessage>());
             }
 
+            var mergedPageTitle = GetFriendlyPageTitle(module.Name);
             return new WikiPage
             {
                 Id = Guid.NewGuid().ToString(),
-                Title = module.Name,
-                Content = CleanContent(mergedContent, module.Name),
+                Title = mergedPageTitle,
+                Content = CleanContent(mergedContent, mergedPageTitle),
                 RelevantFiles = childPages.SelectMany(p => p.RelevantFiles ?? new List<string>()).Distinct().ToList(),
                 Metadata = new Dictionary<string, object>
                 {
@@ -249,11 +251,12 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                     module.Name);
             }
 
+        var friendlyTitle = GetFriendlyPageTitle(module.Name);
         var resultPage = new WikiPage
         {
             Id = Guid.NewGuid().ToString(),
-            Title = module.Name,
-            Content = CleanContent(finalContent, module.Name),
+            Title = friendlyTitle,
+            Content = CleanContent(finalContent, friendlyTitle),
             RelevantFiles = childPages.SelectMany(p => p.RelevantFiles ?? new List<string>()).Distinct().ToList(),
             Metadata = metadata
         };
@@ -294,5 +297,57 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
         }
 
         return cleaned;
+    }
+
+    /// <summary>
+    ///     Transforms a module name into a human-friendly page title
+   /// </summary>
+    private string GetFriendlyPageTitle(string moduleName)
+    {
+        var title = moduleName;
+
+        // Remove path prefixes like "Src/Main/Java" or "Src Main Java"
+        var pathPrefixes = new[] 
+        { 
+            "Src Main Java", "Src Test Java", "Src Main", "Src Test",
+            "Src/Main/Java", "Src/Test/Java", "Src/Main", "Src/Test",
+            "Src/", "src/", "Main/", "Test/"
+        };
+        
+        foreach (var prefix in pathPrefixes)
+        {
+            if (title.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                title = title.Substring(prefix.Length).Trim();
+                break;
+            }
+        }
+
+        // Convert path separators to spaces for readability
+        title = title.Replace('/', ' ').Replace('\\', ' ');
+
+        // Transform common technical terms to user-friendly names
+        var technicalToFriendly = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "CrossCutting", "Shared Utilities" },
+            { "Repository", "Data Access" },
+            { "Infrastructure", "System Infrastructure" },
+            { "Presentation", "User Interface" },
+            { "Domain", "Business Logic" },
+            { "Application", "Application Services" },
+            { "Data", "Data Layer" }
+        };
+
+        // Check if the title matches a technical term exactly
+        if (technicalToFriendly.TryGetValue(title.Trim(), out var friendlyName))
+        {
+            return friendlyName;
+        }
+
+        // Clean up multiple spaces
+        while (title.Contains("  "))
+            title = title.Replace("  ", " ");
+
+        return title.Trim();
     }
 }

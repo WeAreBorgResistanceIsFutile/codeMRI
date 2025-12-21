@@ -76,12 +76,12 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
             successfulOutputs.Count, _config.EnsembleModels.Count);
 
         // Calculate agreement score
-        var agreementScore = CalculateAgreementScore(successfulOutputs);
+        var agreementScore = CalculateAgreementScore(successfulOutputs!);
         _logger.LogInformation("Agreement score: {Score:F2}", agreementScore);
 
         // Synthesize outputs using judge model
         var synthesizedContent = await SynthesizeOutputsAsync(
-            successfulOutputs, systemPrompt, userPrompt, cancellationToken);
+            successfulOutputs!, systemPrompt, userPrompt, cancellationToken);
 
         // Calculate uncertainty based on agreement
         var uncertainty = CalculateUncertainty(agreementScore, successfulOutputs.Count);
@@ -89,10 +89,10 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         return new MultiModelResult
         {
             SynthesizedContent = synthesizedContent,
-            ModelOutputs = successfulOutputs,
+            ModelOutputs = successfulOutputs!,
             AgreementScore = agreementScore,
             Uncertainty = uncertainty,
-            ParticipatingModels = successfulOutputs.Select(o => o.ModelName).ToList()
+            ParticipatingModels = successfulOutputs.Select(o => o!.ModelName).ToList()
         };
     }
 

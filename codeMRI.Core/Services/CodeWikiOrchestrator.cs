@@ -14,6 +14,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private readonly string _judgeModel;
     private readonly IDocumentationJudgeService _judgeService;
     private readonly ILogger<CodeWikiOrchestrator> _logger;
+    private readonly INavigationStructureService _navigationService;
     private readonly CodeWikiOptions _options;
     private readonly IProgressService _progressService;
     private readonly IDocumentationRevisionService _revisionService;
@@ -36,6 +37,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IProgressService progressService,
         IAgentTelemetryService telemetryService,
         IDelegationService delegationService,
+        INavigationStructureService navigationService,
         IOptions<CodeWikiOptions> options,
         ILogger<CodeWikiOrchestrator> logger,
         string judgeModel = "default")
@@ -51,6 +53,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _progressService = progressService;
         _telemetryService = telemetryService;
         _delegationService = delegationService;
+        _navigationService = navigationService;
         _options = options.Value;
         _logger = logger;
         _judgeModel = judgeModel;
@@ -101,8 +104,14 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         repositoryInfo.LinesOfCode =
             moduleTree.GetAllLeaves().Sum(l => l.ComplexityScore * 10); // Simple heuristic: 1 complexity ~ 10 LOC
 
-        // Convert to initial WikiStructure
-        var structure = ConvertToWikiStructure(moduleTree, repositoryInfo);
+        // Generate documentation-optimized structure using LLM
+        _progressService.Report(new ProgressInfo
+            { Phase = "Structure Planning", Message = "Planning documentation structure...", Percentage = 15 });
+        
+        var structure = await _navigationService.GenerateDocumentationStructureAsync(
+            moduleTree,
+            repositoryInfo,
+            cancellationToken);
 
         // 2. Rubric Generation
         _progressService.Report(new ProgressInfo
@@ -182,7 +191,6 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
 
             // 2. Pruning: If section name is effectively the same as child page/section, simplify
             // Check if it's a "wrapper" section with one page or one subsection of the same name
-            var isRedundant = false;
             if (section.PageRefs.Count == 1 && (section.SubSections == null || section.SubSections.Count == 0))
             {
                 // Note: We don't have easy access to page titles here without the structure.
@@ -222,41 +230,6 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         var count = 1;
         foreach (var child in node.Children) count += CountModules(child, visitedIds);
         return count;
-    }
-
-    private WikiStructure ConvertToWikiStructure(ModuleTree tree, RepositoryInfo repoInfo)
-    {
-        var structure = new WikiStructure
-        {
-            Title = $"{repoInfo.Name} Documentation",
-            Description = $"Automatically generated documentation for {repoInfo.Name}",
-            Sections = new List<WikiSection>(),
-            Pages = new List<WikiPage>()
-        };
-
-        // Build the hierarchy recursively from the module tree
-        if (tree.Root != null && tree.Root.Children.Any())
-            // If the root has a generic name and children, maybe we only want children?
-            // But for consistency with the tests, we should include the root if it's the main entry point.
-            // Actually, the test expects the rootModule (ID="root") to be the first section.
-            structure.Sections.Add(ConvertModuleToSection(tree.Root));
-
-        return structure;
-    }
-
-    private WikiSection ConvertModuleToSection(ModuleNode node)
-    {
-        var section = new WikiSection
-        {
-            Id = $"section_{node.Id}",
-            Title = node.Name,
-            PageRefs = new List<string>(), // Will be populated during content generation
-            SubSections = new List<WikiSection>()
-        };
-
-        foreach (var child in node.Children) section.SubSections.Add(ConvertModuleToSection(child));
-
-        return section;
     }
 
     private WikiSection? FindSectionById(List<WikiSection> sections, string id)
@@ -309,16 +282,18 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                     structure.Pages.Add(existingPage);
                 }
 
-                // Add to sections structure
-                var cachedSection = new WikiSection
+                // Update the section reference for this cached page
+                if (structure.ModuleToSectionMap.TryGetValue(module.Id, out var cachedPageSectionId))
                 {
-                    Id = $"section_{module.Id}",
-                    Title = module.Name,
-                    PageRefs = new List<string> { existingPage.Id }
-                };
-                lock (structure.Sections)
-                {
-                    structure.Sections.Add(cachedSection);
+                    var cachedPageSection = FindSectionById(structure.Sections, cachedPageSectionId);
+                    if (cachedPageSection != null)
+                    {
+                        lock (cachedPageSection)
+                        {
+                            if (!cachedPageSection.PageRefs.Contains(existingPage.Id))
+                                cachedPageSection.PageRefs.Add(existingPage.Id);
+                        }
+                    }
                 }
 
                 UpdateProgress(progressState, module.Name);
@@ -474,8 +449,19 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
 
             await _wikiRepo.SavePageAsync(repoPath, page);
 
-            // Update the section for this module
-            var sectionId = $"section_{module.Id}";
+            // Update the section for this module using the mapping from navigation service
+            string sectionId;
+            if (structure.ModuleToSectionMap.TryGetValue(module.Id, out var mappedSectionId))
+            {
+                sectionId = mappedSectionId;
+            }
+            else
+            {
+                // Fallback: try the old pattern
+                sectionId = $"section_{module.Id}";
+                _logger.LogWarning("Module {ModuleId} not found in ModuleToSectionMap, using fallback section ID", module.Id);
+            }
+            
             var section = FindSectionById(structure.Sections, sectionId);
 
             if (section != null)

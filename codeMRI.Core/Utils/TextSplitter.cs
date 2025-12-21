@@ -49,7 +49,6 @@ public static class TextSplitter
         if (matches.Count == 0) return Split(text, chunkSize, overlap);
 
         var chunks = new List<string>();
-        var currentStart = 0;
 
         // Simple implementation: split at headers, but merge small sections
         var currentChunk = new StringBuilder();

@@ -47,6 +47,23 @@ public class CodeWikiOrchestratorTests
         _mockGraphService
             .Setup(g => g.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnhancedDependencyGraph());
+            
+        // Mock NavigationStructureService to return a simple structure
+        _mockNavigationService
+            .Setup(n => n.GenerateDocumentationStructureAsync(It.IsAny<ModuleTree>(), It.IsAny<RepositoryInfo>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModuleTree tree, RepositoryInfo info, CancellationToken _) =>
+            {
+                // Simple fallback structure for tests
+                var allModules = GetAllModuleIds(tree.Root);
+                return new WikiStructure
+                {
+                    Title = $"{info.Name} Documentation",
+                    Description = $"Documentation for {info.Name}",
+                    Sections = tree.Root != null ? new List<WikiSection> { CreateSectionFromModule(tree.Root) } : new List<WikiSection>(),
+                    Pages = new List<WikiPage>(),
+                    ModuleToSectionMap = allModules.ToDictionary(id => id, id => $"section_{id}")
+                };
+            });
 
         _orchestrator = new CodeWikiOrchestrator(
             _mockDecompositionService.Object,
@@ -60,9 +77,30 @@ public class CodeWikiOrchestratorTests
             _mockProgressService.Object,
             _mockTelemetryService.Object,
             _mockDelegationService.Object,
+            _mockNavigationService.Object,
             mockOptions.Object,
             _mockLogger.Object
         );
+    }
+    
+    private List<string> GetAllModuleIds(ModuleNode node)
+    {
+        var ids = new List<string> { node.Id };
+        foreach (var child in node.Children)
+            ids.AddRange(GetAllModuleIds(child));
+        return ids;
+    }
+    
+    private WikiSection CreateSectionFromModule(ModuleNode node)
+    {
+        return new WikiSection
+        {
+            Id = $"section_{node.Id}",
+            Title = node.Name,
+            PageRefs = new List<string>(),
+            SubSections = node.Children.Select(CreateSectionFromModule).ToList(),
+            ModuleIds = new List<string> { node.Id }
+        };
     }
 
     private Mock<IHierarchicalDecompositionService> _mockDecompositionService;
@@ -77,6 +115,7 @@ public class CodeWikiOrchestratorTests
     private Mock<IProgressService> _mockProgressService;
     private Mock<IAgentTelemetryService> _mockTelemetryService;
     private Mock<IDelegationService> _mockDelegationService;
+    private Mock<INavigationStructureService> _mockNavigationService;
     private CodeWikiOrchestrator _orchestrator;
 
     [Test]

@@ -25,6 +25,7 @@ public class CodeWikiOrchestratorProgressTests
         _mockProgressService = new Mock<IProgressService>();
         _mockTelemetryService = new Mock<IAgentTelemetryService>();
         _mockDelegationService = new Mock<IDelegationService>();
+        _mockNavigationService = new Mock<INavigationStructureService>();
 
         // Setup delegation to always return no delegation needed
         _mockDelegationService
@@ -42,6 +43,18 @@ public class CodeWikiOrchestratorProgressTests
         _mockGraphService
             .Setup(g => g.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnhancedDependencyGraph());
+            
+        // Mock NavigationStructureService to return a simple structure
+        _mockNavigationService
+            .Setup(n => n.GenerateDocumentationStructureAsync(It.IsAny<ModuleTree>(), It.IsAny<RepositoryInfo>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ModuleTree tree, RepositoryInfo info, CancellationToken _) => new WikiStructure
+            {
+                Title = $"{info.Name} Documentation",
+                Description = $"Documentation for {info.Name}",
+                Sections = new List<WikiSection>(),
+                Pages = new List<WikiPage>(),
+                ModuleToSectionMap = new Dictionary<string, string>()
+            });
 
         _orchestrator = new CodeWikiOrchestrator(
             _mockDecompositionService.Object,
@@ -55,6 +68,7 @@ public class CodeWikiOrchestratorProgressTests
             _mockProgressService.Object,
             _mockTelemetryService.Object,
             _mockDelegationService.Object,
+            _mockNavigationService.Object,
             mockOptions.Object,
             _mockLogger.Object
         );
@@ -72,6 +86,7 @@ public class CodeWikiOrchestratorProgressTests
     private Mock<IProgressService> _mockProgressService;
     private Mock<IAgentTelemetryService> _mockTelemetryService;
     private Mock<IDelegationService> _mockDelegationService;
+    private Mock<INavigationStructureService> _mockNavigationService;
     private CodeWikiOrchestrator _orchestrator;
 
     [Test]
