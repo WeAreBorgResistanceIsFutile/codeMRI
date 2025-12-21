@@ -3,7 +3,7 @@ using codeMRI.Agents.Models;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
 using codeMRI.Infrastructure.Services;
-using codeMRI.Server.Api;
+using codeMRI.Core.Models;
 using codeMRI.Server.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;

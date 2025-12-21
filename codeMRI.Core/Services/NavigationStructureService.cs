@@ -97,6 +97,7 @@ public class NavigationStructureService : INavigationStructureService
         {
             Title = dto.Title ?? $"{repositoryInfo.Name} Documentation",
             Description = dto.Description ?? $"Documentation for {repositoryInfo.Name}",
+            RepoPath = repositoryInfo.RepoPath,
             Sections = dto.Sections?.Select(ConvertSection).ToList() ?? new List<WikiSection>(),
             Pages = new List<WikiPage>(),
             ModuleToSectionMap = dto.ModuleMapping ?? new Dictionary<string, string>()

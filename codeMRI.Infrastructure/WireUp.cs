@@ -11,12 +11,13 @@ using codeMRI.Visualization.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 
 namespace codeMRI.Infrastructure;
 
 public class WireUp
 {
-    public static void Registered(IServiceCollection services)
+    public static void Registered(IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<AgentSettings>(options =>
         {
@@ -39,6 +40,14 @@ public class WireUp
             options.EnableDelegation = true;
             options.ContextUtilizationRatio = 0.8;
         });
+
+        // Configure VectorStore and Embedding
+        services.Configure<VectorStoreSettings>(configuration.GetSection("VectorStore"));
+        services.AddSingleton<IEmbeddingService, OllamaEmbeddingService>();
+        services.AddSingleton<IVectorStoreService, QdrantVectorStoreService>();
+        services.AddScoped<IDocumentIndexer, DocumentationIndexer>();
+        services.AddSingleton<SemanticDocumentChunker>();
+        services.AddSingleton<CodeChunker>();
 
         services.AddSingleton<ICSharpParser, RoslynCSharpParser>();
         services.AddSingleton<AgentMessageBus>();
@@ -82,6 +91,7 @@ public class WireUp
         services.AddScoped<IDocumentationRevisionService, DocumentationRevisionService>();
         services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();
         services.AddScoped<IEvaluationPromptBuilder, DefaultEvaluationPromptBuilder>();
+        services.AddScoped<RagEvaluationPromptBuilder>();
         services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
         services.AddScoped<IRubricGenerationService, RubricGenerationService>();
         services.AddScoped<IProgressService, ProgressService>();
@@ -143,6 +153,7 @@ public class WireUp
                 sp.GetRequiredService<IProgressService>(),
                 sp.GetRequiredService<IAgentTelemetryService>(),
                 sp.GetRequiredService<IDelegationService>(),
+                sp.GetRequiredService<IDocumentIndexer>(),
                 sp.GetRequiredService<INavigationStructureService>(),
                 sp.GetRequiredService<IOptions<CodeWikiOptions>>(),
                 sp.GetRequiredService<ILogger<CodeWikiOrchestrator>>(),

@@ -28,7 +28,8 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
     private readonly ILLMClient _llmClient;
     private readonly ILogger<DocumentationJudgeService> _logger;
     private readonly Meter _meter;
-    private readonly IEvaluationPromptBuilder _promptBuilder;
+    private readonly IEvaluationPromptBuilder _defaultPromptBuilder;
+    private readonly RagEvaluationPromptBuilder _ragPromptBuilder;
     private readonly Histogram<double> _scoreDistribution;
     private readonly Histogram<double> _standardDeviationHistogram;
 
@@ -36,12 +37,14 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         ILogger<DocumentationJudgeService> logger,
         ILLMClient llmClient,
         IMeterFactory meterFactory,
-        IEvaluationPromptBuilder promptBuilder)
+        IEvaluationPromptBuilder promptBuilder,
+        RagEvaluationPromptBuilder ragPromptBuilder)
     {
         _logger = logger;
         _llmClient = llmClient;
         _meter = meterFactory.Create("CodeMRI.Judge");
-        _promptBuilder = promptBuilder;
+        _defaultPromptBuilder = promptBuilder;
+        _ragPromptBuilder = ragPromptBuilder;
 
         // Initialize metrics
         _evaluationCounter = _meter.CreateCounter<long>(
@@ -79,10 +82,17 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
             { "model", model ?? "default" }
         };
 
-        _logger.LogInformation("Evaluating requirement: {RequirementTitle} (Model: {Model})", requirement.Title,
-            model ?? "Default");
-
-        var prompt = _promptBuilder.BuildPrompt(requirement, documentationStructure);
+        string prompt;
+        // Simple heuristic for now: use RAG if there are many pages or explicitly configured (could add settings later)
+        if (documentationStructure.Pages.Count > 10)
+        {
+            _logger.LogInformation("Using RAG evaluation for requirement {RequirementTitle}", requirement.Title);
+            prompt = await _ragPromptBuilder.BuildPromptAsync(requirement, documentationStructure);
+        }
+        else
+        {
+            prompt = await _defaultPromptBuilder.BuildPromptAsync(requirement, documentationStructure);
+        }
 
         var response = await _llmClient.ChatAsync(
             SystemPrompt,

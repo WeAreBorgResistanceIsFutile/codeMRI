@@ -18,26 +18,35 @@ public class DocumentationJudgeServiceTests
         _mockLogger = new Mock<ILogger<DocumentationJudgeService>>();
         _mockMeterFactory = new Mock<IMeterFactory>();
         _mockPromptBuilder = new Mock<IEvaluationPromptBuilder>();
+        _mockRagPromptBuilder = new Mock<RagEvaluationPromptBuilder>(
+            new Mock<IEmbeddingService>().Object,
+            new Mock<IVectorStoreService>().Object,
+            new Mock<ILogger<RagEvaluationPromptBuilder>>().Object);
 
         // Setup meter factory to return a real meter for testing
         _mockMeterFactory.Setup(x => x.Create(It.IsAny<MeterOptions>()))
             .Returns(new Meter("TestMeter"));
 
         // Setup prompt builder to return a basic prompt
-        _mockPromptBuilder.Setup(x => x.BuildPrompt(It.IsAny<RubricRequirement>(), It.IsAny<WikiStructure>()))
-            .Returns("Mock evaluation prompt");
+        _mockPromptBuilder.Setup(x => x.BuildPromptAsync(It.IsAny<RubricRequirement>(), It.IsAny<WikiStructure>()))
+            .ReturnsAsync("Mock evaluation prompt");
+
+        _mockRagPromptBuilder.Setup(x => x.BuildPromptAsync(It.IsAny<RubricRequirement>(), It.IsAny<WikiStructure>()))
+            .ReturnsAsync("Mock RAG evaluation prompt");
 
         _service = new DocumentationJudgeService(
             _mockLogger.Object,
             _mockLlmClient.Object,
             _mockMeterFactory.Object,
-            _mockPromptBuilder.Object);
+            _mockPromptBuilder.Object,
+            _mockRagPromptBuilder.Object);
     }
 
     private Mock<ILLMClient> _mockLlmClient;
     private Mock<ILogger<DocumentationJudgeService>> _mockLogger;
     private Mock<IMeterFactory> _mockMeterFactory;
     private Mock<IEvaluationPromptBuilder> _mockPromptBuilder;
+    private Mock<RagEvaluationPromptBuilder> _mockRagPromptBuilder;
     private DocumentationJudgeService _service;
 
     [Test]

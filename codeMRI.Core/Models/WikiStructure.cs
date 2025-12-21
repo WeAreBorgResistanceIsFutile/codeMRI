@@ -11,6 +11,7 @@ public class WikiStructure
     ///     Maps module IDs to section IDs for content generation linking
     /// </summary>
     public Dictionary<string, string> ModuleToSectionMap { get; set; } = new();
+    public string RepoPath { get; set; } = string.Empty;
 }
 
 public class WikiSection

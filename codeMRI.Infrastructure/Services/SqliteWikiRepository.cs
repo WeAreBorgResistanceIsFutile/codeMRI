@@ -278,13 +278,18 @@ public class SqliteWikiRepository : IWikiRepository
         connection.Execute("PRAGMA foreign_keys = ON;");
 
         // Migration: Add RemoteUrl if missing
-        try
+        var columns = connection.Query("PRAGMA table_info(Repositories)");
+        var hasRemoteUrl = columns.Any(c => (string)c.name == "RemoteUrl");
+        if (!hasRemoteUrl)
         {
-            connection.Execute("ALTER TABLE Repositories ADD COLUMN RemoteUrl TEXT");
-        }
-        catch
-        {
-            // Ignore if column already exists
+            try
+            {
+                connection.Execute("ALTER TABLE Repositories ADD COLUMN RemoteUrl TEXT");
+            }
+            catch
+            {
+                // Ignore if it fails (e.g. race condition)
+            }
         }
     }
 

@@ -25,6 +25,8 @@ public class CodeWikiOrchestratorTests
         _mockProgressService = new Mock<IProgressService>();
         _mockTelemetryService = new Mock<IAgentTelemetryService>();
         _mockDelegationService = new Mock<IDelegationService>();
+        _mockDocumentIndexer = new Mock<IDocumentIndexer>();
+        _mockNavigationService = new Mock<INavigationStructureService>();
 
         // Setup delegation to always return no delegation needed
         _mockDelegationService
@@ -77,6 +79,7 @@ public class CodeWikiOrchestratorTests
             _mockProgressService.Object,
             _mockTelemetryService.Object,
             _mockDelegationService.Object,
+            _mockDocumentIndexer.Object,
             _mockNavigationService.Object,
             mockOptions.Object,
             _mockLogger.Object
@@ -115,6 +118,7 @@ public class CodeWikiOrchestratorTests
     private Mock<IProgressService> _mockProgressService;
     private Mock<IAgentTelemetryService> _mockTelemetryService;
     private Mock<IDelegationService> _mockDelegationService;
+    private Mock<IDocumentIndexer> _mockDocumentIndexer;
     private Mock<INavigationStructureService> _mockNavigationService;
     private CodeWikiOrchestrator _orchestrator;
 

@@ -14,7 +14,7 @@ public interface IEvaluationPromptBuilder
     /// <param name="requirement">The requirement to evaluate</param>
     /// <param name="documentationStructure">The documentation structure to evaluate against</param>
     /// <returns>The evaluation prompt text</returns>
-    string BuildPrompt(
+    Task<string> BuildPromptAsync(
         RubricRequirement requirement,
         WikiStructure documentationStructure);
 }

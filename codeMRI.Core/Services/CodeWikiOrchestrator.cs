@@ -22,6 +22,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private readonly SemaphoreSlim _semaphore;
     private readonly IDocumentationSynthesisService _synthesisService;
     private readonly IAgentTelemetryService _telemetryService;
+    private readonly IDocumentIndexer _documentIndexer;
     private readonly IWikiGenerationService _wikiGenerationService;
     private readonly IWikiRepository _wikiRepo;
 
@@ -37,6 +38,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IProgressService progressService,
         IAgentTelemetryService telemetryService,
         IDelegationService delegationService,
+        IDocumentIndexer documentIndexer,
         INavigationStructureService navigationService,
         IOptions<CodeWikiOptions> options,
         ILogger<CodeWikiOrchestrator> logger,
@@ -53,6 +55,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _progressService = progressService;
         _telemetryService = telemetryService;
         _delegationService = delegationService;
+        _documentIndexer = documentIndexer;
         _navigationService = navigationService;
         _options = options.Value;
         _logger = logger;
@@ -73,6 +76,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         if (progress != null) _progressService.SetHandler(p => progress.Report(p));
 
         _logger.LogInformation("Starting CodeWiki Advanced Workflow for {Repo}", repositoryPath);
+        repositoryInfo.RepoPath = repositoryPath;
         _telemetryService.TrackAgentActivity("Orchestrator",
             $"Starting CodeWiki Advanced Workflow for {repositoryPath}");
 
@@ -162,8 +166,12 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         // TODO: Implement Refinement Loop based on low scores
         // For now, we return the judged structure (results could be appended to metadata)
 
-        _progressService.Report(new ProgressInfo
-            { Phase = "Complete", Message = "Documentation generated successfully.", Percentage = 100 });
+        // 5. Indexing for RAG
+        _progressService.Report(new ProgressInfo { Phase = "Indexing", Message = "Indexing documentation for RAG...", Percentage = 98 });
+        _logger.LogInformation("Phase 5: Indexing Documentation");
+        await _documentIndexer.IndexDocumentationAsync(repositoryPath, structure, cancellationToken);
+
+        _progressService.Report(new ProgressInfo { Phase = "Complete", Message = "Advanced Wiki Generation Complete", Percentage = 100 });
         _telemetryService.TrackAgentActivity("Orchestrator", "CodeWiki Advanced Workflow completed");
 
         // Final structural refinements

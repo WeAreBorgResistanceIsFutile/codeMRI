@@ -1,4 +1,6 @@
-using codeMRI.Server.Api;
+using codeMRI.Core.Models;
+using codeMRI.Core.Interfaces;
+using codeMRI.Agents.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.SignalR.Client;
 

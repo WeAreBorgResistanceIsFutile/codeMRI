@@ -10,9 +10,9 @@ namespace codeMRI.Core.Services;
 /// </summary>
 public class DefaultEvaluationPromptBuilder : IEvaluationPromptBuilder
 {
-    public string BuildPrompt(RubricRequirement requirement, WikiStructure documentationStructure)
+    public Task<string> BuildPromptAsync(RubricRequirement requirement, WikiStructure documentationStructure)
     {
-        return $@"
+        return Task.FromResult($@"
 You are evaluating technical documentation against a specific requirement.
 
 Requirement: {requirement.Title}
@@ -48,7 +48,7 @@ Respond with valid JSON only.
     ""evidence"": [""doc_section_1"", ""doc_section_2""]
 }}
 
-Do not include ```json ... ``` markers or any introductory text. Just the raw JSON object.";
+Do not include ```json ... ``` markers or any introductory text. Just the raw JSON object.");
     }
 
     private string FormatDocumentationStructure(WikiStructure structure)

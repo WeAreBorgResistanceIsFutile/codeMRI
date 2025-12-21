@@ -16,7 +16,6 @@
     <ItemGroup>
         <ProjectReference Include="..\codeMRI.Infrastructure\codeMRI.Infrastructure.csproj"/>
         <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj"/>
-        <ProjectReference Include="..\codeMRI.Server.Api\codeMRI.Server.Api.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

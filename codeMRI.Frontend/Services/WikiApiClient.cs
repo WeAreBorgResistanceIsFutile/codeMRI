@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
-using codeMRI.Server.Api;
+using codeMRI.Core.Models;
+using codeMRI.Core.Interfaces;
+using codeMRI.Agents.Models;
 
 namespace codeMRI.Frontend.Services;
 
@@ -68,7 +70,8 @@ public class WikiApiClient
 
     public async Task<string> ChatAsync(List<ChatMessage> history)
     {
-        var response = await _http.PostAsJsonAsync("api/Chat", new ChatRequest { History = history });
+        var dtoHistory = history.Select(m => new ChatMessageDto { Role = m.Role, Content = m.Content }).ToList();
+        var response = await _http.PostAsJsonAsync("api/Chat", new ChatRequest { History = dtoHistory });
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();
     }
@@ -152,45 +155,4 @@ public class WikiApiClient
         return await response.Content.ReadFromJsonAsync<WikiStructure>()
                ?? throw new Exception("Failed to ingest repository");
     }
-}
-
-public class StartIngestionResponse
-{
-    public string JobId { get; set; } = string.Empty;
-    public string Status { get; set; } = string.Empty;
-}
-
-public class IngestionResult
-{
-    public string Path { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-}
-
-// Replicate Enum/Model on Client (or move to shared project, but for now duplicate)
-public enum IngestionStatus
-{
-    Queued,
-    Cloning,
-    Analyzing,
-    Generating,
-    Completed,
-    Failed,
-    Cancelling,
-    Cancelled
-}
-
-public class IngestionJob
-{
-    public string Id { get; set; } = string.Empty;
-    public string RepoUrl { get; set; } = string.Empty;
-    public string RepoPath { get; set; } = string.Empty;
-    public string RepoName { get; set; } = string.Empty;
-    public IngestionStatus Status { get; set; }
-    public int ProgressPercentage { get; set; }
-    public string CurrentPhase { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty;
-    public string WorkerId { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-    public DateTime LastUpdated { get; set; }
-    public string? Error { get; set; }
 }

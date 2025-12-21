@@ -1,6 +1,6 @@
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
-using codeMRI.Server.Api;
+using codeMRI.Core.Models;
 using codeMRI.Server.Controllers;
 using codeMRI.Server.Hubs;
 using Microsoft.AspNetCore.Mvc;

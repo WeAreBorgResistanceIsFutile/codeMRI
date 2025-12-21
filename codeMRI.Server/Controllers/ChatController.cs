@@ -1,5 +1,5 @@
 using codeMRI.Core.Interfaces;
-using codeMRI.Server.Api;
+using codeMRI.Core.Models;
 using Microsoft.AspNetCore.Mvc;
 using ChatMessage = codeMRI.Core.Interfaces.ChatMessage;
 

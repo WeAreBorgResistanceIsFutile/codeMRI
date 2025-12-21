@@ -1,5 +1,6 @@
 using codeMRI.Frontend.Services;
-using codeMRI.Server.Api;
+using codeMRI.Core.Models;
+using codeMRI.Core.Interfaces;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace codeMRI.Frontend.Tests;

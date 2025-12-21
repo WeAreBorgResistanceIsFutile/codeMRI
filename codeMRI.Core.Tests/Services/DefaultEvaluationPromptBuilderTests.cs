@@ -16,7 +16,7 @@ public class DefaultEvaluationPromptBuilderTests
     private DefaultEvaluationPromptBuilder _builder;
 
     [Test]
-    public void BuildPrompt_ShouldIncludeRequirementTitle()
+    public async Task BuildPrompt_ShouldIncludeRequirementTitle()
     {
         // Arrange
         var requirement = new RubricRequirement
@@ -27,14 +27,14 @@ public class DefaultEvaluationPromptBuilderTests
         var structure = new WikiStructure();
 
         // Act
-        var prompt = _builder.BuildPrompt(requirement, structure);
+        var prompt = await _builder.BuildPromptAsync(requirement, structure);
 
         // Assert
         Assert.That(prompt, Does.Contain("API Documentation"));
     }
 
     [Test]
-    public void BuildPrompt_ShouldIncludeRequirementDescription()
+    public async Task BuildPrompt_ShouldIncludeRequirementDescription()
     {
         // Arrange
         var requirement = new RubricRequirement
@@ -45,21 +45,21 @@ public class DefaultEvaluationPromptBuilderTests
         var structure = new WikiStructure();
 
         // Act
-        var prompt = _builder.BuildPrompt(requirement, structure);
+        var prompt = await _builder.BuildPromptAsync(requirement, structure);
 
         // Assert
         Assert.That(prompt, Does.Contain("Custom description text"));
     }
 
     [Test]
-    public void BuildPrompt_ShouldIncludeJsonFormatInstructions()
+    public async Task BuildPrompt_ShouldIncludeJsonFormatInstructions()
     {
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
         var structure = new WikiStructure();
 
         // Act
-        var prompt = _builder.BuildPrompt(requirement, structure);
+        var prompt = await _builder.BuildPromptAsync(requirement, structure);
 
         // Assert
         Assert.That(prompt, Does.Contain("valid JSON"));
@@ -70,14 +70,14 @@ public class DefaultEvaluationPromptBuilderTests
     }
 
     [Test]
-    public void BuildPrompt_ShouldIncludeScoringCriteria()
+    public async Task BuildPrompt_ShouldIncludeScoringCriteria()
     {
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
         var structure = new WikiStructure();
 
         // Act
-        var prompt = _builder.BuildPrompt(requirement, structure);
+        var prompt = await _builder.BuildPromptAsync(requirement, structure);
 
         // Assert
         Assert.That(prompt, Does.Contain("Scoring Criteria"));
@@ -86,7 +86,7 @@ public class DefaultEvaluationPromptBuilderTests
     }
 
     [Test]
-    public void BuildPrompt_ShouldIncludeDocumentationStructure()
+    public async Task BuildPrompt_ShouldIncludeDocumentationStructure()
     {
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
@@ -97,7 +97,7 @@ public class DefaultEvaluationPromptBuilderTests
         };
 
         // Act
-        var prompt = _builder.BuildPrompt(requirement, structure);
+        var prompt = await _builder.BuildPromptAsync(requirement, structure);
 
         // Assert
         Assert.That(prompt, Does.Contain("Documentation Structure"));

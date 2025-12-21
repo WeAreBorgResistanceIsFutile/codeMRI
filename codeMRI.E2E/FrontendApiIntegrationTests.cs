@@ -1,5 +1,5 @@
 using System.Net.Http.Json;
-using codeMRI.Server.Api;
+using codeMRI.Core.Models;
 using Microsoft.AspNetCore.Mvc.Testing;
 using NUnit.Framework;
 

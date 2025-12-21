@@ -39,7 +39,7 @@ builder.Services.AddSingleton<ILLMClient, OllamaLLMService>();
 builder.Services.AddSingleton<IASTServiceClient, ASTServiceClient>();
 
 // Wire up core application services
-WireUp.Registered(builder.Services);
+WireUp.Registered(builder.Services, builder.Configuration);
 
 builder.Services.AddSingleton<IWikiRepository>(sp =>
 {
