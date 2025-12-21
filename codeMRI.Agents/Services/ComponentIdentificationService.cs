@@ -54,12 +54,12 @@ public class ComponentIdentificationService : IComponentIdentificationService
         }
 
         var files = Directory.GetFiles(repositoryPath, "*.*", SearchOption.AllDirectories)
-            .Where(f => !IsIgnoredPath(f))
+            .Where(f => !IsIgnoredPath(f, repositoryPath))
             .ToList();
 
         structure.Files = files.Select(f => Path.GetRelativePath(repositoryPath, f)).ToList();
         structure.Directories = Directory.GetDirectories(repositoryPath, "*", SearchOption.AllDirectories)
-            .Where(d => !IsIgnoredPath(d))
+            .Where(d => !IsIgnoredPath(d, repositoryPath))
             .Select(d => Path.GetRelativePath(repositoryPath, d)).ToList();
 
         structure.FileExtensions = files
@@ -88,7 +88,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
     {
         var components = new List<CodeComponent>();
         var files = Directory.GetFiles(repositoryPath, "*.*", SearchOption.AllDirectories)
-            .Where(f => (IsSourceFile(f) || IsInfrastructureFile(f)) && !IsIgnoredPath(f))
+            .Where(f => (IsSourceFile(f) || IsInfrastructureFile(f)) && !IsIgnoredPath(f, repositoryPath))
             .ToList();
 
         var totalDocs = files.Count;
@@ -387,6 +387,7 @@ public class ComponentIdentificationService : IComponentIdentificationService
         var componentCounter = 1;
 
         var classPattern = @"^class\s+(\w+):";
+        var functionPattern = @"^def\s+(\w+)\s*\(";
 
         foreach (Match match in Regex.Matches(content, classPattern, RegexOptions.Multiline))
         {
@@ -396,6 +397,22 @@ public class ComponentIdentificationService : IComponentIdentificationService
                 Id = $"{fileName}_{componentName}_{componentCounter++}",
                 Name = componentName,
                 Type = "Class",
+                FilePath = filePath,
+                Language = "Python",
+                LineCount = lines.Length,
+                ComplexityScore = CalculateComplexity(content),
+                Metadata = CreateComponentMetadata(content, componentName)
+            });
+        }
+
+        foreach (Match match in Regex.Matches(content, functionPattern, RegexOptions.Multiline))
+        {
+            var componentName = match.Groups[1].Value;
+            components.Add(new CodeComponent
+            {
+                Id = $"{fileName}_{componentName}_{componentCounter++}",
+                Name = componentName,
+                Type = "Function",
                 FilePath = filePath,
                 Language = "Python",
                 LineCount = lines.Length,
@@ -643,14 +660,22 @@ public class ComponentIdentificationService : IComponentIdentificationService
         return false;
     }
 
-    private bool IsIgnoredPath(string path)
+    private bool IsIgnoredPath(string path, string? repositoryPath = null)
     {
-        var relativePath = Path.GetFileName(path);
-        var ignoredDirectories = new[] { "bin", "obj", "node_modules", ".git", ".vs", "dist", "build" };
+        var checkPath = path;
+        if (!string.IsNullOrEmpty(repositoryPath) && path.StartsWith(repositoryPath))
+        {
+            checkPath = Path.GetRelativePath(repositoryPath, path);
+        }
+
+        var ignoredDirectories = new[] { "bin", "obj", "node_modules", ".git", ".vs", "dist", "build", "debug" };
         var ignoredExtensions = new[] { ".dll", ".exe", ".pdb", ".cache", ".tmp" };
 
-        return ignoredDirectories.Any(dir =>
-                   path.Contains(Path.DirectorySeparatorChar + dir + Path.DirectorySeparatorChar)) ||
-               ignoredExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
+        var pathParts = checkPath.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (pathParts.Any(part => ignoredDirectories.Contains(part.ToLowerInvariant())))
+            return true;
+
+        return ignoredExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
     }
 }

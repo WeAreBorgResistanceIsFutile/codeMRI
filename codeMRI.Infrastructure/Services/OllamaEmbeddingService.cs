@@ -3,6 +3,7 @@ using System.Text.Json;
 using codeMRI.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using codeMRI.Infrastructure.Configuration;
 
 namespace codeMRI.Infrastructure.Services;
 
@@ -10,16 +11,21 @@ public class OllamaEmbeddingService : IEmbeddingService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<OllamaEmbeddingService> _logger;
-    private readonly OllamaOptions _options;
+    private readonly OllamaSettings _options;
 
     public OllamaEmbeddingService(
         HttpClient httpClient,
-        IOptions<OllamaOptions> options,
+        IOptions<OllamaSettings> options,
         ILogger<OllamaEmbeddingService> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
         _options = options.Value;
+
+        if (_httpClient.BaseAddress == null && !string.IsNullOrEmpty(_options.BaseUrl))
+        {
+            _httpClient.BaseAddress = new Uri(_options.BaseUrl);
+        }
     }
 
     public async Task<float[]> GetEmbeddingAsync(string text)
@@ -68,11 +74,3 @@ public class OllamaEmbeddingService : IEmbeddingService
     }
 }
 
-public class OllamaOptions
-{
-    public string BaseUrl { get; set; } = string.Empty;
-    public string EmbeddingModel { get; set; } = "nomic-embed-text";
-    public string DocumentationModel { get; set; } = string.Empty;
-    public string ChatModel { get; set; } = string.Empty;
-    public int ContextSize { get; set; } = 32768;
-}
