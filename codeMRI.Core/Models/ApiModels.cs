@@ -41,6 +41,7 @@ public class RepositoryStatusResponse
 public class ChatRequest
 {
     public List<ChatMessageDto> History { get; set; } = new();
+    public string? RepoPath { get; set; }
 }
 
 public class ChatMessageDto

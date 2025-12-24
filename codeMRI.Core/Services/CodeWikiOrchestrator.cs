@@ -170,6 +170,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _progressService.Report(new ProgressInfo { Phase = "Indexing", Message = "Indexing documentation for RAG...", Percentage = 98 });
         _logger.LogInformation("Phase 5: Indexing Documentation");
         await _documentIndexer.IndexDocumentationAsync(repositoryPath, structure, cancellationToken);
+        await _documentIndexer.IndexCodebaseAsync(repositoryPath, dependencyGraph, cancellationToken);
 
         _progressService.Report(new ProgressInfo { Phase = "Complete", Message = "Advanced Wiki Generation Complete", Percentage = 100 });
         _telemetryService.TrackAgentActivity("Orchestrator", "CodeWiki Advanced Workflow completed");

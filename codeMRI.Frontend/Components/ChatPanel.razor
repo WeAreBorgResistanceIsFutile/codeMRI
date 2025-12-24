@@ -69,7 +69,7 @@
             AppState.AddChatMessage(new ChatMessage { Role = "assistant", Content = "Thinking..." });
 
             // 3. Call API
-            var response = await WikiApi.ChatAsync(AppState.ChatHistory);
+            var response = await WikiApi.ChatAsync(AppState.ChatHistory, AppState.RepoPath);
 
             // 4. Update Assistant Message
             AppState.UpdateLastChatMessage(response);

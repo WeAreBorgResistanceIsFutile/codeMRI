@@ -44,11 +44,27 @@ public class ChatController : ControllerBase
         }
 
         // 3. Call LLM via facade
+        MessageCompositionOptions? options = null;
+
+        if (!string.IsNullOrEmpty(request.RepoPath))
+        {
+            options = new MessageCompositionOptions
+            {
+                Metadata = new Dictionary<string, object>
+                {
+                    { "UseRAG", true },
+                    { "CollectionName", "documentation" },
+                    { "Filters", new Dictionary<string, object> { { "repoPath", request.RepoPath } } }
+                }
+            };
+        }
+
+        // 3. Call LLM via facade
         var llmResponse = await _llmFacade.ExecuteAsync(
             systemPrompt: systemPrompt,
             textToProcess: userPrompt,
             history: history,
-            options: null,
+            options: options,
             cancellationToken: default);
 
         return Ok(llmResponse.Content);

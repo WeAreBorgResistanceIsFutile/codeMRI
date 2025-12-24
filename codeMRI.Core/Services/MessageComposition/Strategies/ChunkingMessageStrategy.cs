@@ -54,8 +54,21 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
             useSemanticChunking = semanticBool;
         }
         
-        // Calculate chunk size (60% of context for text, rest for system + response)
-        var chunkTokens = (int)(context.Validator.ContextSize * 0.6);
+        // Calculate available tokens for input (Context - Buffer - Safety Margin)
+        var inputSafetyMargin = 200; // Tokens reserved for prompt overhead
+        var availableInputTokens = context.Validator.ContextSize 
+                                 - context.Validator.ResponseBuffer 
+                                 - inputSafetyMargin;
+                                 
+        if (availableInputTokens <= 0)
+        {
+             // Fallback if buffer is too large relative to context
+             availableInputTokens = (int)(context.Validator.ContextSize * 0.7);
+             _logger.LogWarning("Available input tokens calculated as zero or negative. Using 70% of ContextSize as fallback: {FallbackTokens}", availableInputTokens);
+        }
+
+        // Calculate chunk size (50% of available input for text)
+        var chunkTokens = (int)(availableInputTokens * 0.5);
         var chunkSize = chunkTokens * 4; // Approx 4 chars per token
         var overlap = chunkSize / 10; // 10% overlap
         
@@ -77,8 +90,8 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
         
         for (var i = 0; i < chunks.Count; i++)
         {
-            // Ensure findings don't exceed 30% of context
-            var maxFindingsTokens = (int)(context.Validator.ContextSize * 0.3);
+            // Ensure findings don't exceed 30% of available input
+            var maxFindingsTokens = (int)(availableInputTokens * 0.3);
             var findingsTokens = context.Validator.EstimateTokenCount(accumulatedFindings);
             
             if (findingsTokens > maxFindingsTokens)

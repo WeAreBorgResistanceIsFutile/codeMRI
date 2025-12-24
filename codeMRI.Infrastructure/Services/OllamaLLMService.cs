@@ -185,7 +185,7 @@ public class OllamaLLMService : ILLMClient, ILLMValidator
                         $"Ollama returned an empty response after {maxRetries} attempts (Status: {response.StatusCode})");
                 }
 
-                var ollamaResponse = JsonSerializer.Deserialize<OllamaResponse>(contentString);
+                var ollamaResponse = JsonSerializer.Deserialize<OllamaResponse>(contentString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 
                 if (ollamaResponse?.Message?.Content == null)
                 {

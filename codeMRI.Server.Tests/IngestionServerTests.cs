@@ -23,12 +23,17 @@ public class IngestionServerTests
 
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
-            builder.ConfigureAppConfiguration((context, config) =>
+            builder.ConfigureAppConfiguration((_, config) =>
             {
+                var logPath = Path.Combine(projectRoot, "codeMRI.Server/logs/ingestion-test-.log");
+                
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:WikiDb"] = connectionString,
-                    ["ConnectionStrings:IngestionDb"] = connectionString
+                    ["ConnectionStrings:IngestionDb"] = connectionString,
+                    ["Serilog:WriteTo:0:Name"] = "File",
+                    ["Serilog:WriteTo:0:Args:path"] = logPath,
+                    ["Serilog:WriteTo:0:Args:rollingInterval"] = "Day"
                 });
             });
         });
@@ -38,10 +43,10 @@ public class IngestionServerTests
     [OneTimeTearDown]
     public void OneTimeTearDown()
     {
-        _factory?.Dispose();
+        _factory.Dispose();
     }
 
-    [Ignore("It takes long time to complete")]
+    //[Ignore("It takes long time to complete")]
     [TestCase("https://github.com/WeAreBorgResistanceIsFutile/codeMRI.git")]
     [TestCase("https://github.com/WilliamNT/tunesynctool.git")]
     [TestCase("https://github.com/WilliamNT/Elva.git")]
@@ -52,7 +57,7 @@ public class IngestionServerTests
         var wikiRepo = _services.GetRequiredService<IWikiRepository>();
 
         // Step 1: Trigger Ingestion
-        var job = await ingestionManager.StartJobAsync(repoUrl, true, AudienceType.Developer);
+        var job = await ingestionManager.StartJobAsync(repoUrl, true);
         
         job.Should().NotBeNull();
         var jobId = job.Id;
@@ -68,7 +73,7 @@ public class IngestionServerTests
             currentJob = await ingestionManager.GetJobAsync(jobId);
             currentJob.Should().NotBeNull();
 
-            TestContext.WriteLine($"Job Status: {currentJob!.Status}, Progress: {currentJob.ProgressPercentage}%");
+            TestContext.WriteLine($"Job Status: {currentJob.Status}, Progress: {currentJob.ProgressPercentage}%");
 
             if (currentJob.Status == IngestionStatus.Completed)
                 break;
@@ -91,7 +96,7 @@ public class IngestionServerTests
         var summaries = await wikiRepo.GetAllRepositorySummariesAsync();
         var elvaSummary = summaries.FirstOrDefault(s => s.RemoteUrl == repoUrl || s.Path == repoPath);
         elvaSummary.Should().NotBeNull("Elva repository should be in the summary");
-        elvaSummary!.IsIngested.Should().BeTrue();
+        elvaSummary.IsIngested.Should().BeTrue();
 
         // Step 4: Verify Navigation/Structure
         var structure = await wikiRepo.GetStructureAsync(repoPath);
