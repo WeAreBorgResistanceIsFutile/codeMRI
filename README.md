@@ -5,6 +5,7 @@
 ## 🚀 Features
 
 ### Core Capabilities
+
 - **Intelligent Repository Ingestion**: Supports both local and remote Git repositories with automatic language detection
 - **Multi-Language AST Parsing**: Deep code analysis via dedicated AST service supporting TypeScript/JavaScript, Python, C#, Java, Go, Rust, and more
 - **Hierarchical Decomposition**: Automatically structures repositories into logical modules and components using semantic clustering
@@ -14,6 +15,7 @@
 - **Re-ingestion Support**: Intelligent updates for evolving repositories
 
 ### Advanced AI Features
+
 - **Audience-Specific Documentation**: Generate tailored documentation for different audiences (Developer, Tester, DevOps)
 - **Model Routing**: Intelligent task-specific model selection for optimal results
   - Code analysis using specialized models (e.g., `glm-4.6:cloud`)
@@ -22,13 +24,18 @@
 - **Multi-Perspective Evaluation**: Documentation judged and synthesized from multiple LLM perspectives using consensus-based quality control
 - **Adaptive Delegation**: Dynamic complexity-based delegation with configurable depth and semantic diversity thresholds
 - **Hierarchical Context Management**: Map-Reduce style processing for large codebases with entity anchoring and parent-child revision loops
-- **Semantic Chunking**: Configurable intelligent chunking based on semantic boundaries rather than fixed token limits
+- **Intelligent Message Composition**: Multiple strategies for handling content of varying sizes
+  - **Direct Strategy**: For content that fits within context window
+  - **Chunking Strategy**: Iterative processing of large content with LLM calls, prompt reformulation, and result synthesis
+  - **Context Window Management**: Automatic validation to prevent exceeding LLM context limits
+- **Interactive Citations**: RAG responses include styled citation markers with hover popovers showing source document details
 
 ## 🏗️ Architecture
 
 codeMRI follows a clean architecture pattern with the following components:
 
 ### Core Projects
+
 - **codeMRI.Core**: Domain models, interfaces, and core business logic
 - **codeMRI.Agents**: LLM orchestration and multi-agent documentation generation
 - **codeMRI.Infrastructure**: External service implementations (Ollama, Qdrant, Neo4j, SQLite)
@@ -39,6 +46,7 @@ codeMRI follows a clean architecture pattern with the following components:
 - **codeMRI.ASTService**: Node.js-based AST parsing service
 
 ### External Services
+
 - **Ollama**: LLM inference and embeddings
 - **Qdrant**: Vector database for semantic search
 - **Neo4j**: Graph database for dependency relationships
@@ -54,6 +62,7 @@ codeMRI follows a clean architecture pattern with the following components:
 ### Required Ollama Models
 
 Pull the necessary models:
+
 ```bash
 # Core models
 ollama pull nomic-embed-text           # Embeddings
@@ -84,12 +93,14 @@ docker-compose up -d
 ```
 
 Verify services are running:
+
 ```bash
 docker-compose ps
 ```
 
 You should see:
-- **code-mri-ast-service** on port 3000
+
+- **code-mri-ast-service** on port 3000 (mapped from container port 3002)
 - **code-mri-qdrant** on ports 6333 (HTTP) and 6334 (gRPC)
 - **code-mri-neo4j** on ports 7474 (HTTP) and 7687 (Bolt)
 - **code-mri-sqlite** (volume mount for database)
@@ -97,6 +108,7 @@ You should see:
 ### 2. Start the Backend API
 
 Open a terminal and run:
+
 ```bash
 cd codeMRI.Server
 dotnet run
@@ -107,6 +119,7 @@ The API will be available at `http://localhost:5000`.
 ### 3. Start the Frontend
 
 Open a new terminal and run:
+
 ```bash
 cd codeMRI.Frontend
 dotnet run
@@ -197,7 +210,7 @@ dotnet run -- \
 #### CLI Options
 
 | Option | Short | Description | Default |
-|--------|-------|-------------|---------|
+| ------ | ----- | ----------- | ------- |
 | `--input` | `-i` | Path to local repository or Git URL | (required) |
 | `--server` | `-s` | URL of the codeMRI Server | `http://localhost:5247` |
 | `--audience` | `-a` | Target audience (Developer, Tester, DevOps) | `Developer` |
@@ -253,7 +266,7 @@ Edit `codeMRI.Server/appsettings.json`:
     }
   },
   "ASTService": {
-    "BaseUrl": "http://localhost:3002",
+    "BaseUrl": "http://localhost:3000",
     "TimeoutSeconds": 30,
     "Enabled": true
   },
@@ -270,6 +283,7 @@ Edit `codeMRI.Server/appsettings.json`:
 #### Configuration Options
 
 **Model Routing** (`Ollama.ModelRouting`):
+
 - `EnableModelRouting`: Use specialized models for different tasks (code vs. natural language)
 - `EnableEnsembleGeneration`: Generate multiple drafts and synthesize for higher quality
 - `CodeAnalysisModel`: Model optimized for analyzing code structure and relationships
@@ -279,6 +293,7 @@ Edit `codeMRI.Server/appsettings.json`:
 - `MinimumAgreementThreshold`: Number of models that must agree for consensus (2-5)
 
 **Delegation** (`Delegation`):
+
 - `EnableDelegation`: Enable adaptive complexity-based delegation for scalability
 - `MaxComplexityScore`: Complexity threshold that triggers delegation (50-200)
 - `MaxDelegationDepth`: Maximum nesting level for delegated subtasks (1-5)
@@ -288,13 +303,38 @@ Edit `codeMRI.Server/appsettings.json`:
 ### Docker Services Configuration
 
 Edit `docker-compose.yml` to adjust resource limits, ports, or environment variables for:
-- AST Service (port 3000)
-- Qdrant (ports 6333, 6334)
-- Neo4j (ports 7474, 7687, credentials: `neo4j/changeme`)
+
+- **AST Service** (port 3000 → container 3002)
+  - Memory limit: 1GB
+  - Health check endpoint: `/health`
+  - Built from `./codeMRI.ASTService/Dockerfile`
+- **Qdrant** (ports 6333 HTTP, 6334 gRPC)
+  - Memory limit: 2GB
+  - Storage: `./data/qdrant`
+  - Health check: `/healthz`
+- **Neo4j** (ports 7474 HTTP, 7687 Bolt)
+  - Memory limit: 3GB (heap: 512MB-2GB, pagecache: 512MB)
+  - Credentials: `neo4j/changeme`
+  - APOC plugin enabled
+- **SQLite** (volume: `./data/sqlite`)
+  - Lightweight Alpine container
+  - Persistent storage for wiki and ingestion data
 
 ## 🧪 Testing
 
-Run the test suite:
+codeMRI follows Test-Driven Development (TDD) principles with comprehensive test coverage across all layers.
+
+### Test Projects
+
+- **codeMRI.Core.Tests**: Unit tests for domain models, interfaces, and core business logic
+- **codeMRI.Agents.Tests**: Tests for LLM orchestration and multi-agent workflows
+- **codeMRI.Infrastructure.Tests**: Integration tests for external services (Ollama, Qdrant, Neo4j)
+- **codeMRI.Visualization.Tests**: Tests for graph and dependency visualization
+- **codeMRI.Server.Tests**: API endpoint and server integration tests
+- **codeMRI.Frontend.Tests**: Frontend component and service tests
+- **codeMRI.E2E**: End-to-end tests for complete workflows
+
+### Running Tests
 
 ```bash
 # Run all tests
@@ -305,11 +345,27 @@ dotnet test codeMRI.Core.Tests
 dotnet test codeMRI.Agents.Tests
 dotnet test codeMRI.Infrastructure.Tests
 dotnet test codeMRI.Visualization.Tests
+dotnet test codeMRI.Server.Tests
+dotnet test codeMRI.Frontend.Tests
+
+# Run with coverage
+dotnet test --collect:"XPlat Code Coverage"
 ```
+
+### Test Coverage
+
+The test suite includes:
+
+- Unit tests for all core services and strategies
+- Integration tests for external service interactions
+- Message composition strategy tests (Direct, Chunking)
+- Context window validation tests
+- Citation rendering and markdown processing tests
+- RAG evaluation and synthesis tests
 
 ## 📚 Project Structure
 
-```
+```text
 codeMRI/
 ├── codeMRI.Core/              # Domain models and interfaces
 ├── codeMRI.Agents/            # LLM orchestration and agents
@@ -325,9 +381,45 @@ codeMRI/
 └── README.md
 ```
 
+## 🆕 Recent Improvements
+
+### Context Window Management (December 2024)
+
+- **Chunking Message Strategy**: Implemented iterative processing for large content that exceeds context windows
+  - Automatic chunking with LLM-based processing
+  - Prompt reformulation for each chunk with accumulated findings
+  - Intelligent result synthesis combining all chunk outputs
+- **Context Validation**: Automatic validation to prevent `Messages exceed context window` errors
+  - Pre-flight checks before LLM calls
+  - Dynamic buffer allocation for response generation
+  - Proper accounting for system prompts, content, and response space
+
+### Interactive Citations (December 2024)
+
+- **Styled Citation Markers**: RAG responses now include visually appealing citation badges
+  - Hover popovers showing source document details
+  - File path, line numbers, and code snippets
+  - Dark-themed, modern UI design
+- **Citation Processing Pipeline**: Robust markdown processing with citation injection
+  - Regex-based citation marker detection
+  - HTML badge generation with tooltip content
+  - Seamless integration with Markdig rendering
+
+### Enhanced Testing (December 2024)
+
+- **Comprehensive Test Coverage**: Expanded test suite across all projects
+  - Server integration tests (`codeMRI.Server.Tests`)
+  - Frontend component tests (`codeMRI.Frontend.Tests`)
+  - E2E workflow tests (`codeMRI.E2E`)
+- **TDD Workflow**: Strict adherence to Test-Driven Development principles
+  - Red-Green-Refactor cycle for all changes
+  - Generic-to-specific test progression
+  - High code quality and maintainability
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please ensure:
+
 - All tests pass before submitting PRs
 - Follow the existing code style and architecture patterns
 - Update documentation for new features
