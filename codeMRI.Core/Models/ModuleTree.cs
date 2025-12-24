@@ -16,12 +16,13 @@ public class ModuleTree
     public Dictionary<string, ModuleNode> Nodes { get; set; } = new();
 
     /// <summary>
-    ///     Adds a node to the tree
+    ///     Adds a node to the tree's global dictionary
     /// </summary>
     public void AddNode(ModuleNode node)
     {
         Nodes[node.Id] = node;
-        if (node.Parent != null) node.Parent.Children.Add(node);
+        // Note: Parent-child relationship should be established via AddChild()
+        // before calling this method, not here
     }
 
     /// <summary>

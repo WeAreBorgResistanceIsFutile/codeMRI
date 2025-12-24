@@ -34,7 +34,7 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     ///     Performs hierarchical decomposition of the repository
     /// </summary>
     public async Task<ModuleTree> DecomposeHierarchicallyAsync(
-        string repositoryPath,
+        string repositoryPath, EnhancedDependencyGraph graph,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Starting hierarchical decomposition for repository: {Path}", repositoryPath);
@@ -45,7 +45,6 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             async () => { components = await _graphService.GetComponentsAsync(repositoryPath, cancellationToken); });
 
         // Sub-progress for Graph Build (20-100%)
-        EnhancedDependencyGraph graph = null!;
         await _progressService.WithScalingAsync(20, 80,
             async () => { graph = await _graphService.BuildGraphAsync(components, cancellationToken); });
 
@@ -111,18 +110,19 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
 
     /// <summary>
     ///     Performs semantic clustering of components
+    ///     NEW APPROACH: Graph-centric clustering with metadata for naming
     /// </summary>
     private async Task<Dictionary<string, List<string>>> PerformSemanticClusteringAsync(
         EnhancedDependencyGraph graph,
         string repositoryPath,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Performing semantic clustering on {NodeCount} components", graph.NodeCount);
+        _logger.LogInformation("Performing GRAPH-CENTRIC semantic clustering on {NodeCount} components", graph.NodeCount);
 
         var clusters = new Dictionary<string, List<string>>();
         var assignedNodes = new HashSet<string>();
 
-        // 0. Group Infrastructure/Configuration files first
+        // STEP 1: Separate infrastructure/configuration files (these are special)
         var infraNodes = graph.GetNodes()
             .Where(n => n.Metadata.Type == "Configuration")
             .Select(n => n.ComponentId)
@@ -132,9 +132,10 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         {
             clusters["Project Infrastructure"] = infraNodes;
             foreach (var n in infraNodes) assignedNodes.Add(n);
+            _logger.LogInformation("Separated {Count} infrastructure files", infraNodes.Count);
         }
 
-        // 0. Analyze Graph for SCCs (Cyclic Dependencies)
+        // STEP 2: Detect strongly connected components (cycles must stay together)
         try
         {
             var analysis = await _graphService.AnalyzeGraphAsync(graph, cancellationToken);
@@ -144,7 +145,6 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             foreach (var scc in sccs)
                 if (scc.Count > 1)
                 {
-                    // Keep cycles together
                     var newNodes = scc.Where(n => !assignedNodes.Contains(n)).ToList();
                     if (newNodes.Count > 0)
                     {
@@ -153,50 +153,184 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                         sccIndex++;
                     }
                 }
+
+            if (sccIndex > 0)
+                _logger.LogInformation("Detected {Count} strongly connected components (cycles)", sccIndex);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Graph analysis failed, proceeding without cycle detection.");
+            _logger.LogWarning(ex, "Graph analysis failed, proceeding without cycle detection");
         }
 
-        // 1. Identify Architectural Layers first for remaining nodes
-        var layerGroups = graph.GetNodes()
-            .Where(n => !assignedNodes.Contains(n.ComponentId))
-            .GroupBy(n => _patternService.DetermineLayer(n))
-            .Where(g => g.Key != ArchitecturalLayerType.Unknown)
-            .ToDictionary(g => g.Key, g => g.Select(n => n.ComponentId).ToList());
-
-        foreach (var layer in layerGroups)
-        {
-            clusters[layer.Key.ToString()] = layer.Value;
-            foreach (var n in layer.Value) assignedNodes.Add(n);
-        }
-
-        // 2. Feature/Directory Clustering for remaining nodes
-        var unassignedForDir = graph.GetNodes()
-            .Where(n => !assignedNodes.Contains(n.ComponentId))
-            .ToList();
-
-        var dirClusters = PerformDirectoryClustering(unassignedForDir, repositoryPath);
-        foreach (var kvp in dirClusters)
-        {
-            clusters[kvp.Key] = kvp.Value;
-            foreach (var n in kvp.Value) assignedNodes.Add(n);
-        }
-
+        // STEP 3: PRIMARY CLUSTERING - Graph-based Leiden community detection
         var unassignedNodes = graph.GetNodes()
             .Select(n => n.ComponentId)
             .Where(id => !assignedNodes.Contains(id))
             .ToHashSet();
 
-        // 3. For remaining unassigned nodes, use Multi-Pass Louvain Community Detection
         if (unassignedNodes.Any())
         {
-            var communities = await PerformLouvainClusteringAsync(graph, unassignedNodes, cancellationToken);
-            foreach (var community in communities) clusters[$"Component_{community.Key}"] = community.Value;
+            _logger.LogInformation("Running Leiden clustering on {Count} remaining nodes", unassignedNodes.Count);
+
+            var communities = await PerformLeidenClusteringAsync(graph, unassignedNodes, cancellationToken);
+
+            _logger.LogInformation("Leiden produced {Count} communities", communities.Count);
+
+            // STEP 4: Name communities using metadata (directory, layer, patterns)
+            foreach (var (communityId, members) in communities)
+            {
+                var name = GenerateSemanticClusterName(graph, members, repositoryPath);
+                
+                // Merge components if this cluster name already exists
+                if (clusters.ContainsKey(name))
+                {
+                    clusters[name].AddRange(members);
+                    _logger.LogDebug("Merged {Count} components into existing cluster '{Name}'", 
+                        members.Count, name);
+                }
+                else
+                {
+                    clusters[name] = members;
+                }
+                
+                foreach (var n in members) assignedNodes.Add(n);
+            }
         }
 
+        // Verify all nodes are assigned
+        var totalNodes = graph.NodeCount;
+        var missingNodes = graph.GetNodes()
+            .Select(n => n.ComponentId)
+            .Where(id => !assignedNodes.Contains(id))
+            .ToList();
+
+        if (missingNodes.Any())
+        {
+            _logger.LogWarning("WARNING: {Count} nodes were not assigned to any cluster!", missingNodes.Count);
+            foreach (var missing in missingNodes.Take(10))
+            {
+                var node = graph.GetNode(missing);
+                _logger.LogWarning("  - Unassigned: {Id} ({File})",
+                    missing, node?.Metadata.FilePath ?? "unknown");
+            }
+        }
+
+        _logger.LogInformation(
+            "Semantic clustering complete: {ClusterCount} clusters created, {Assigned}/{Total} nodes assigned",
+            clusters.Count, assignedNodes.Count, totalNodes);
+
         return clusters;
+    }
+
+    /// <summary>
+    /// Generates a semantic name for a cluster based on metadata analysis
+    /// Uses directory structure, architectural layers, and patterns as hints
+    /// </summary>
+    private string GenerateSemanticClusterName(
+        EnhancedDependencyGraph graph,
+        List<string> members,
+        string repositoryPath)
+    {
+        if (members.Count == 0) return "Empty Cluster";
+
+        // Strategy 1: Check if all members share a common directory
+        var nodes = members.Select(m => graph.GetNode(m)).Where(n => n != null).ToList();
+
+        var directories = nodes
+            .Select(n => Path.GetDirectoryName(n!.Metadata.FilePath))
+            .Where(d => !string.IsNullOrEmpty(d))
+            .Distinct()
+            .ToList();
+
+        if (directories.Count == 1 && !string.IsNullOrEmpty(directories[0]))
+        {
+            // Single directory - use it as name
+            var dir = directories[0];
+            var relativePage = Path.GetRelativePath(repositoryPath, dir);
+            if (relativePage != ".")
+            {
+                return SanitizeDirectoryName(relativePage);
+            }
+        }
+
+        // Strategy 2: Check for dominant architectural layer
+        var layerCounts = nodes
+            .Select(n => _patternService.DetermineLayer(n!))
+            .Where(l => l != ArchitecturalLayerType.Unknown)
+            .GroupBy(l => l)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        if (layerCounts.Any())
+        {
+            var dominantLayer = layerCounts.OrderByDescending(kvp => kvp.Value).First();
+            if ((double)dominantLayer.Value / nodes.Count >= 0.6) // 60% threshold
+            {
+                return dominantLayer.Key.ToString();
+            }
+        }
+
+        // Strategy 3: Use common directory prefix if exists
+        if (directories.Count > 1)
+        {
+            var commonPrefix = FindCommonDirectoryPrefix(directories, repositoryPath);
+            if (!string.IsNullOrEmpty(commonPrefix))
+            {
+                return SanitizeDirectoryName(commonPrefix);
+            }
+        }
+
+        // Strategy 4: Fallback to generic component name
+        return $"Component_{members.Count}_Files";
+    }
+
+    /// <summary>
+    /// Sanitizes directory name for use as cluster name
+    /// </summary>
+    private string SanitizeDirectoryName(string dirPath)
+    {
+        return dirPath
+            .Replace(Path.DirectorySeparatorChar, ' ')
+            .Replace(Path.AltDirectorySeparatorChar, ' ')
+            .Replace('_', ' ')
+            .Trim();
+    }
+
+    /// <summary>
+    /// Finds common directory prefix among a set of directories
+    /// </summary>
+    private string FindCommonDirectoryPrefix(List<string> directories, string repositoryPath)
+    {
+        if (!directories.Any()) return string.Empty;
+
+        var relativePaths = directories
+            .Select(d => Path.GetRelativePath(repositoryPath, d))
+            .Where(p => p != ".")
+            .ToList();
+
+        if (!relativePaths.Any()) return string.Empty;
+
+        // Find common prefix path segments
+        var pathSegments = relativePaths
+            .Select(p => p.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            .ToList();
+
+        var commonSegments = new List<string>();
+        var minLength = pathSegments.Min(p => p.Length);
+
+        for (int i = 0; i < minLength; i++)
+        {
+            var segment = pathSegments[0][i];
+            if (pathSegments.All(p => p[i] == segment))
+            {
+                commonSegments.Add(segment);
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return commonSegments.Any() ? string.Join(" ", commonSegments) : string.Empty;
     }
 
     private Dictionary<string, List<string>> PerformDirectoryClustering(List<GraphNode> nodes, string repositoryPath)
@@ -245,6 +379,268 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         return clusters;
     }
 
+    /// <summary>
+    /// Performs Leiden community detection - improved version of Louvain
+    /// Ensures well-connected communities through refinement phase
+    /// </summary>
+    private Task<Dictionary<int, List<string>>> PerformLeidenClusteringAsync(
+        EnhancedDependencyGraph graph,
+        HashSet<string> nodeIds,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Starting Leiden clustering on {NodeCount} nodes", nodeIds.Count);
+
+        var communities = new Dictionary<string, int>(); // NodeId -> CommunityId
+        var communityNodes = new Dictionary<int, List<string>>(); // CommunityId -> List<NodeId>
+
+        // Initialize each node in its own community
+        var nextCommunityId = 0;
+        foreach (var nodeId in nodeIds)
+        {
+            communities[nodeId] = nextCommunityId;
+            communityNodes[nextCommunityId] = new List<string> { nodeId };
+            nextCommunityId++;
+        }
+
+        // Build edge weights
+        var edgeWeights = new Dictionary<(string, string), double>();
+        double totalWeight = 0;
+
+        foreach (var nodeId in nodeIds)
+        {
+            var node = graph.GetNode(nodeId);
+            if (node != null)
+                foreach (var neighborId in node.OutEdges)
+                    if (nodeIds.Contains(neighborId))
+                    {
+                        var w = 1.0;
+                        totalWeight += w;
+                        edgeWeights[(nodeId, neighborId)] = w;
+                    }
+        }
+
+        if (totalWeight == 0) totalWeight = 1.0;
+
+        var maxIterations = 10;
+        var iteration = 0;
+        bool improved = true;
+
+        while (improved && iteration < maxIterations)
+        {
+            iteration++;
+            improved = false;
+
+            // Phase 1: Move nodes (like Louvain)
+            var movePhaseImproved = MoveNodesPhase(
+                graph, nodeIds, communities, communityNodes,
+                edgeWeights, totalWeight, cancellationToken);
+
+            if (movePhaseImproved)
+                improved = true;
+
+            // Phase 2: Refine communities (unique to Leiden)
+            // Split communities that are not well-connected
+            var refineImproved = RefineCommunitiesPhase(
+                graph, nodeIds, communities, communityNodes,
+                edgeWeights, ref nextCommunityId, cancellationToken);
+
+            if (refineImproved)
+                improved = true;
+
+            // Phase 3: Aggregate (like Louvain)
+            // For simplicity, we skip aggregation in this implementation
+            // In full Leiden, you'd create a super-graph and recurse
+
+            _logger.LogDebug("Leiden iteration {Iter}: {Communities} communities",
+                iteration, communityNodes.Count);
+        }
+
+        _logger.LogInformation("Leiden clustering complete: {Communities} communities after {Iterations} iterations",
+            communityNodes.Count, iteration);
+
+        return Task.FromResult(communityNodes);
+    }
+
+    /// <summary>
+    /// Move nodes to improve modularity (Louvain-like phase)
+    /// </summary>
+    private bool MoveNodesPhase(
+        EnhancedDependencyGraph graph,
+        HashSet<string> nodeIds,
+        Dictionary<string, int> communities,
+        Dictionary<int, List<string>> communityNodes,
+        Dictionary<(string, string), double> edgeWeights,
+        double totalWeight,
+        CancellationToken cancellationToken)
+    {
+        bool improved = false;
+        var randomizedNodes = nodeIds.OrderBy(x => Guid.NewGuid()).ToList();
+
+        foreach (var nodeId in randomizedNodes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var currentComm = communities[nodeId];
+            var bestComm = currentComm;
+            double maxDeltaQ = 0;
+
+            var nodeObj = graph.GetNode(nodeId);
+            if (nodeObj == null) continue;
+
+            // Calculate degree
+            double k_i = 0;
+            var neighborCommunities = new Dictionary<int, double>();
+
+            foreach (var target in nodeObj.OutEdges)
+                if (nodeIds.Contains(target))
+                {
+                    var w = edgeWeights.GetValueOrDefault((nodeId, target), 1.0);
+                    k_i += w;
+                    var c = communities[target];
+                    neighborCommunities[c] = neighborCommunities.GetValueOrDefault(c, 0) + w;
+                }
+
+            foreach (var source in nodeObj.InEdges)
+                if (nodeIds.Contains(source))
+                {
+                    var w = edgeWeights.GetValueOrDefault((source, nodeId), 1.0);
+                    k_i += w;
+                    var c = communities[source];
+                    neighborCommunities[c] = neighborCommunities.GetValueOrDefault(c, 0) + w;
+                }
+
+            // Try moving to each neighbor community
+            foreach (var (targetComm, edgesToComm) in neighborCommunities)
+            {
+                if (targetComm == currentComm) continue;
+
+                // Calculate modularity gain
+                double sigma_tot = 0;
+                foreach (var peerId in communityNodes[targetComm])
+                {
+                    var peer = graph.GetNode(peerId);
+                    if (peer != null) sigma_tot += peer.InEdges.Count + peer.OutEdges.Count;
+                }
+
+                var deltaQ = (edgesToComm / totalWeight) - (sigma_tot * k_i / (2 * totalWeight * totalWeight));
+
+                if (deltaQ > maxDeltaQ)
+                {
+                    maxDeltaQ = deltaQ;
+                    bestComm = targetComm;
+                }
+            }
+
+            // Move node if improvement found
+            if (bestComm != currentComm && maxDeltaQ > 0.0001)
+            {
+                communityNodes[currentComm].Remove(nodeId);
+                if (communityNodes[currentComm].Count == 0)
+                    communityNodes.Remove(currentComm);
+
+                if (!communityNodes.ContainsKey(bestComm))
+                    communityNodes[bestComm] = new List<string>();
+                communityNodes[bestComm].Add(nodeId);
+                communities[nodeId] = bestComm;
+
+                improved = true;
+            }
+        }
+
+        return improved;
+    }
+
+    /// <summary>
+    /// Refine communities by splitting poorly connected ones (unique to Leiden)
+    /// </summary>
+    private bool RefineCommunitiesPhase(
+        EnhancedDependencyGraph graph,
+        HashSet<string> nodeIds,
+        Dictionary<string, int> communities,
+        Dictionary<int, List<string>> communityNodes,
+        Dictionary<(string, string), double> edgeWeights,
+        ref int nextCommunityId,
+        CancellationToken cancellationToken)
+    {
+        bool refined = false;
+        var communitiesToRefine = communityNodes.Keys.ToList();
+
+        foreach (var commId in communitiesToRefine)
+        {
+            if (!communityNodes.ContainsKey(commId)) continue;
+            var members = communityNodes[commId];
+
+            // Check if community is well-connected
+            if (members.Count <= 1) continue;
+
+            // Find weakly connected nodes using BFS
+            var visited = new HashSet<string>();
+            var components = new List<HashSet<string>>();
+
+            foreach (var startNode in members)
+            {
+                if (visited.Contains(startNode)) continue;
+
+                var component = new HashSet<string>();
+                var queue = new Queue<string>();
+                queue.Enqueue(startNode);
+                visited.Add(startNode);
+
+                while (queue.Count > 0)
+                {
+                    var current = queue.Dequeue();
+                    component.Add(current);
+
+                    var node = graph.GetNode(current);
+                    if (node == null) continue;
+
+                    foreach (var neighbor in node.OutEdges.Concat(node.InEdges))
+                    {
+                        if (members.Contains(neighbor) && !visited.Contains(neighbor))
+                        {
+                            visited.Add(neighbor);
+                            queue.Enqueue(neighbor);
+                        }
+                    }
+                }
+
+                components.Add(component);
+            }
+
+            // If community has multiple disconnected components, split it
+            if (components.Count > 1)
+            {
+                _logger.LogDebug("Splitting community {CommId} into {Count} components",
+                    commId, components.Count);
+
+                // Keep the largest component in the original community
+                var largest = components.OrderByDescending(c => c.Count).First();
+                communityNodes[commId] = largest.ToList();
+
+                // Create new communities for other components
+                foreach (var component in components.Where(c => c != largest))
+                {
+                    var newCommId = nextCommunityId++;
+                    communityNodes[newCommId] = component.ToList();
+
+                    foreach (var nodeId in component)
+                    {
+                        communities[nodeId] = newCommId;
+                    }
+                }
+
+                refined = true;
+            }
+        }
+
+        return refined;
+    }
+
+    /// <summary>
+    /// Legacy Louvain implementation - kept for backwards compatibility
+    /// Use PerformLeidenClusteringAsync for better results
+    /// </summary>
+    [Obsolete("Use PerformLeidenClusteringAsync instead")]
     private Task<Dictionary<int, List<string>>> PerformLouvainClusteringAsync(
         EnhancedDependencyGraph graph,
         HashSet<string> nodeIds,
@@ -392,6 +788,10 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
     {
         _logger.LogInformation("Building module hierarchy from {ClusterCount} clusters", clusters.Count);
 
+        int totalComponentsProcessed = 0;
+        double totalTokensCounted = 0;
+        int missingNodesCount = 0;
+
         foreach (var (clusterName, componentIds) in clusters)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -412,10 +812,17 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
                     module.Components.Add(componentId);
                     module.EstimatedTokens += node.Metadata.EstimatedTokens;
                     module.ComplexityScore += node.Metadata.CyclomaticComplexity;
+                    totalTokensCounted += node.Metadata.EstimatedTokens;
+                    totalComponentsProcessed++;
 
                     if (node.Metadata.Properties.ContainsKey("Role") &&
                         node.Metadata.Properties["Role"].ToString() == "EntryPoint")
                         module.Metadata["HasEntryPoint"] = "true";
+                }
+                else
+                {
+                    missingNodesCount++;
+                    _logger.LogWarning("Component {ComponentId} not found in graph during hierarchy build", componentId);
                 }
             }
 
@@ -429,6 +836,10 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
             moduleTree.Root.AddChild(module);
             moduleTree.AddNode(module);
         }
+
+        _logger.LogInformation(
+            "Hierarchy built: {ModuleCount} modules, {ComponentCount} components, {TokenCount} tokens, {MissingCount} missing nodes",
+            clusters.Count, totalComponentsProcessed, totalTokensCounted, missingNodesCount);
 
         return Task.CompletedTask;
     }
@@ -493,9 +904,9 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         }
         else
         {
-            // Fallback to Louvain
-            var louvainResults = await PerformLouvainClusteringAsync(subGraph, module.Components, cancellationToken);
-            subClusters = louvainResults.ToDictionary(k => k.Key.ToString(), v => v.Value);
+            // Fallback to Leiden
+            var leidenResults = await PerformLeidenClusteringAsync(subGraph, module.Components, cancellationToken);
+            subClusters = leidenResults.ToDictionary(k => k.Key.ToString(), v => v.Value);
         }
 
         // Logic to split logic...

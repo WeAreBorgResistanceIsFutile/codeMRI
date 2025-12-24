@@ -71,7 +71,7 @@ public class DocumentationGenerationPipelineTests
             .ReturnsAsync(new EnhancedDependencyGraph());
 
         _mockDecompositionService
-            .Setup(x => x.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.DecomposeHierarchicallyAsync(It.IsAny<string>(), null!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ModuleTree { Root = rootNode }); // Should probably use logic to return our tree
 
         _mockVisualSynthesis.Setup(x =>

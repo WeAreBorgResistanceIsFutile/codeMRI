@@ -66,7 +66,7 @@ public class DocumentationGenerationPipelineTests
         var rootNode = new ModuleNode { Id = "root", Name = "Repository" };
         rootNode.Components.Add("comp1");
         _mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), null!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ModuleTree { Root = rootNode });
 
         // Mock Visualization

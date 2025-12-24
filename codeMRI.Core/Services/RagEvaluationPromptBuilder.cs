@@ -62,11 +62,16 @@ The following sections from the generated documentation were retrieved as most r
 2. Determine to what extent the requirement is met.
 3. Provide a score from 0.0 to 1.0.
 4. Provide a detailed justification, citing specific sections if possible.
+5. List evidence from specific documentation sections.
 
 ### OUTPUT FORMAT:
-Return a JSON object with the following fields:
-- score: (float)
-- justification: (string)
+Return valid JSON only. Do not include ```json ... ``` markers or any introductory text. Just the raw JSON object.
+{{
+    ""requirement_id"": ""{requirement.Title}"",
+    ""score"": 0.0,
+    ""reasoning"": ""Brief explanation"",
+    ""evidence"": [""doc_section_1"", ""doc_section_2""]
+}}
 ";
     }
 

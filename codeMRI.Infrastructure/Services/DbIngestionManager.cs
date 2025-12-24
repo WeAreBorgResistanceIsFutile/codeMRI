@@ -54,7 +54,7 @@ public class DbIngestionManager : IIngestionJobManager
                 IngestionStatus.Generating
             });
 
-        if (existing != null)
+        if (!forceRegenerate && existing != null)
         {
             _logger.LogInformation("Found existing active job {JobId} for {Url}", existing.Id, repoUrl);
             return existing;

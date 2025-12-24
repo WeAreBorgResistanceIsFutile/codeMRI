@@ -94,7 +94,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
             async () =>
             {
                 moduleTree =
-                    await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, cancellationToken);
+                    await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, null!, cancellationToken);
             });
 
         // Build dependency graph for file path resolution

@@ -10,7 +10,18 @@ internal class Program
 {
     private static async Task<int> Main(string[] args)
     {
-        var rootCommand = new RootCommand("codeMRI CLI (Thin Client)");
+        var rootCommand = new RootCommand("codeMRI CLI - Code Analysis and Documentation");
+
+        // Add subcommands
+        rootCommand.AddCommand(CreateWikiCommand());
+        rootCommand.AddCommand(CreateTestDecompositionCommand());
+
+        return await rootCommand.InvokeAsync(args);
+    }
+
+    private static Command CreateWikiCommand()
+    {
+        var wikiCommand = new Command("wiki", "Generate documentation wiki for a repository");
 
         var inputOption = new Option<string>(
                 new[] { "--input", "-i" },
@@ -39,14 +50,14 @@ internal class Program
             description: "Target audience for documentation generation (Developer, Tester, DevOps)",
             getDefaultValue: () => "Developer");
 
-        rootCommand.AddOption(inputOption);
-        rootCommand.AddOption(serverOption);
-        rootCommand.AddOption(verboseOption);
-        rootCommand.AddOption(forceOption);
-        rootCommand.AddOption(outputOption);
-        rootCommand.AddOption(audienceOption);
+        wikiCommand.AddOption(inputOption);
+        wikiCommand.AddOption(serverOption);
+        wikiCommand.AddOption(verboseOption);
+        wikiCommand.AddOption(forceOption);
+        wikiCommand.AddOption(outputOption);
+        wikiCommand.AddOption(audienceOption);
 
-        rootCommand.SetHandler(
+        wikiCommand.SetHandler(
             async (input, serverUrl, verbose, force, output, audience) =>
             {
                 // Validate audience
@@ -56,13 +67,47 @@ internal class Program
                     return;
                 }
                 
-                await RunAsync(input, serverUrl, verbose, force, output, audienceType);
+                await RunWikiAsync(input, serverUrl, verbose, force, output, audienceType);
             }, inputOption, serverOption, verboseOption, forceOption, outputOption, audienceOption);
 
-        return await rootCommand.InvokeAsync(args);
+        return wikiCommand;
     }
 
-    private static async Task RunAsync(string input, string serverUrl, bool verbose, bool force, string? output, AudienceType audience)
+    private static Command CreateTestDecompositionCommand()
+    {
+        var testCommand = new Command("test-decomposition", "Test hierarchical decomposition on a repository");
+
+        var inputOption = new Option<string>(
+            new[] { "--input", "-i" },
+            "Path to local repository or Git URL") { IsRequired = true };
+
+        var outputOption = new Option<string?>(
+            new[] { "--output", "-o" },
+            "Output JSON file path for module tree (optional)");
+
+        var verboseOption = new Option<bool>(
+            new[] { "--verbose", "-v" },
+            "Enable verbose logging");
+
+        var visualizeOption = new Option<bool>(
+            new[] { "--visualize" },
+            "Generate a tree visualization");
+
+        testCommand.AddOption(inputOption);
+        testCommand.AddOption(outputOption);
+        testCommand.AddOption(verboseOption);
+        testCommand.AddOption(visualizeOption);
+
+        testCommand.SetHandler(
+            async (input, output, verbose, visualize) =>
+            {
+                await RunDecompositionTestAsync(input, output, verbose, visualize);
+            }, inputOption, outputOption, verboseOption, visualizeOption);
+
+        return testCommand;
+    }
+
+    private static async Task RunWikiAsync(string input, string serverUrl, bool verbose, bool force, string? output, AudienceType audience)
     {
         using var client = new HttpClient();
         client.BaseAddress = new Uri(serverUrl);
@@ -237,6 +282,69 @@ internal class Program
                 Console.WriteLine($"Note: Repository was cloned to temporary path: {targetPath}");
                 Console.WriteLine(
                     "It is required for viewing file contents in the UI. Do not delete it manually if you plan to browse source code.");
+            }
+        }
+    }
+
+    private static async Task RunDecompositionTestAsync(string input, string? output, bool verbose, bool visualize)
+    {
+        var repositoryPath = input;
+        var isTemp = false;
+
+        try
+        {
+            // Handle Git URLs
+            if (GitHelper.IsGitUrl(input))
+            {
+                if (verbose) Console.WriteLine($"Cloning {input}...");
+                repositoryPath = await GitHelper.CloneRepositoryAsync(input);
+                isTemp = true;
+                if (verbose) Console.WriteLine($"Cloned to {repositoryPath}");
+            }
+            else
+            {
+                repositoryPath = Path.GetFullPath(input);
+                if (!Directory.Exists(repositoryPath))
+                {
+                    Console.WriteLine($"Error: Directory not found: {repositoryPath}");
+                    return;
+                }
+            }
+
+            // Run decomposition
+            var moduleTree = await DecompositionTester.RunDecompositionAsync(repositoryPath, "http://localhost:5247", verbose);
+
+            if (moduleTree == null)
+            {
+                Console.WriteLine("Decomposition failed or returned no results.");
+                return;
+            }
+
+            // Print tree visualization
+            if (visualize)
+            {
+                DecompositionTester.PrintModuleTree(moduleTree, verbose);
+            }
+
+            // Print statistics
+            DecompositionTester.PrintStatistics(moduleTree);
+
+            // Save to JSON if requested
+            if (!string.IsNullOrEmpty(output))
+            {
+                await DecompositionTester.SaveToJsonAsync(moduleTree, output);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            if (verbose) Console.WriteLine(ex.StackTrace);
+        }
+        finally
+        {
+            if (isTemp && verbose)
+            {
+                Console.WriteLine($"\nNote: Repository was cloned to: {repositoryPath}");
             }
         }
     }

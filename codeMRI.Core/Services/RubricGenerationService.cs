@@ -219,51 +219,80 @@ public class RubricGenerationService : IRubricGenerationService
             JsonSerializer.Serialize(documentationStructure, new JsonSerializerOptions { WriteIndented = true });
 
         return
-            $@"You are a technical documentation evaluator. Given the repository information and documentation structure, 
-generate a comprehensive evaluation rubric that captures:
+            $@"To enhance this prompt, we need to solve the ""Granularity Problem."" Asking an AI to generate 40–60 leaf nodes often results in repetitive or generic requirements (e.g., ""Check if X is documented,"" ""Check if Y is documented"").
 
-1. Core architectural components
-2. Key features and capabilities  
-3. API/interface specifications
-4. Usage patterns and examples
+This enhanced version uses **Layered Analysis**. It forces the AI to look at the repo through four specific lenses: **Foundational**, **Functional**, **Technical**, and **Operational**.
 
-Repository Information:
-- Name: {repositoryInfo.Name}
-- Language: {repositoryInfo.Language}
-- Lines of Code: {repositoryInfo.LinesOfCode}
-- Components: {repositoryInfo.ComponentCount}
+---
 
-Documentation Structure:
+## Enhanced Evaluator Prompt
+
+**Role**: You are a Lead Technical Documentation Auditor and Information Architect. Your task is to generate a rigorous, quantitative evaluation rubric for a codebase's documentation based on its specific structure and scale.
+
+**Input Context**:
+* **Repository**: {repositoryInfo.Name} ({repositoryInfo.Language})
+* **Scale**: {repositoryInfo.LinesOfCode} LOC / {repositoryInfo.ComponentCount} Components
+* **Navigation Structure**:
 {structureJson}
+---
 
-Generate a hierarchical evaluation rubric with the following JSON structure:
+### Phase 1: Rubric Architecture (Weights & Categories)
+
+You must distribute the **1.0 total weight** across these four mandatory top-level categories. Adjust the weights slightly (±0.05) if the project scale or language suggests a different priority:
+
+1. **Architecture & High-Level Design (0.25)**: Evaluates mental models, component interactions, and data flow.
+2. **Feature & Functional Coverage (0.30)**: Evaluates how well the ""What"" and ""Why"" of each module in the `structureJson` is explained.
+3. **Technical & API Reference (0.25)**: Evaluates the precision of interfaces, types, and parameters.
+4. **Operational & Developer Experience (0.20)**: Evaluates setup, examples, error handling, and contribution workflows.
+
+---
+
+### Phase 2: Leaf Node Generation Rules (The ""Specific & Measurable"" Standard)
+
+Each leaf node description must avoid vague words like ""good"" or ""thorough."" Instead, use **Verification Markers**:
+
+* ""Verify the presence of a sequence diagram for...""
+* ""Check for a table defining all environment variables in...""
+* ""Confirm that every public method in [Module Name] includes a code snippet.""
+* ""Evaluate if the documentation explains the failure modes of...""
+
+---
+
+### Phase 3: Structural Requirements
+
+* **Quantity**: Generate exactly **40–60 leaf nodes**.
+* **Distribution**: Distribute leaf nodes proportionally across the modules listed in the `structureJson`.
+* **Math Check**: Ensure that `weight` sums to exactly **1.0** at the root level and exactly **1.0** for the children of any given node.
+* **Leaf Flag**: Only nodes with `""is_leaf"": true` should contain a `description`.
+
+---
+
+### Output Format
+
+Return **ONLY** valid JSON. Do not include markdown blocks or preamble.
+
+```json
 {{
-    ""title"": ""Repository Name Documentation Evaluation"",
+    ""title"": ""{{{{repositoryInfo.Name}}}} Documentation Evaluation Rubric"",
     ""weight"": 1.0,
     ""children"": [
         {{
-            ""title"": ""Component Category"",
+            ""title"": ""Category Name"",
             ""weight"": 0.25,
             ""children"": [
                 {{
-                    ""title"": ""Specific Requirement"",
-                    ""weight"": 0.5,
+                    ""title"": ""Specific Requirement Title"",
+                    ""weight"": 0.1,
                     ""is_leaf"": true,
-                    ""description"": ""What should be documented""
+                    ""description"": ""Verification instruction using specific markers.""
                 }}
             ]
         }}
     ]
 }}
 
-Requirements:
-- Generate 40-60 total leaf requirements
-- Leaf nodes should be specific and measurable
-- Weights should sum to 1.0 at each level
-- Focus on documentation completeness and accuracy
-- Include requirements for code examples, API documentation, and architectural overview
-
-Return only valid JSON.";
+```
+";
     }
 
     private EvaluationRubric ParseRubricFromResponse(string response)

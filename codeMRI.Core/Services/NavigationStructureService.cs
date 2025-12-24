@@ -73,15 +73,8 @@ public class NavigationStructureService : INavigationStructureService
 
     private WikiStructure ParseNavigationResponse(string jsonResponse, RepositoryInfo repositoryInfo)
     {
-        // Clean response (remove markdown code blocks if present)
-        var cleanJson = jsonResponse.Trim();
-        if (cleanJson.StartsWith("```json"))
-            cleanJson = cleanJson.Substring(7);
-        if (cleanJson.StartsWith("```"))
-            cleanJson = cleanJson.Substring(3);
-        if (cleanJson.EndsWith("```"))
-            cleanJson = cleanJson.Substring(0, cleanJson.Length - 3);
-        cleanJson = cleanJson.Trim();
+        // Extract JSON from response (handle text before/after JSON)
+        var cleanJson = ExtractJson(jsonResponse);
 
         var options = new JsonSerializerOptions
         {
@@ -89,21 +82,99 @@ public class NavigationStructureService : INavigationStructureService
             AllowTrailingCommas = true
         };
 
-        var dto = JsonSerializer.Deserialize<NavigationStructureDto>(cleanJson, options)
-                  ?? throw new InvalidOperationException("Failed to deserialize navigation structure");
-
-        // Convert DTO to WikiStructure
-        var structure = new WikiStructure
+        try
         {
-            Title = dto.Title ?? $"{repositoryInfo.Name} Documentation",
-            Description = dto.Description ?? $"Documentation for {repositoryInfo.Name}",
-            RepoPath = repositoryInfo.RepoPath,
-            Sections = dto.Sections?.Select(ConvertSection).ToList() ?? new List<WikiSection>(),
-            Pages = new List<WikiPage>(),
-            ModuleToSectionMap = dto.ModuleMapping ?? new Dictionary<string, string>()
-        };
+            var dto = JsonSerializer.Deserialize<NavigationStructureDto>(cleanJson, options)
+                      ?? throw new InvalidOperationException("Failed to deserialize navigation structure");
 
-        return structure;
+            // Convert DTO to WikiStructure
+            var structure = new WikiStructure
+            {
+                Title = dto.Title ?? $"{repositoryInfo.Name} Documentation",
+                Description = dto.Description ?? $"Documentation for {repositoryInfo.Name}",
+                RepoPath = repositoryInfo.RepoPath,
+                Sections = dto.Sections?.Select(ConvertSection).ToList() ?? new List<WikiSection>(),
+                Pages = new List<WikiPage>(),
+                ModuleToSectionMap = dto.ModuleMapping ?? new Dictionary<string, string>()
+            };
+
+            return structure;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Failed to parse JSON response. Response: {Response}", cleanJson);
+            throw new InvalidOperationException($"Invalid JSON in LLM response: {ex.Message}", ex);
+        }
+    }
+
+    private string ExtractJson(string response)
+    {
+        var trimmed = response.Trim();
+        
+        // Remove markdown code blocks
+        if (trimmed.StartsWith("```json"))
+            trimmed = trimmed.Substring(7);
+        else if (trimmed.StartsWith("```"))
+            trimmed = trimmed.Substring(3);
+            
+        if (trimmed.EndsWith("```"))
+            trimmed = trimmed.Substring(0, trimmed.Length - 3);
+            
+        trimmed = trimmed.Trim();
+
+        // Find JSON object boundaries
+        var firstBrace = trimmed.IndexOf('{');
+        if (firstBrace == -1)
+            throw new InvalidOperationException("No JSON object found in response");
+
+        // Find matching closing brace
+        var braceCount = 0;
+        var lastBrace = firstBrace;
+        var inString = false;
+        var escapeNext = false;
+
+        for (int i = firstBrace; i < trimmed.Length; i++)
+        {
+            var c = trimmed[i];
+
+            if (escapeNext)
+            {
+                escapeNext = false;
+                continue;
+            }
+
+            if (c == '\\')
+            {
+                escapeNext = true;
+                continue;
+            }
+
+            if (c == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+
+            if (!inString)
+            {
+                if (c == '{')
+                    braceCount++;
+                else if (c == '}')
+                {
+                    braceCount--;
+                    if (braceCount == 0)
+                    {
+                        lastBrace = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (braceCount != 0)
+            throw new InvalidOperationException("Unmatched braces in JSON");
+
+        return trimmed.Substring(firstBrace, lastBrace - firstBrace + 1);
     }
 
     private WikiSection ConvertSection(SectionDto dto)

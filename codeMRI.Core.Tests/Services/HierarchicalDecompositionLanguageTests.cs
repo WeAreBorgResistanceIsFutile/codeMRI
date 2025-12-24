@@ -72,7 +72,7 @@ public class HierarchicalDecompositionLanguageTests
             .ReturnsAsync(new GraphAnalysisResult());
 
         // Act
-        var result = await _service.DecomposeHierarchicallyAsync("test/repo");
+        var result = await _service.DecomposeHierarchicallyAsync("test/repo", null!);
 
         // Assert
         var entryNode = result.Nodes.Values.FirstOrDefault(n => n.Components.Contains(fileName));
@@ -108,7 +108,7 @@ public class HierarchicalDecompositionLanguageTests
             .ReturnsAsync(new GraphAnalysisResult());
 
         // Act
-        var result = await _service.DecomposeHierarchicallyAsync("test/repo");
+        var result = await _service.DecomposeHierarchicallyAsync("test/repo", null!);
 
         // Assert
         var cppNode = result.Nodes.Values.First(n => n.Components.Contains("core.cpp"));

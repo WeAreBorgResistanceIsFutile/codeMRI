@@ -57,7 +57,7 @@ public class IndexingController : ControllerBase
         {
             _logger.LogInformation("Manually triggering codebase re-indexing for {RepoPath}", repoPath);
             
-            var moduleTree = await _decompositionService.DecomposeHierarchicallyAsync(repoPath);
+            var moduleTree = await _decompositionService.DecomposeHierarchicallyAsync(repoPath, null!);
             var components = await _graphService.GetComponentsAsync(repoPath);
             var graph = await _graphService.BuildGraphAsync(components);
 

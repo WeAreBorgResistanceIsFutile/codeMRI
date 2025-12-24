@@ -55,7 +55,7 @@ public class DocumentationGenerationPipeline : IDocumentationGenerationPipeline
         await _graphService.AnalyzeGraphAsync(graph, CancellationToken.None);
 
         var moduleTree =
-            await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, CancellationToken.None);
+            await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, null!, CancellationToken.None);
 
         // Generate Visual Artifacts
         var artifacts = await _visualSynthesisService.GenerateArtifactsAsync(moduleTree, graph);

@@ -83,7 +83,7 @@ public class HierarchicalDecompositionProgressTests
         // Act
         // Act
         _progressService.SetHandler(p => capturedProgress.Add(p));
-        await _service.DecomposeHierarchicallyAsync("test/repo");
+        await _service.DecomposeHierarchicallyAsync("test/repo", null!);
 
         // Assert
         Assert.That(capturedProgress, Is.Not.Empty);
