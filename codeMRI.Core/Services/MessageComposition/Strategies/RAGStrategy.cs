@@ -15,7 +15,7 @@ public class RAGStrategy : IMessageCompositionStrategy
     private readonly ILogger<RAGStrategy> _logger;
     
     public string StrategyName => "RAG";
-    public int Priority => 2; // High priority - very efficient when applicable
+    public int Priority => 0; // High priority - preferred over SimpleStrategy (1) when RAG is requested
     
     public RAGStrategy(
         IEmbeddingService embeddingService,
@@ -96,8 +96,27 @@ public class RAGStrategy : IMessageCompositionStrategy
             results.Count);
         
         // Step 3: Build context from retrieved chunks
-        var retrievedContext = string.Join("\n\n---\n\n", 
-            results.Select(r => r.Document.Text));
+        var contextBuilder = new System.Text.StringBuilder();
+        var sources = new List<object>();
+
+        for (int i = 0; i < results.Count; i++)
+        {
+            var doc = results[i].Document;
+            var title = doc.Metadata.GetValueOrDefault("pageTitle")?.ToString() 
+                        ?? doc.Metadata.GetValueOrDefault("filePath")?.ToString() 
+                        ?? "Unknown Source";
+            
+            contextBuilder.AppendLine($"Source [{i + 1}]: {title}");
+            contextBuilder.AppendLine(doc.Text);
+            contextBuilder.AppendLine("---");
+            
+            sources.Add(doc);
+        }
+        
+        var retrievedContext = contextBuilder.ToString();
+        
+        // Add sources to metadata so they can be returned to client
+        context.Metadata["RAGSources"] = sources;
         
         // Step 4: Compose messages with retrieved context
         var messages = new List<ChatMessage>();
@@ -126,7 +145,7 @@ public class RAGStrategy : IMessageCompositionStrategy
 
 Query: {queryText}
 
-Please respond based on the provided context.";
+Please respond based on the provided context. When referencing information from the context, please cite the source number using the format [[number]] (e.g., [[1]], [[2]]). Do not use parentheses or other formats, use double brackets.";
         
         messages.Add(new ChatMessage
         {

@@ -107,7 +107,7 @@ public class MessageCompositionOrchestrator : IMessageCompositionOrchestrator
             {
                 Messages = messages,
                 StrategyUsed = selectedStrategy.StrategyName,
-                Metadata = new Dictionary<string, object>
+                Metadata = new Dictionary<string, object>(context.Metadata)
                 {
                     ["MessageCount"] = messages.Count,
                     ["Priority"] = selectedStrategy.Priority,

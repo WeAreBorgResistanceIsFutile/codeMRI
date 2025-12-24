@@ -33,8 +33,6 @@ public class LLMResponse
 /// </summary>
 public class MessageCompositionOptions
 {
-    private Dictionary<string, object> _options = new();
-
     /// <summary>
     /// Optional model name to use (if different from default).
     /// </summary>
@@ -53,7 +51,7 @@ public class MessageCompositionOptions
     /// <summary>
     /// Custom metadata or options for strategies.
     /// </summary>
-    public Dictionary<string, object> CustomOptions => _options;
+    public Dictionary<string, object> Metadata { get; init; } = new();
 }
 
 /// <summary>

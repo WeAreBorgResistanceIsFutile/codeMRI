@@ -68,12 +68,13 @@ public class WikiApiClient
                ?? new List<RepositorySummary>();
     }
 
-    public async Task<string> ChatAsync(List<ChatMessage> history, string? repoPath = null)
+    public async Task<ChatResponse> ChatAsync(List<ChatMessage> history, string? repoPath = null)
     {
         var dtoHistory = history.Select(m => new ChatMessageDto { Role = m.Role, Content = m.Content }).ToList();
         var response = await _http.PostAsJsonAsync("api/Chat", new ChatRequest { History = dtoHistory, RepoPath = repoPath });
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync();
+        return await response.Content.ReadFromJsonAsync<ChatResponse>()
+               ?? throw new Exception("Failed to deserialize chat response");
     }
 
     public async Task<RepositoryStatusResponse> GetRepositoryStatusAsync(string repoPath)

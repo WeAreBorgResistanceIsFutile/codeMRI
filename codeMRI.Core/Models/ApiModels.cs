@@ -93,3 +93,17 @@ public class IngestionResult
     public string Path { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
 }
+public class ChatResponse
+{
+    public string Message { get; set; } = string.Empty;
+    public List<SourceDocument> Sources { get; set; } = new();
+}
+
+public class SourceDocument
+{
+    public string Id { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string FilePath { get; set; } = string.Empty;
+    public string Snippet { get; set; } = string.Empty;
+    public double Score { get; set; }
+}

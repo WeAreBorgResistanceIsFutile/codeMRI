@@ -48,7 +48,7 @@ public class LLMServiceFacade : ILLMServiceFacade
             History = history ?? new List<ChatMessage>(),
             Validator = _validator,
             Model = options?.ModelName,
-            Metadata = options?.CustomOptions ?? new Dictionary<string, object>()
+            Metadata = options?.Metadata ?? new Dictionary<string, object>()
         };
         
         // Ensure some options are passed through metadata if needed by strategies

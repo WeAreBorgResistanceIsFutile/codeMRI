@@ -2,6 +2,9 @@
 @inject AppState AppState
 @inject WikiApiClient WikiApi
 
+@using Markdig
+@inject IJSRuntime JSRuntime
+
 <div class="d-flex flex-column h-100">
     <div class="flex-grow-1 p-3 overflow-auto custom-scrollbar" style="display: flex; flex-direction: column-reverse;">
         @foreach (var msg in AppState.ChatHistory.AsEnumerable().Reverse())
@@ -9,7 +12,16 @@
             <div class="chat-message @msg.Role mb-3">
                 <div class="p-2 rounded border @(msg.Role == "user" ? "bg-white text-end" : "bg-light")">
                     <strong>@(msg.Role == "user" ? "You" : "Assistant")</strong>
-                    <div style="white-space: pre-wrap;">@msg.Content</div>
+                    <div class="markdown-content" style="@(msg.Role == "user" ? "white-space: pre-wrap;" : "")">
+                         @if (msg.Role == "assistant")
+                         {
+                             @RenderMessage(msg)
+                         }
+                         else
+                         {
+                             @msg.Content
+                         }
+                    </div>
                 </div>
             </div>
         }
@@ -36,10 +48,20 @@
 @code {
     private string userInput = "";
     private bool isChatting;
+    
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .Build();
 
     protected override void OnInitialized()
     {
         AppState.OnChange += StateHasChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Render mermaid diagrams in chat messages if any
+        await JSRuntime.InvokeVoidAsync("renderMermaidDiagrams");
     }
 
     public void Dispose()
@@ -65,14 +87,24 @@
             // 1. Add User Message
             AppState.AddChatMessage(new ChatMessage { Role = "user", Content = message });
 
+            // Capture history before adding placeholder (backend expects last message to be user)
+            var historyToSend = AppState.ChatHistory.ToList();
+
             // 2. Add Placeholder for Assistant
             AppState.AddChatMessage(new ChatMessage { Role = "assistant", Content = "Thinking..." });
 
             // 3. Call API
-            var response = await WikiApi.ChatAsync(AppState.ChatHistory, AppState.RepoPath);
+            var response = await WikiApi.ChatAsync(historyToSend, AppState.RepoPath);
 
             // 4. Update Assistant Message
-            AppState.UpdateLastChatMessage(response);
+            if (response.Sources != null && response.Sources.Any())
+            {
+                AppState.UpdateLastChatMessage(response.Message, response.Sources);
+            }
+            else
+            {
+                 AppState.UpdateLastChatMessage(response.Message);
+            }
         }
         catch (Exception ex)
         {
@@ -84,4 +116,176 @@
         }
     }
 
+    private MarkupString RenderMessage(ChatMessage msg)
+    {
+        if (msg.Role == "user") return (MarkupString)msg.Content;
+        
+        var markdown = msg.Content ?? "";
+        
+        // DEBUG: Log what we're working with
+        Console.WriteLine($"[RenderMessage] Original markdown length: {markdown.Length}");
+        Console.WriteLine($"[RenderMessage] Has Sources metadata: {msg.Metadata.ContainsKey("Sources")}");
+        
+        // Strategy: Use a safe placeholder to survive Markdown rendering.
+        // 1. Identify citations and replace with a unique text token that Markdig won't touch.
+        // 2. Render Markdown.
+        // 3. Replace text tokens with the rich HTML.
+        
+        if (msg.Metadata.TryGetValue("Sources", out var sourcesObj) && sourcesObj is List<SourceDocument> sources)
+        {
+            Console.WriteLine($"[RenderMessage] Found {sources.Count} sources");
+            Console.WriteLine($"[RenderMessage] First 200 chars of markdown: {markdown.Substring(0, Math.Min(200, markdown.Length))}");
+            
+            // 1. Replace [[1]], [1], or [[ 1 ]] with %%CITATION_1%%
+            // Match double brackets first, then single. Or combined regex:
+            // Matches [[1]] or [1] or [[ 1 ]] or [ 1 ]
+            var beforeReplace = markdown;
+            markdown = System.Text.RegularExpressions.Regex.Replace(markdown, @"\[{1,2}\s*(\d+)\s*\]{1,2}", match => 
+            {
+                Console.WriteLine($"[RenderMessage] Found citation match: {match.Value}");
+                if (int.TryParse(match.Groups[1].Value, out int index) && index > 0 && index <= sources.Count)
+                {
+                    Console.WriteLine($"[RenderMessage] Replacing with placeholder: %%CITATION_{index}%%");
+                    return $"%%CITATION_{index}%%";
+                }
+                return match.Value;
+            });
+            
+            if (beforeReplace != markdown)
+            {
+                Console.WriteLine($"[RenderMessage] Markdown changed after placeholder replacement");
+            }
+            else
+            {
+                Console.WriteLine($"[RenderMessage] WARNING: No citations found in markdown!");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[RenderMessage] No sources in metadata or wrong type");
+        }
+        
+        // 2. Render to HTML
+        var html = Markdown.ToHtml(markdown, Pipeline);
+        Console.WriteLine($"[RenderMessage] HTML length after Markdown.ToHtml: {html.Length}");
+        
+        // 3. Inject HTML badges
+        if (msg.Metadata.ContainsKey("Sources"))
+        {
+            var sourcesList = (List<SourceDocument>)msg.Metadata["Sources"];
+            Console.WriteLine($"[RenderMessage] Replacing placeholders in HTML, sources count: {sourcesList.Count}");
+            
+            var beforeHtmlReplace = html;
+            html = System.Text.RegularExpressions.Regex.Replace(html, @"%%CITATION_(\d+)%%", match => 
+            {
+                Console.WriteLine($"[RenderMessage] Found placeholder in HTML: {match.Value}");
+                 if (int.TryParse(match.Groups[1].Value, out int index) && index > 0 && index <= sourcesList.Count)
+                 {
+                    var source = sourcesList[index - 1];
+                    var title = System.Web.HttpUtility.HtmlEncode(source.Title);
+                    
+                    // Truncate snippet - allow more text for the large popover look
+                    var snippet = source.Snippet;
+                    if (snippet.Length > 600) snippet = snippet.Substring(0, 600) + "...";
+                    snippet = System.Web.HttpUtility.HtmlEncode(snippet);
+                    
+                    Console.WriteLine($"[RenderMessage] Injecting citation badge for index {index}");
+                    return $@"<span class=""citation-marker"">{index}<span class=""citation-popover""><div class=""popover-header"">{title}</div><div class=""popover-body"">{snippet}</div></span></span>";
+                 }
+                 return match.Value;
+            });
+            
+            if (beforeHtmlReplace != html)
+            {
+                Console.WriteLine($"[RenderMessage] HTML changed after badge injection");
+            }
+            else
+            {
+                Console.WriteLine($"[RenderMessage] WARNING: No placeholders found in HTML!");
+            }
+        }
+        
+        Console.WriteLine($"[RenderMessage] Final HTML length: {html.Length}");
+        return (MarkupString)html;
+    }
+
 }
+
+<style>
+    .citation-marker {
+        display: inline-block;
+        position: relative;
+        cursor: help;
+        background-color: #3b3f5c; /* Dark blue-ish grey from image */
+        color: #e0e6ed;
+        font-weight: 600;
+        font-size: 0.75em;
+        padding: 2px 8px;
+        border-radius: 12px;
+        margin: 0 2px;
+        vertical-align: super;
+        line-height: 1;
+        transition: background-color 0.2s;
+    }
+
+    .citation-marker:hover {
+        background-color: #4361ee; /* Highlight color on hover */
+        z-index: 1060; /* Ensure active one is on top */
+    }
+
+    .citation-popover {
+        visibility: hidden;
+        background-color: #1b1e2e; /* Very dark background */
+        color: #bfc9d4;
+        text-align: left;
+        border-radius: 8px;
+        padding: 0; 
+        position: absolute;
+        z-index: 1050;
+        bottom: 140%; /* Position above */
+        left: 50%;
+        transform: translateX(-50%);
+        opacity: 0;
+        transition: opacity 0.2s, transform 0.2s;
+        width: 400px; /* Much wider */
+        max-width: 90vw;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        white-space: normal;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        pointer-events: none; /* Can't select text in tooltip usually, but maybe we want to? For now keep simple hover */
+        border: 1px solid #3b3f5c;
+    }
+
+    .citation-marker:hover .citation-popover {
+        visibility: visible;
+        opacity: 1;
+        transform: translateX(-50%) translateY(-5px);
+    }
+
+    .popover-header {
+        background-color: #0e1726;
+        padding: 12px 16px;
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+        font-weight: bold;
+        color: #fff;
+        border-bottom: 1px solid #3b3f5c;
+    }
+
+    .popover-body {
+        padding: 16px;
+        color: #e0e6ed;
+    }
+
+    .citation-popover::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -8px;
+        border-width: 8px;
+        border-style: solid;
+        border-color: #1b1e2e transparent transparent transparent;
+    }
+</style>

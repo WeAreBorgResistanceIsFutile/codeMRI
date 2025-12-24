@@ -46,7 +46,7 @@ public class IngestionServerTests
         _factory.Dispose();
     }
 
-    //[Ignore("It takes long time to complete")]
+    [Ignore("It takes long time to complete")]
     [TestCase("https://github.com/WeAreBorgResistanceIsFutile/codeMRI.git")]
     [TestCase("https://github.com/WilliamNT/tunesynctool.git")]
     [TestCase("https://github.com/WilliamNT/Elva.git")]

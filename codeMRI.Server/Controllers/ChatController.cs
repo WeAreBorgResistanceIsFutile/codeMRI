@@ -50,6 +50,7 @@ public class ChatController : ControllerBase
         {
             options = new MessageCompositionOptions
             {
+                UseRag = true,
                 Metadata = new Dictionary<string, object>
                 {
                     { "UseRAG", true },
@@ -67,6 +68,35 @@ public class ChatController : ControllerBase
             options: options,
             cancellationToken: default);
 
-        return Ok(llmResponse.Content);
+        var response = new ChatResponse
+        {
+            Message = llmResponse.Content
+        };
+
+        if (llmResponse.Metadata.TryGetValue("RAGSources", out var sourcesObj) && sourcesObj is List<object> sourcesList)
+        {
+            // Convert VectorDocuments to SourceDocuments
+            // We need to cast the objects back to VectorDocument. Since VectorDocument is in Core.Models (or Interfaces?), 
+            // and sourcesObj came from RAGStrategy which uses IVectorStoreService -> VectorDocument.
+            // But here it might be handled as object.
+            
+            foreach (var src in sourcesList)
+            {
+                if (src is VectorDocument doc)
+                {
+                    response.Sources.Add(new SourceDocument
+                    {
+                        Id = doc.Id,
+                        Title = doc.Metadata.GetValueOrDefault("pageTitle")?.ToString() 
+                                ?? doc.Metadata.GetValueOrDefault("filePath")?.ToString() 
+                                ?? "Unknown",
+                        FilePath = doc.Metadata.GetValueOrDefault("filePath")?.ToString() ?? "",
+                        Snippet = doc.Text
+                    });
+                }
+            }
+        }
+
+        return Ok(response);
     }
 }

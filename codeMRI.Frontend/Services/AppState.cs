@@ -86,6 +86,17 @@ public class AppState
         }
     }
 
+    public void UpdateLastChatMessage(string newContent, List<SourceDocument> sources)
+    {
+        if (ChatHistory.Any())
+        {
+            var lastMsg = ChatHistory.Last();
+            lastMsg.Content = newContent;
+            lastMsg.Metadata["Sources"] = sources;
+            NotifyStateChanged();
+        }
+    }
+
     public void UpdateAgentStatus(AgentMessage msg)
     {
         try
