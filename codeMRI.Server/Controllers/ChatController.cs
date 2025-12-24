@@ -1,3 +1,4 @@
+using codeMRI.Core.Services.MessageComposition;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -9,11 +10,11 @@ namespace codeMRI.Server.Controllers;
 [Route("api/[controller]")]
 public class ChatController : ControllerBase
 {
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
 
-    public ChatController(ILLMClient llmClient)
+    public ChatController(ILLMServiceFacade llmFacade)
     {
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
     }
 
     [HttpPost]
@@ -42,9 +43,14 @@ public class ChatController : ControllerBase
             return BadRequest("History must end with a user message.");
         }
 
-        // 3. Call LLM
-        var response = await _llmClient.ChatAsync(systemPrompt, userPrompt, history);
+        // 3. Call LLM via facade
+        var llmResponse = await _llmFacade.ExecuteAsync(
+            systemPrompt: systemPrompt,
+            textToProcess: userPrompt,
+            history: history,
+            options: null,
+            cancellationToken: default);
 
-        return Ok(response);
+        return Ok(llmResponse.Content);
     }
 }

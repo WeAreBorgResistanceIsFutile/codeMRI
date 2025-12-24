@@ -1,4 +1,6 @@
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Services.MessageComposition;
+using NUnit.Framework;
 using codeMRI.Core.Models;
 using codeMRI.Visualization.Services;
 using Moq;
@@ -11,7 +13,7 @@ public class ArchitectureDiagramGeneratorTests
     [SetUp]
     public void Setup()
     {
-        var mockLlm = new Mock<ILLMClient>();
+        var mockLlm = new Mock<ILLMServiceFacade>();
         _generator = new DiagramGeneratorService(new HttpClient(), mockLlm.Object);
         _testGraph = new EnhancedDependencyGraph();
         _testTree = new ModuleTree();

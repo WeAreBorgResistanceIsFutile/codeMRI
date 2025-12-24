@@ -1,4 +1,6 @@
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Services.MessageComposition;
+using NUnit.Framework;
 using codeMRI.Core.Models;
 using codeMRI.Visualization.Services;
 using Moq;
@@ -13,7 +15,7 @@ public class DataFlowDiagramGeneratorTests
     [SetUp]
     public void Setup()
     {
-        var mockLlm = new Mock<ILLMClient>(); // Added
+        var mockLlm = new Mock<ILLMServiceFacade>(); // Added
         _generator = new DiagramGeneratorService(new HttpClient(), mockLlm.Object); // Modified
         _testGraph = new EnhancedDependencyGraph(); // Added
     }

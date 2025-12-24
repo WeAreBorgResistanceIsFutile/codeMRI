@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -9,14 +10,14 @@ namespace codeMRI.Core.Services;
 
 public class JudgeAgentService : IJudgeAgent
 {
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
     private readonly ILogger<IJudgeAgent> _logger;
     private readonly CodeWikiOptions _options;
 
-    public JudgeAgentService(ILogger<IJudgeAgent> logger, ILLMClient llmClient, IOptions<CodeWikiOptions> options)
+    public JudgeAgentService(ILogger<IJudgeAgent> logger, ILLMServiceFacade llmFacade, IOptions<CodeWikiOptions> options)
     {
         _logger = logger;
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
         _options = options.Value;
     }
 
@@ -32,24 +33,15 @@ public class JudgeAgentService : IJudgeAgent
             var systemPrompt = BuildSystemPrompt();
             var userPrompt = BuildEvaluationPrompt(page, requirement);
 
-            string response;
-            var threshold = (int)(_llmClient.ContextSize * 3.5);
-            if (userPrompt.Length > threshold)
-            {
-                _logger.LogInformation("Evaluation prompt too large ({Length}). Using findings-based evaluation.",
-                    userPrompt.Length);
-                response = await _llmClient.ChatWithFindingsAsync(
-                    systemPrompt,
-                    $"Evaluate if identifying information for requirement '{requirement.Title}' exists in following content. Requirement: {requirement.Description}",
-                    userPrompt,
-                    null,
-                    default,
-                    _options.UseSemanticChunking);
-            }
-            else
-            {
-                response = await _llmClient.ChatAsync(systemPrompt, userPrompt, new List<ChatMessage>());
-            }
+            // Use facade to execute - it will automatically handle chunking if content is large
+            var llmResponse = await _llmFacade.ExecuteAsync(
+                systemPrompt: systemPrompt,
+                textToProcess: userPrompt,
+                history: null,
+                options: null,
+                cancellationToken: default);
+            
+            var response = llmResponse.Content;
 
             var result = ParseEvaluationResponse(response, requirement.Title);
 

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -13,7 +14,7 @@ public class WikiGenerationService : IWikiGenerationService
     private readonly IDiagramGenerator _diagramGenerator;
     private readonly string _documentationModel;
     private readonly IEnhancedDependencyGraphService _graphService;
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
     private readonly ILogger<WikiGenerationService> _logger;
     private readonly CodeWikiOptions _options;
     private readonly IMultiModelOrchestrationService? _orchestrationService;
@@ -22,7 +23,7 @@ public class WikiGenerationService : IWikiGenerationService
     private readonly IDocumentationSynthesisService _synthesisService;
 
     public WikiGenerationService(
-        ILLMClient llmClient,
+        ILLMServiceFacade llmFacade,
         IDiagramGenerator diagramGenerator,
         IEnhancedDependencyGraphService graphService,
         IDocumentationSynthesisService synthesisService,
@@ -33,7 +34,7 @@ public class WikiGenerationService : IWikiGenerationService
         IModelRoutingService? routingService = null,
         IMultiModelOrchestrationService? orchestrationService = null)
     {
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
         _diagramGenerator = diagramGenerator;
         _graphService = graphService;
         _synthesisService = synthesisService;
@@ -171,17 +172,15 @@ public class WikiGenerationService : IWikiGenerationService
         var selectedModel = _routingService?.SelectModelForTask(DocumentationTaskType.CodeAnalysis) ??
                             _documentationModel;
 
-        // Use findings-based chunking if the content is very large (approx > 3000 tokens)
-        if (sourceFilesContent.Length > (int)(_llmClient.ContextSize * 3.5))
-        {
-            content = await _llmClient.ChatWithFindingsAsync("", prompt, sourceFilesContent, selectedModel, default,
-                _options.UseSemanticChunking);
-        }
-        else
-        {
-            var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent;
-            content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), selectedModel);
-        }
+        // Use facade to execute - it will automatically handle chunking if content is large
+        var llmResponse = await _llmFacade.ExecuteAsync(
+            systemPrompt: "",
+            textToProcess: prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent,
+            history: null,
+            options: new MessageCompositionOptions { ModelName = selectedModel },
+            cancellationToken: default);
+        
+        content = llmResponse.Content;
 
         // Generate enhanced interactive diagrams if we have a dependency graph
         try
@@ -423,17 +422,15 @@ public class WikiGenerationService : IWikiGenerationService
             : DocumentationTaskType.NaturalLanguage;
         var selectedModel = _routingService?.SelectModelForTask(taskType) ?? _documentationModel;
 
-        // Use findings-based chunking if the content is very large (approx > 3000 tokens)
-        if (sourceFilesContent.Length > (int)(_llmClient.ContextSize * 3.5))
-        {
-            content = await _llmClient.ChatWithFindingsAsync("", prompt, sourceFilesContent, selectedModel, default,
-                _options.UseSemanticChunking);
-        }
-        else
-        {
-            var fullPrompt = prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent;
-            content = await _llmClient.ChatAsync("", fullPrompt, new List<ChatMessage>(), selectedModel);
-        }
+        // Use facade to execute - it will automatically handle chunking if content is large
+        var llmResponse = await _llmFacade.ExecuteAsync(
+            systemPrompt: "",
+            textToProcess: prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent,
+            history: null,
+            options: new MessageCompositionOptions { ModelName = selectedModel },
+            cancellationToken: default);
+        
+        content = llmResponse.Content;
 
         // Generate diagrams if available
         try

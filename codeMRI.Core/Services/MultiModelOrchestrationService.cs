@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -14,19 +15,19 @@ namespace codeMRI.Core.Services;
 public class MultiModelOrchestrationService : IMultiModelOrchestrationService
 {
     private readonly EnsembleConfig _config;
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
     private readonly ILogger<MultiModelOrchestrationService> _logger;
     private readonly CodeWikiOptions _options;
     private readonly IModelRoutingService _routingService;
 
     public MultiModelOrchestrationService(
-        ILLMClient llmClient,
+        ILLMServiceFacade llmFacade,
         IModelRoutingService routingService,
         EnsembleConfig config,
         ILogger<MultiModelOrchestrationService> logger,
         IOptions<CodeWikiOptions> options)
     {
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
         _routingService = routingService;
         _config = config;
         _logger = logger;
@@ -44,11 +45,17 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         {
             _logger.LogWarning("Ensemble generation is disabled or no models configured, falling back to single model");
 
-            // Fall back to single model generation
-            var singleResult = await _llmClient.ChatAsync(systemPrompt, userPrompt, history, null, cancellationToken);
+            // Fall back to single model generation via facade
+            var llmResponse = await _llmFacade.ExecuteAsync(
+                systemPrompt: systemPrompt,
+                textToProcess: userPrompt,
+                history: history,
+                options: null,
+                cancellationToken: cancellationToken);
+            
             return new MultiModelResult
             {
-                SynthesizedContent = singleResult,
+                SynthesizedContent = llmResponse.Content,
                 ModelOutputs = new List<ModelOutput>(),
                 AgreementScore = 1.0,
                 Uncertainty = 0.0,
@@ -112,8 +119,14 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         {
             _logger.LogDebug("Generating with model: {Model}", modelName);
 
-            var content = await _llmClient.ChatAsync(
-                systemPrompt, userPrompt, history, modelName, cancellationToken);
+            var llmResponse = await _llmFacade.ExecuteAsync(
+                systemPrompt: systemPrompt,
+                textToProcess: userPrompt,
+                history: history,
+                options: new MessageCompositionOptions { ModelName = modelName },
+                cancellationToken: cancellationToken);
+
+            var content = llmResponse.Content;
 
             stopwatch.Stop();
 
@@ -185,31 +198,15 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         var synthesisSystemPrompt = BuildSynthesisSystemPrompt();
         var synthesisUserPrompt = BuildSynthesisUserPrompt(outputs, originalUserPrompt);
 
-        string synthesizedContent;
-        var threshold = (int)(_llmClient.ContextSize * 3.5);
-        if (synthesisUserPrompt.Length > threshold)
-        {
-            _logger.LogInformation("Synthesis prompt too large ({Length}). Using findings-based synthesis.",
-                synthesisUserPrompt.Length);
-            synthesizedContent = await _llmClient.ChatWithFindingsAsync(
-                synthesisSystemPrompt,
-                "Synthesize the following documentation drafts into a single high-quality result.",
-                synthesisUserPrompt,
-                judgeModel,
-                cancellationToken,
-                _options.UseSemanticChunking);
-        }
-        else
-        {
-            synthesizedContent = await _llmClient.ChatAsync(
-                synthesisSystemPrompt,
-                synthesisUserPrompt,
-                new List<ChatMessage>(),
-                judgeModel,
-                cancellationToken);
-        }
-
-        return synthesizedContent;
+        // Use facade to execute - it will automatically handle chunking if content is large
+        var llmResponse = await _llmFacade.ExecuteAsync(
+            systemPrompt: synthesisSystemPrompt,
+            textToProcess: synthesisUserPrompt,
+            history: null,
+            options: new MessageCompositionOptions { ModelName = judgeModel },
+            cancellationToken: cancellationToken);
+        
+        return llmResponse.Content;
     }
 
     /// <summary>

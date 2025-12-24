@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
@@ -25,7 +26,7 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
     private readonly Histogram<double> _evaluationDuration;
     private readonly Counter<long> _failedModelsCounter;
 
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
     private readonly ILogger<DocumentationJudgeService> _logger;
     private readonly Meter _meter;
     private readonly IEvaluationPromptBuilder _defaultPromptBuilder;
@@ -35,13 +36,13 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
 
     public DocumentationJudgeService(
         ILogger<DocumentationJudgeService> logger,
-        ILLMClient llmClient,
+        ILLMServiceFacade llmFacade,
         IMeterFactory meterFactory,
         IEvaluationPromptBuilder promptBuilder,
         RagEvaluationPromptBuilder ragPromptBuilder)
     {
         _logger = logger;
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
         _meter = meterFactory.Create("CodeMRI.Judge");
         _defaultPromptBuilder = promptBuilder;
         _ragPromptBuilder = ragPromptBuilder;
@@ -94,14 +95,14 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
             prompt = await _defaultPromptBuilder.BuildPromptAsync(requirement, documentationStructure);
         }
 
-        var response = await _llmClient.ChatAsync(
-            SystemPrompt,
-            prompt,
-            new List<ChatMessage>(),
-            model,
-            cancellationToken);
+        var llmResponse = await _llmFacade.ExecuteAsync(
+            systemPrompt: SystemPrompt,
+            textToProcess: prompt,
+            history: null,
+            options: new MessageCompositionOptions { ModelName = model },
+            cancellationToken: cancellationToken);
 
-        var assessment = ParseAssessmentFromResponse(response, requirement);
+        var assessment = ParseAssessmentFromResponse(llmResponse.Content, requirement);
 
         stopwatch.Stop();
 

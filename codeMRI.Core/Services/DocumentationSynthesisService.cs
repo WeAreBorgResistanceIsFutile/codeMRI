@@ -1,6 +1,7 @@
 using System.Text.Json;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -8,18 +9,21 @@ namespace codeMRI.Core.Services;
 
 public class DocumentationSynthesisService : IDocumentationSynthesisService
 {
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
+    private readonly ILLMValidator _validator;
     private readonly ILogger<DocumentationSynthesisService> _logger;
     private readonly CodeWikiOptions _options;
     private readonly IHierarchicalSummaryService? _summaryService;
 
     public DocumentationSynthesisService(
-        ILLMClient llmClient,
+        ILLMServiceFacade llmFacade,
+        ILLMValidator validator,
         ILogger<DocumentationSynthesisService> logger,
         IOptions<CodeWikiOptions> options,
         IHierarchicalSummaryService? summaryService = null)
     {
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
+        _validator = validator;
         _logger = logger;
         _options = options.Value;
         _summaryService = summaryService;
@@ -53,20 +57,16 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                                 """;
 
             string simpleContent;
-            var simpleThreshold = (int)(_llmClient.ContextSize * 3.5);
-            if (simplePrompt.Length > simpleThreshold)
-                simpleContent = await _llmClient.ChatWithFindingsAsync(
-                    "You are a master software architect generating high-quality documentation.",
-                    "Summarize the following module information.",
-                    simplePrompt,
-                    null,
-                    cancellationToken,
-                    _options.UseSemanticChunking);
-            else
-                simpleContent = await _llmClient.ChatAsync(
-                    "You are a technical documentation expert.",
-                    simplePrompt,
-                    new List<ChatMessage>());
+            
+            // Use facade to execute - it will automatically handle chunking if content is large
+            var response1 = await _llmFacade.ExecuteAsync(
+                systemPrompt: "You are a technical documentation expert.",
+                textToProcess: simplePrompt,
+                history: null,
+                options: null,
+                cancellationToken: cancellationToken);
+            
+            simpleContent = response1.Content;
 
             var simplePageTitle = GetFriendlyPageTitle(module.Name);
             return new WikiPage
@@ -90,26 +90,16 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                 language);
 
             string mergedContent;
-            var mergeThreshold = (int)(_llmClient.ContextSize * 3.5);
-            if (mergePrompt.Length > mergeThreshold)
-            {
-                _logger.LogInformation("Merge prompt too large ({Length}). Using findings-based synthesis.",
-                    mergePrompt.Length);
-                mergedContent = await _llmClient.ChatWithFindingsAsync(
-                    "You are a master software architect generating high-quality documentation.",
-                    "Merge the following documentation clusters into a single cohesive document as instructed.",
-                    mergePrompt,
-                    null,
-                    cancellationToken,
-                    _options.UseSemanticChunking);
-            }
-            else
-            {
-                mergedContent = await _llmClient.ChatAsync(
-                    "You are a technical documentation expert specializing in content synthesis and organization.",
-                    mergePrompt,
-                    new List<ChatMessage>());
-            }
+            
+            // Use facade to execute - it will automatically handle chunking if content is large
+            var response2 = await _llmFacade.ExecuteAsync(
+                systemPrompt: "You are a technical documentation expert specializing in content synthesis and organization.",
+                textToProcess: mergePrompt,
+                history: null,
+                options: null,
+                cancellationToken: cancellationToken);
+            
+            mergedContent = response2.Content;
 
             var mergedPageTitle = GetFriendlyPageTitle(module.Name);
             return new WikiPage
@@ -143,7 +133,7 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
 
         // Determine synthesis strategy and final prompt
         string prompt;
-        var overviewThreshold = (int)(_llmClient.ContextSize * 3.5);
+        var overviewThreshold = (int)(_validator.ContextSize * 3.5);
         var useMapReduce = false;
 
         var activeStrategy = strategy ?? _options.DefaultSynthesisStrategy;
@@ -195,29 +185,15 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                 entities?.HasEntities == true ? "Entity-Anchored" : "Direct", module.Name);
         }
 
-        string overviewContent;
-        if (prompt.Length > overviewThreshold)
-        {
-            _logger.LogWarning(
-                "Final synthesis prompt still exceeds threshold ({Length}) for {ModuleName}. Using findings-based synthesis as last resort.",
-                prompt.Length, module.Name);
-            overviewContent = await _llmClient.ChatWithFindingsAsync(
-                "You are a master software architect generating high-quality documentation.",
-                "Synthesize architectural documentation from the following child module data.",
-                prompt,
-                null,
-                cancellationToken,
-                _options.UseSemanticChunking);
-        }
-        else
-        {
-            overviewContent = await _llmClient.ChatAsync(
-                "You are a master software architect generating high-quality documentation.",
-                prompt,
-                new List<ChatMessage>(),
-                null,
-                cancellationToken);
-        }
+        // Use facade to execute - it will automatically handle chunking if content is large
+        var response3 = await _llmFacade.ExecuteAsync(
+            systemPrompt: "You are a master software architect generating high-quality documentation.",
+            textToProcess: prompt,
+            history: null,
+            options: null,
+            cancellationToken: cancellationToken);
+        
+        string overviewContent = response3.Content;
 
         var finalContent = overviewContent;
         var metadata = new Dictionary<string, object>

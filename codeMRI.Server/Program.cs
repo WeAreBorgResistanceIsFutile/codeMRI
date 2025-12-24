@@ -4,6 +4,7 @@ using codeMRI.Core.Models;
 using codeMRI.Infrastructure;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
+using codeMRI.Core.Services.MessageComposition;
 using codeMRI.Server.Hubs;
 using Microsoft.Data.Sqlite;
 using Serilog;
@@ -33,9 +34,9 @@ builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Oll
 builder.Services.Configure<ASTServiceSettings>(builder.Configuration.GetSection("ASTService"));
 builder.Services.Configure<CodeWikiOptions>(builder.Configuration.GetSection("CodeWiki"));
 
-// Infrastructure
+// Infrastructure - LLM Services
 builder.Services.AddHttpClient();
-builder.Services.AddSingleton<ILLMClient, OllamaLLMService>();
+
 builder.Services.AddSingleton<IASTServiceClient, ASTServiceClient>();
 
 // Wire up core application services
@@ -69,8 +70,8 @@ builder.Services.AddSingleton<IIngestionJobManager, DbIngestionManager>(sp =>
     if (!string.IsNullOrEmpty(connectionString) && connectionString.Contains("Data Source="))
     {
         // Extract if it's a connection string
-        var builder = new SqliteConnectionStringBuilder(connectionString);
-        dbPath = builder.DataSource;
+        var connStringBuilder = new SqliteConnectionStringBuilder(connectionString);
+        dbPath = connStringBuilder.DataSource;
     }
     else if (!string.IsNullOrEmpty(connectionString))
     {

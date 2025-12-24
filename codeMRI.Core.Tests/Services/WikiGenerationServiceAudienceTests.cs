@@ -1,6 +1,8 @@
+using NUnit.Framework;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -15,8 +17,7 @@ public class WikiGenerationServiceAudienceTests
     [SetUp]
     public void Setup()
     {
-        _mockLlmClient = new Mock<ILLMClient>();
-        _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
+        _mockLlmFacade = new Mock<ILLMServiceFacade>();
         _mockDiagramGenerator = new Mock<IDiagramGenerator>();
         _mockGraphService = new Mock<IEnhancedDependencyGraphService>();
         _mockLogger = new Mock<ILogger<WikiGenerationService>>();
@@ -26,7 +27,7 @@ public class WikiGenerationServiceAudienceTests
         var options = Options.Create(new CodeWikiOptions());
 
         _service = new WikiGenerationService(
-            _mockLlmClient!.Object,
+            _mockLlmFacade!.Object,
             _mockDiagramGenerator!.Object,
             _mockGraphService!.Object,
             _mockSynthesisService!.Object,
@@ -36,7 +37,7 @@ public class WikiGenerationServiceAudienceTests
             "dummy_model");
     }
 
-    private Mock<ILLMClient>? _mockLlmClient;
+    private Mock<ILLMServiceFacade>? _mockLlmFacade;
     private Mock<IDiagramGenerator>? _mockDiagramGenerator;
     private Mock<IEnhancedDependencyGraphService>? _mockGraphService;
     private Mock<IDocumentationSynthesisService>? _mockSynthesisService;
@@ -52,15 +53,15 @@ public class WikiGenerationServiceAudienceTests
         var context = new ModulePageContext();
         var fileContents = new Dictionary<string, string> { { "File.cs", "content" } };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .Callback<string, string, List<ChatMessage>, string?,
-                CancellationToken>((sys, prompt, hist, model, token) =>
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, List<ChatMessage>, MessageCompositionOptions?,
+                CancellationToken>((sys, prompt, hist, options, token) =>
             {
                 TestContext.Out.WriteLine($"Generated System Prompt: {sys}");
                 TestContext.Out.WriteLine($"Generated User Prompt: {prompt}");
             })
-            .ReturnsAsync("# TestModule\nUser guide content");
+            .ReturnsAsync(new LLMResponse { Content = "# TestModule\nUser guide content", StrategyUsed = "Simple" });
 
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c);
@@ -71,11 +72,11 @@ public class WikiGenerationServiceAudienceTests
 
         // Assert
         // Verify prompt contains audience specific text
-        _mockLlmClient.Verify(x => x.ChatAsync(
+        _mockLlmFacade.Verify(x => x.ExecuteAsync(
             It.IsAny<string>(),
             It.Is<string>(p => p.Contains("QA Engineers") && p.Contains("Key Capabilities")),
             It.IsAny<List<ChatMessage>>(),
-            It.IsAny<string?>(),
+            It.IsAny<MessageCompositionOptions?>(),
             It.IsAny<CancellationToken>()), Times.Once);
 
         // Verify Deployment Diagram IS generated for User audience
@@ -98,9 +99,9 @@ public class WikiGenerationServiceAudienceTests
         var context = new ModulePageContext();
         var fileContents = new Dictionary<string, string> { { "File.cs", "content" } };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# TestModule\nUser guide content");
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# TestModule\nUser guide content", StrategyUsed = "Simple" });
 
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c);
@@ -151,14 +152,14 @@ public class WikiGenerationServiceAudienceTests
 
             // Setup LLM to capture prompt
             string? capturedPrompt = null;
-            _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                    It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-                .Callback<string, string, List<ChatMessage>, string?, CancellationToken>((sys, prompt, hist, model,
+            _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                    It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+                .Callback<string, string, List<ChatMessage>, MessageCompositionOptions?, CancellationToken>((sys, prompt, hist, options,
                     token) =>
                 {
                     capturedPrompt = prompt;
                 })
-                .ReturnsAsync("# Generated content");
+                .ReturnsAsync(new LLMResponse { Content = "# Generated content", StrategyUsed = "Simple" });
 
             _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
                 .Returns<string, string>((c, id) => c);
@@ -194,9 +195,9 @@ public class WikiGenerationServiceAudienceTests
         var context = new ModulePageContext();
         var fileContents = new Dictionary<string, string> { { "File.cs", "content" } };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# TestModule\nDev content");
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# TestModule\nDev content", StrategyUsed = "Simple" });
 
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c);
@@ -209,11 +210,11 @@ public class WikiGenerationServiceAudienceTests
 
         // Assert
         // Verify prompt contains Developer specific metrics
-        _mockLlmClient.Verify(x => x.ChatAsync(
+        _mockLlmFacade.Verify(x => x.ExecuteAsync(
             It.IsAny<string>(),
             It.Is<string>(p => p.Contains("Quality Metrics") && p.Contains("Cohesion")),
             It.IsAny<List<ChatMessage>>(),
-            It.IsAny<string?>(),
+            It.IsAny<MessageCompositionOptions?>(),
             It.IsAny<CancellationToken>()), Times.Once);
 
         // Verify attempt to generate diagrams (it tries, even if graph empty it calls BuildGraph, logic might skip actual diagram gen if node count 0 but intent is there)

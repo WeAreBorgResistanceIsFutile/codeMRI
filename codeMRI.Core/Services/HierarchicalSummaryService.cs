@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
@@ -27,12 +28,12 @@ public class HierarchicalSummaryService : IHierarchicalSummaryService
         @"\b(PostgreSQL|MySQL|MongoDB|Redis|RabbitMQ|Kafka|Elasticsearch|Stripe|Twilio|AWS|Azure|GCP|Docker|Kubernetes)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
     private readonly ILogger<HierarchicalSummaryService> _logger;
 
-    public HierarchicalSummaryService(ILLMClient llmClient, ILogger<HierarchicalSummaryService> logger)
+    public HierarchicalSummaryService(ILLMServiceFacade llmFacade, ILogger<HierarchicalSummaryService> logger)
     {
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
         _logger = logger;
     }
 
@@ -95,14 +96,14 @@ public class HierarchicalSummaryService : IHierarchicalSummaryService
 
         try
         {
-            var response = await _llmClient.ChatAsync(
-                "You are a technical documentation summarizer. Be extremely concise.",
-                prompt,
-                new List<ChatMessage>(),
-                null,
-                cancellationToken);
+            var llmResponse = await _llmFacade.ExecuteAsync(
+                systemPrompt: "You are a technical documentation summarizer. Be extremely concise.",
+                textToProcess: prompt,
+                history: null,
+                options: null,
+                cancellationToken: cancellationToken);
 
-            return ParseSummaryResponse(response, page, entities);
+            return ParseSummaryResponse(llmResponse.Content, page, entities);
         }
         catch (Exception ex)
         {

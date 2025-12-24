@@ -1,5 +1,6 @@
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -12,14 +13,14 @@ namespace codeMRI.Core.Services;
 /// </summary>
 public class DocumentationRevisionService : IDocumentationRevisionService
 {
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
     private readonly ILogger<DocumentationRevisionService> _logger;
     private readonly CodeWikiOptions _options;
 
-    public DocumentationRevisionService(ILLMClient llmClient, ILogger<DocumentationRevisionService> logger,
+    public DocumentationRevisionService(ILLMServiceFacade llmFacade, ILogger<DocumentationRevisionService> logger,
         IOptions<CodeWikiOptions> options)
     {
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
         _logger = logger;
         _options = options.Value;
     }
@@ -51,33 +52,17 @@ public class DocumentationRevisionService : IDocumentationRevisionService
         try
         {
             string revisedContent;
-            var maxCharLimit = (int)(_llmClient.ContextSize * 3.5);
-
             var systemPrompt = "You are an expert technical writer specializing in documentation refinement.";
 
-            if (prompt.Length > maxCharLimit)
-            {
-                _logger.LogInformation(
-                    "Revision prompt length ({Length}) exceeds threshold ({Threshold}). Using findings-based synthesis.",
-                    prompt.Length, maxCharLimit);
-                // We'll treat the prompt as the large content and use a minimal base prompt
-                revisedContent = await _llmClient.ChatWithFindingsAsync(
-                    systemPrompt,
-                    "Refine the following documentation based on the provided insights.",
-                    prompt,
-                    null,
-                    cancellationToken,
-                    _options.UseSemanticChunking);
-            }
-            else
-            {
-                revisedContent = await _llmClient.ChatAsync(
-                    systemPrompt,
-                    prompt,
-                    new List<ChatMessage>(),
-                    null,
-                    cancellationToken);
-            }
+            // Use facade to execute - it will automatically handle chunking if content is large
+            var llmResponse = await _llmFacade.ExecuteAsync(
+                systemPrompt: systemPrompt,
+                textToProcess: prompt,
+                history: null,
+                options: null,
+                cancellationToken: cancellationToken);
+            
+            revisedContent = llmResponse.Content;
 
             // Create revised page preserving metadata
             var revisedPage = new WikiPage

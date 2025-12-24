@@ -7,6 +7,8 @@ using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
+using codeMRI.Core.Services.MessageComposition;
+using codeMRI.Core.Services.MessageComposition.Strategies;
 using codeMRI.Visualization.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -19,6 +21,24 @@ public class WireUp
 {
     public static void Registered(IServiceCollection services, IConfiguration configuration)
     {
+        // LLM Services
+        services.AddSingleton<OllamaLLMService>();
+        services.AddSingleton<ILLMClient>(sp => sp.GetRequiredService<OllamaLLMService>());
+        services.AddSingleton<ILLMValidator>(sp => sp.GetRequiredService<OllamaLLMService>());
+
+        // Message Composition Strategies - Composition
+        services.AddSingleton<IMessageCompositionStrategy, SimpleMessageStrategy>();
+        services.AddSingleton<IMessageCompositionStrategy, RAGStrategy>();
+        services.AddSingleton<IMessageCompositionStrategy, MapReduceStrategy>();
+
+        // Message Composition Strategies - Iterative Execution
+        services.AddSingleton<IIterativeExecutionStrategy, ChunkingMessageStrategy>();
+        services.AddSingleton<IIterativeExecutionStrategy, MultiPassReductionStrategy>();
+
+        // Message Composition Orchestrator and Facade
+        services.AddSingleton<IMessageCompositionOrchestrator, MessageCompositionOrchestrator>();
+        services.AddSingleton<ILLMServiceFacade, LLMServiceFacade>();
+
         services.Configure<AgentSettings>(options =>
         {
             options.EnableDelegation = true;
@@ -74,7 +94,7 @@ public class WireUp
                 throw new InvalidOperationException("DocumentationModel is not configured in OllamaSettings.");
 
             return new WikiGenerationService(
-                sp.GetRequiredService<ILLMClient>(),
+                sp.GetRequiredService<ILLMServiceFacade>(),
                 sp.GetRequiredService<IDiagramGenerator>(),
                 sp.GetRequiredService<IEnhancedDependencyGraphService>(),
                 sp.GetRequiredService<IDocumentationSynthesisService>(),
@@ -121,7 +141,7 @@ public class WireUp
                 MinimumAgreementThreshold = ollamaSettings.ModelRouting.MinimumAgreementThreshold
             };
             return new MultiModelOrchestrationService(
-                sp.GetRequiredService<ILLMClient>(),
+                sp.GetRequiredService<ILLMServiceFacade>(),
                 sp.GetRequiredService<IModelRoutingService>(),
                 config,
                 sp.GetRequiredService<ILogger<MultiModelOrchestrationService>>(),

@@ -1,6 +1,8 @@
+using NUnit.Framework;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -13,15 +15,22 @@ public class DocumentationSynthesisServiceTests
     [SetUp]
     public void Setup()
     {
-        _mockLlmClient = new Mock<ILLMClient>();
-        _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
+        _mockLlmFacade = new Mock<ILLMServiceFacade>();
+        _mockValidator = new Mock<ILLMValidator>();
         _mockLogger = new Mock<ILogger<DocumentationSynthesisService>>();
 
+        _mockValidator.Setup(v => v.ContextSize).Returns(4096);
+
         var options = Options.Create(new CodeWikiOptions());
-        _service = new DocumentationSynthesisService(_mockLlmClient.Object, _mockLogger.Object, options);
+        _service = new DocumentationSynthesisService(
+            _mockLlmFacade.Object, 
+            _mockValidator.Object, 
+            _mockLogger.Object, 
+            options);
     }
 
-    private Mock<ILLMClient> _mockLlmClient;
+    private Mock<ILLMServiceFacade> _mockLlmFacade;
+    private Mock<ILLMValidator> _mockValidator;
     private Mock<ILogger<DocumentationSynthesisService>> _mockLogger;
     private DocumentationSynthesisService _service;
 
@@ -45,11 +54,11 @@ public class DocumentationSynthesisServiceTests
         };
 
         // Mock the LLM response for the ParentPageSynthesisPrompt
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.Is<string>(s => s.Contains("master software architect")),
                 It.Is<string>(s => s.Contains("PaymentSystem") && s.Contains("Child Modules")),
-                It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# PaymentSystem\n\nHigh level overview of the payment system architecture...");
+                It.IsAny<List<ChatMessage>>(), It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# PaymentSystem\n\nHigh level overview of the payment system architecture...", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.SynthesizeParentPageAsync(module, childPages);
@@ -61,10 +70,10 @@ public class DocumentationSynthesisServiceTests
         Assert.That(result.Content, Does.Contain("High level overview"));
 
         // Verify single LLM call was made (using ParentPageSynthesisPrompt)
-        _mockLlmClient.Verify(x => x.ChatAsync(
+        _mockLlmFacade.Verify(x => x.ExecuteAsync(
             It.IsAny<string>(),
             It.Is<string>(s => s.Contains("Child Modules")),
-            It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<List<ChatMessage>>(), It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -74,9 +83,9 @@ public class DocumentationSynthesisServiceTests
         var module = new ModuleNode { Id = "mod-empty", Name = "EmptyModule" };
         var childPages = new List<WikiPage>();
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# EmptyModule\n\nNo children detected for this module.");
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# EmptyModule\n\nNo children detected for this module.", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.SynthesizeParentPageAsync(module, childPages);
@@ -94,11 +103,11 @@ public class DocumentationSynthesisServiceTests
 
         var childPages = new List<WikiPage> { new() { Title = "Child", Content = "Content" } };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.Is<string>(p => p.Contains("Detected Pattern") && p.Contains("MVC")),
-                It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# Core\n\nThis module implements the MVC Pattern for clean separation of concerns.");
+                It.IsAny<List<ChatMessage>>(), It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# Core\n\nThis module implements the MVC Pattern for clean separation of concerns.", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.SynthesizeParentPageAsync(module, childPages);
@@ -119,11 +128,11 @@ public class DocumentationSynthesisServiceTests
 
         var childPages = new List<WikiPage> { new() { Title = "Component", Content = "Component content" } };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.Is<string>(p => p.Contains("Cohesion") && p.Contains("Coupling")),
-                It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# MetricsModule\n\nThis is a well-designed module with high cohesion.");
+                It.IsAny<List<ChatMessage>>(), It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# MetricsModule\n\nThis is a well-designed module with high cohesion.", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.SynthesizeParentPageAsync(module, childPages);
@@ -140,11 +149,9 @@ public class DocumentationSynthesisServiceTests
         var childPages = new List<WikiPage> { new() { Title = "Child", Content = "Content" } };
 
         // Simulate LLM returning content wrapped in markdown fences
-        _mockLlmClient.Setup(x => x.ChatAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("```markdown\n# CleanModule\n\nSome content here.\n```");
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<List<ChatMessage>>(), It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "```markdown\n# CleanModule\n\nSome content here.\n```", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.SynthesizeParentPageAsync(module, childPages);

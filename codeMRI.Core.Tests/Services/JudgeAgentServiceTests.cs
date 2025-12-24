@@ -1,6 +1,8 @@
+using NUnit.Framework;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -13,11 +15,10 @@ public class JudgeAgentServiceTests
     [SetUp]
     public void SetUp()
     {
-        _mockLLMClient = new Mock<ILLMClient>();
-        _mockLLMClient.Setup(x => x.ContextSize).Returns(4096);
+        _mockLLMFacade = new Mock<ILLMServiceFacade>();
         _mockLogger = new Mock<ILogger<IJudgeAgent>>();
         var options = Options.Create(new CodeWikiOptions());
-        _judgeAgentService = new JudgeAgentService(_mockLogger.Object, _mockLLMClient.Object, options);
+        _judgeAgentService = new JudgeAgentService(_mockLogger.Object, _mockLLMFacade.Object, options);
 
         _testPage = new WikiPage
         {
@@ -37,7 +38,7 @@ public class JudgeAgentServiceTests
         };
     }
 
-    private Mock<ILLMClient> _mockLLMClient;
+    private Mock<ILLMServiceFacade> _mockLLMFacade;
     private Mock<ILogger<IJudgeAgent>> _mockLogger;
     private JudgeAgentService _judgeAgentService;
     private WikiPage _testPage;
@@ -48,9 +49,9 @@ public class JudgeAgentServiceTests
     {
         // Arrange
         var mockResponse = "Yes. The documentation provides a system overview with clear explanations.";
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mockResponse, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -61,10 +62,10 @@ public class JudgeAgentServiceTests
         Assert.That(result.Reasoning,
             Is.EqualTo("The documentation provides a system overview with clear explanations."));
 
-        _mockLLMClient.Verify(x => x.ChatAsync(
+        _mockLLMFacade.Verify(x => x.ExecuteAsync(
             It.Is<string>(s => s.Contains("You are an expert technical documentation evaluator")),
             It.Is<string>(s => s.Contains(_testPage.Content) && s.Contains(_testRequirement.Description)),
-            It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<List<ChatMessage>>(), It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -72,9 +73,9 @@ public class JudgeAgentServiceTests
     {
         // Arrange
         var mockResponse = "No. The documentation is too brief and lacks comprehensive details.";
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mockResponse, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -91,9 +92,9 @@ public class JudgeAgentServiceTests
         // Arrange
         var mockResponse =
             "Partially yes. The documentation has some clear sections but overall lacks consistency. I would say 60% meets the requirement.";
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mockResponse, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -109,9 +110,9 @@ public class JudgeAgentServiceTests
         // Arrange
         var mockResponse =
             "The documentation meets about 75% of the requirement. Some sections are clear but others need improvement.";
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mockResponse, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -125,9 +126,9 @@ public class JudgeAgentServiceTests
     {
         // Arrange
         var mockResponse = "Score: 0.85. The documentation is very well written and comprehensive.";
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mockResponse, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -141,9 +142,9 @@ public class JudgeAgentServiceTests
     {
         // Arrange
         var mockResponse = "I am unable to evaluate this documentation.";
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mockResponse, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -157,9 +158,9 @@ public class JudgeAgentServiceTests
     public async Task EvaluateRequirementAsync_WithEmptyResponse_ReturnsDefaultScore()
     {
         // Arrange
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(string.Empty);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = string.Empty, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -189,8 +190,8 @@ public class JudgeAgentServiceTests
     {
         // Arrange
         var exception = new InvalidOperationException("LLM service unavailable");
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(exception);
 
         // Act
@@ -216,15 +217,15 @@ public class JudgeAgentServiceTests
     {
         // Arrange
         var mockResponse = "Yes, the requirement is met.";
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mockResponse, StrategyUsed = "Simple" });
 
         // Act
         await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
 
         // Assert
-        _mockLLMClient.Verify(x => x.ChatAsync(
+        _mockLLMFacade.Verify(x => x.ExecuteAsync(
             It.Is<string>(systemPrompt => systemPrompt.Contains("expert technical documentation evaluator") &&
                                           systemPrompt.Contains("binary decision")),
             It.Is<string>(userPrompt => userPrompt.Contains("Documentation Content:") &&
@@ -233,7 +234,7 @@ public class JudgeAgentServiceTests
                                         userPrompt.Contains(_testRequirement.Description) &&
                                         userPrompt.Contains("Answer with either") &&
                                         userPrompt.Contains("Yes")),
-            It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<List<ChatMessage>>(), It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -242,9 +243,9 @@ public class JudgeAgentServiceTests
         // Arrange
         var mockResponse =
             "The documentation scores 0.7, but some sections are 0.8 and others are 0.6. Overall it's good.";
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mockResponse, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -258,9 +259,9 @@ public class JudgeAgentServiceTests
     {
         // Arrange
         var mockResponse = "The documentation is perfect, I give it a score of 1.2 out of 1.0.";
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mockResponse, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -274,9 +275,9 @@ public class JudgeAgentServiceTests
     {
         // Arrange
         var mockResponse = "The documentation is terrible, I give it a score of -0.2.";
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mockResponse, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -295,9 +296,9 @@ public class JudgeAgentServiceTests
         double expectedScore)
     {
         // Arrange
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = response, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);
@@ -315,9 +316,9 @@ public class JudgeAgentServiceTests
         double expectedScore)
     {
         // Arrange
-        _mockLLMClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+        _mockLLMFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = response, StrategyUsed = "Simple" });
 
         // Act
         var result = await _judgeAgentService.EvaluateRequirementAsync(_testPage, _testRequirement);

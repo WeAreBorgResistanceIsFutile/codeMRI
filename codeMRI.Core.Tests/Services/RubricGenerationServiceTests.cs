@@ -1,6 +1,8 @@
+using NUnit.Framework;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -13,13 +15,12 @@ public class RubricGenerationServiceTests
     public void Setup()
     {
         _loggerMock = new Mock<ILogger<RubricGenerationService>>();
-        _llmClientMock = new Mock<ILLMClient>();
-        _llmClientMock.Setup(x => x.ContextSize).Returns(4096);
-        _service = new RubricGenerationService(_loggerMock.Object, _llmClientMock.Object);
+        _llmFacadeMock = new Mock<ILLMServiceFacade>();
+        _service = new RubricGenerationService(_loggerMock.Object, _llmFacadeMock.Object);
     }
 
     private Mock<ILogger<RubricGenerationService>> _loggerMock;
-    private Mock<ILLMClient> _llmClientMock;
+    private Mock<ILLMServiceFacade> _llmFacadeMock;
     private RubricGenerationService _service;
 
     [Test]
@@ -46,9 +47,9 @@ public class RubricGenerationServiceTests
     ]
 }";
 
-        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(json);
+        _llmFacadeMock.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = json, StrategyUsed = "Simple" });
 
         var structure = new WikiStructure();
         var repoInfo = new RepositoryInfo();
@@ -316,9 +317,9 @@ public class RubricGenerationServiceTests
     ]
 }";
 
-        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(largeJson);
+        _llmFacadeMock.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = largeJson, StrategyUsed = "Simple" });
 
         var structure = new WikiStructure();
         var repoInfo = new RepositoryInfo();
@@ -361,9 +362,9 @@ Here is the rubric you requested:
 I hope this helps!
 ";
 
-        _llmClientMock.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(dirtyJson);
+        _llmFacadeMock.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = dirtyJson, StrategyUsed = "Simple" });
 
         var structure = new WikiStructure();
         var repoInfo = new RepositoryInfo();

@@ -1,6 +1,8 @@
+using NUnit.Framework;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -12,13 +14,12 @@ public class HierarchicalSummaryServiceTests
     [SetUp]
     public void Setup()
     {
-        _mockLlmClient = new Mock<ILLMClient>();
-        _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
+        _mockLlmFacade = new Mock<ILLMServiceFacade>();
         _mockLogger = new Mock<ILogger<HierarchicalSummaryService>>();
-        _service = new HierarchicalSummaryService(_mockLlmClient.Object, _mockLogger.Object);
+        _service = new HierarchicalSummaryService(_mockLlmFacade.Object, _mockLogger.Object);
     }
 
-    private Mock<ILLMClient> _mockLlmClient;
+    private Mock<ILLMServiceFacade> _mockLlmFacade;
     private Mock<ILogger<HierarchicalSummaryService>> _mockLogger;
     private HierarchicalSummaryService _service;
 
@@ -120,13 +121,13 @@ public class HierarchicalSummaryServiceTests
             Content = "This module handles `PaymentService` operations."
         };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Handles payment processing.\n\nKey functions: ProcessPayment, RefundPayment");
+            .ReturnsAsync(new LLMResponse { Content = "Handles payment processing.\n\nKey functions: ProcessPayment, RefundPayment", StrategyUsed = "Simple" });
 
         // Act
         var summary = await _service.SummarizeModuleAsync(page);

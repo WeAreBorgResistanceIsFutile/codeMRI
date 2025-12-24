@@ -1,6 +1,8 @@
+using NUnit.Framework;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -15,21 +17,21 @@ public class WikiGenerationServiceTests
     [SetUp]
     public void Setup()
     {
-        _mockLlmClient = new Mock<ILLMClient>();
+        _mockLlmFacade = new Mock<ILLMServiceFacade>();
         _mockDiagramGenerator = new Mock<IDiagramGenerator>();
         _mockGraphService = new Mock<IEnhancedDependencyGraphService>();
         _mockLogger = new Mock<ILogger<WikiGenerationService>>();
         _mockSynthesisService = new Mock<IDocumentationSynthesisService>();
         _mockRefService = new Mock<IReferenceManagementService>();
 
-        _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
+
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
             .Returns<string, string>((c, id) => c!);
 
         var options = Options.Create(new CodeWikiOptions());
 
         _service = new WikiGenerationService(
-            _mockLlmClient!.Object,
+            _mockLlmFacade!.Object,
             _mockDiagramGenerator!.Object,
             _mockGraphService!.Object,
             _mockSynthesisService!.Object,
@@ -39,7 +41,7 @@ public class WikiGenerationServiceTests
             "dummy_model");
     }
 
-    private Mock<ILLMClient>? _mockLlmClient;
+    private Mock<ILLMServiceFacade>? _mockLlmFacade;
     private Mock<IDiagramGenerator>? _mockDiagramGenerator;
     private Mock<IEnhancedDependencyGraphService>? _mockGraphService;
     private Mock<IDocumentationSynthesisService>? _mockSynthesisService;
@@ -63,9 +65,9 @@ public class WikiGenerationServiceTests
         graph.AddNode("TestService", new NodeMetadata { Type = "Class" });
         graph.AddEdge("TestController", "TestService", EdgeType.Call, 1.0);
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# TestController\n\nThis is a test controller.");
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# TestController\n\nThis is a test controller.", StrategyUsed = "Simple" });
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph!);
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
@@ -120,9 +122,9 @@ public class WikiGenerationServiceTests
 
         var emptyGraph = new EnhancedDependencyGraph();
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# TestController\n\nThis is a test controller.");
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# TestController\n\nThis is a test controller.", StrategyUsed = "Simple" });
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(emptyGraph!);
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
@@ -214,9 +216,9 @@ public class WikiGenerationServiceTests
         var graph = new EnhancedDependencyGraph();
         graph.AddNode("TestController", new NodeMetadata { Type = "Class" });
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# TestController\n\nThis is a test controller.");
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# TestController\n\nThis is a test controller.", StrategyUsed = "Simple" });
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(graph!);
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
@@ -251,9 +253,9 @@ public class WikiGenerationServiceTests
         };
         var content = "TestController uses TestService.";
         var enrichedContent = "[TestController](...) uses [TestService](...).";
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(content);
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = content, StrategyUsed = "Simple" });
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnhancedDependencyGraph());
 
@@ -295,9 +297,9 @@ public class WikiGenerationServiceTests
                     x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(graph);
 
-            _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                    It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync("# Wiki Page");
+            _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                    It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new LLMResponse { Content = "# Wiki Page", StrategyUsed = "Simple" });
 
             _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
                 .Returns<string, string>((c, id) => c);
@@ -344,9 +346,9 @@ public class WikiGenerationServiceTests
             };
 
             // Setup mocks
-            _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                    It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync("# Wiki Page");
+            _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                    It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new LLMResponse { Content = "# Wiki Page", StrategyUsed = "Simple" });
             _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
                 .Returns<string, string>((c, id) => c);
 
@@ -356,11 +358,11 @@ public class WikiGenerationServiceTests
 
             // Assert
             // To verify it read the file, we check if the LLM prompt (which we can capture via Verify) contained the code.
-            _mockLlmClient.Verify(x => x.ChatAsync(
+            _mockLlmFacade.Verify(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.Is<string>(prompt => prompt.Contains(expectedContent)), // The crucial assertion
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()), Times.Once);
         }
         finally
@@ -382,9 +384,9 @@ public class WikiGenerationServiceTests
 
         var llmOutput = "```markdown\n\n# TestPage\n\nSome test content here.\n\n```";
 
-        _mockLlmClient.Setup(x => x.ChatAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(llmOutput);
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = llmOutput, StrategyUsed = "Simple" });
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnhancedDependencyGraph());
         _mockRefService.Setup(x => x.EnrichContentWithLinks(It.IsAny<string>(), It.IsAny<string>()))
@@ -425,9 +427,9 @@ public class WikiGenerationServiceTests
         Assert.That(result.RelevantFiles, Is.Empty);
 
         // Verify LLM was never called with empty content
-        _mockLlmClient.Verify(x => x.ChatAsync(
+        _mockLlmFacade.Verify(x => x.ExecuteAsync(
             It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(),
+            It.IsAny<List<ChatMessage>>(), It.IsAny<MessageCompositionOptions?>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -448,27 +450,27 @@ public class WikiGenerationServiceTests
 
         // Assert: Should return placeholder, not call LLM
         Assert.That(result.Content, Does.Contain("Documentation pending"));
-        _mockLlmClient.Verify(x => x.ChatAsync(
+        _mockLlmFacade.Verify(x => x.ExecuteAsync(
             It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(),
+            It.IsAny<List<ChatMessage>>(), It.IsAny<MessageCompositionOptions?>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
-    public async Task GeneratePageAsync_ShouldUseChatWithFindingsAsync_WhenContentIsLarge()
+    public async Task GeneratePageAsync_ShouldUseExecuteAsync_WhenContentIsLarge()
     {
         // Arrange
         var pageTitle = "LargeController";
         var fileName = "LargeController.cs";
         var filePaths = new List<string> { fileName };
 
-        // Create large content (> 15000 chars to exceed 4096 * 3.5 threshold)
+        // Create large content
         var largeContent = new string('a', 16000);
         var fileContents = new Dictionary<string, string> { { fileName, largeContent } };
 
-        _mockLlmClient.Setup(x => x.ChatWithFindingsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
-            .ReturnsAsync("# LargeController\n\nDocumentation for large controller.");
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# LargeController\n\nDocumentation for large controller.", StrategyUsed = "Chunking" });
 
         _mockGraphService.Setup(x => x.BuildGraphAsync(It.IsAny<List<CodeComponent>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EnhancedDependencyGraph());
@@ -480,16 +482,11 @@ public class WikiGenerationServiceTests
 
         // Assert
         Assert.That(result.Title, Is.EqualTo(pageTitle));
-        _mockLlmClient.Verify(x => x.ChatWithFindingsAsync(
-            It.IsAny<string>(),
+        _mockLlmFacade.Verify(x => x.ExecuteAsync(
             It.IsAny<string>(),
             It.Is<string>(c => c.Contains(largeContent)),
-            It.IsAny<string?>(),
-            It.IsAny<CancellationToken>(),
-            It.IsAny<bool>()), Times.Once);
-
-        _mockLlmClient.Verify(x => x.ChatAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<ChatMessage>>(),
-            It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<List<ChatMessage>>(),
+            It.IsAny<MessageCompositionOptions?>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

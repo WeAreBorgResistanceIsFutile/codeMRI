@@ -1,6 +1,7 @@
 using System.Text.Json;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
@@ -11,14 +12,14 @@ namespace codeMRI.Core.Services;
 /// </summary>
 public class NavigationStructureService : INavigationStructureService
 {
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
     private readonly ILogger<NavigationStructureService> _logger;
 
     public NavigationStructureService(
-        ILLMClient llmClient,
+        ILLMServiceFacade llmFacade,
         ILogger<NavigationStructureService> logger)
     {
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
         _logger = logger;
     }
 
@@ -34,13 +35,15 @@ public class NavigationStructureService : INavigationStructureService
             // Generate prompt
             var prompt = NavigationPromptTemplates.GenerateNavigationStructurePrompt(moduleTree, repositoryInfo);
 
-            // Call LLM
-            var response = await _llmClient.ChatAsync(
-                "You are a technical documentation architect specializing in creating user-friendly navigation structures.",
-                prompt,
-                new List<ChatMessage>(),
-                null,  // Use default model
-                cancellationToken);
+            // Call LLM via Facade
+            var llmResponse = await _llmFacade.ExecuteAsync(
+                systemPrompt: "You are a technical documentation architect specializing in creating user-friendly navigation structures.",
+                textToProcess: prompt,
+                history: null,
+                options: null,
+                cancellationToken: cancellationToken);
+
+            var response = llmResponse.Content;
 
             _logger.LogInformation("LLM Response (first 500 chars): {Response}", 
                 response.Length > 500 ? response.Substring(0, 500) + "..." : response);

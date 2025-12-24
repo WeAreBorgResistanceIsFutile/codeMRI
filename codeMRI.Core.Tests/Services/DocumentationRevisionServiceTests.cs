@@ -1,6 +1,8 @@
+using NUnit.Framework;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -13,15 +15,14 @@ public class DocumentationRevisionServiceTests
     [SetUp]
     public void Setup()
     {
-        _mockLlmClient = new Mock<ILLMClient>();
-        _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
+        _mockLlmFacade = new Mock<ILLMServiceFacade>();
         _mockLogger = new Mock<ILogger<DocumentationRevisionService>>();
 
         var options = Options.Create(new CodeWikiOptions());
-        _service = new DocumentationRevisionService(_mockLlmClient.Object, _mockLogger.Object, options);
+        _service = new DocumentationRevisionService(_mockLlmFacade.Object, _mockLogger.Object, options);
     }
 
-    private Mock<ILLMClient> _mockLlmClient;
+    private Mock<ILLMServiceFacade> _mockLlmFacade;
     private Mock<ILogger<DocumentationRevisionService>> _mockLogger;
     private DocumentationRevisionService _service;
 
@@ -57,14 +58,17 @@ public class DocumentationRevisionServiceTests
         };
 
         // Setup LLM to return revised content
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.Is<string>(p => p.Contains("DataModule") && p.Contains("Child Module Insights")),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(
-                "# DataModule\n\nThis module orchestrates data processing through InputValidator and DataTransformer components.");
+            .ReturnsAsync(new LLMResponse
+            {
+                Content = "# DataModule\n\nThis module orchestrates data processing through InputValidator and DataTransformer components.",
+                StrategyUsed = "Simple"
+            });
 
         // Act
         var result = await _service.ReviseParentDocumentationAsync(parentPage, parentModule, childPages);
@@ -98,11 +102,11 @@ public class DocumentationRevisionServiceTests
 
         // Assert
         Assert.That(result, Is.SameAs(parentPage)); // Returns same instance
-        _mockLlmClient.Verify(x => x.ChatAsync(
+        _mockLlmFacade.Verify(x => x.ExecuteAsync(
             It.IsAny<string>(),
             It.IsAny<string>(),
             It.IsAny<List<ChatMessage>>(),
-            It.IsAny<string?>(),
+            It.IsAny<MessageCompositionOptions?>(),
             It.IsAny<CancellationToken>()), Times.Never); // Never calls LLM
     }
 
@@ -124,11 +128,11 @@ public class DocumentationRevisionServiceTests
         };
 
         // Setup LLM to throw exception
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("LLM service unavailable"));
 
@@ -149,13 +153,13 @@ public class DocumentationRevisionServiceTests
         var childPages = new List<WikiPage> { new() { Title = "Child", Content = "Content" } };
 
         // LLM returns content wrapped in markdown fences
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("```markdown\n# CleanModule\n\nRevised content.\n```");
+            .ReturnsAsync(new LLMResponse { Content = "```markdown\n# CleanModule\n\nRevised content.\n```", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.ReviseParentDocumentationAsync(parentPage, parentModule, childPages);
@@ -178,13 +182,13 @@ public class DocumentationRevisionServiceTests
             new() { Title = "Child3", Content = "Content 3" }
         };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("# CountModule\n\nRevised with 3 children.");
+            .ReturnsAsync(new LLMResponse { Content = "# CountModule\n\nRevised with 3 children.", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.ReviseParentDocumentationAsync(parentPage, parentModule, childPages);

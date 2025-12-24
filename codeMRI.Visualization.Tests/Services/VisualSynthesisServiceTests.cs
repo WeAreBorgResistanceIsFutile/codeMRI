@@ -1,4 +1,5 @@
 using codeMRI.Core.Interfaces;
+using codeMRI.Core.Services.MessageComposition;
 using codeMRI.Core.Models;
 using codeMRI.Visualization.Services;
 using Moq;

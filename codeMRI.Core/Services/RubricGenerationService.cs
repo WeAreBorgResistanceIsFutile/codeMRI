@@ -2,21 +2,22 @@ using System.Text.Json;
 using codeMRI.Core.Converters;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services;
 
 public class RubricGenerationService : IRubricGenerationService
 {
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
     private readonly ILogger<RubricGenerationService> _logger;
 
     public RubricGenerationService(
         ILogger<RubricGenerationService> logger,
-        ILLMClient llmClient)
+        ILLMServiceFacade llmFacade)
     {
         _logger = logger;
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
     }
 
     public async Task<EvaluationRubric> GenerateRubricAsync(
@@ -28,10 +29,14 @@ public class RubricGenerationService : IRubricGenerationService
 
         var prompt = BuildRubricGenerationPrompt(documentationStructure, repositoryInfo);
 
-        var response = await _llmClient.ChatAsync("You are a documentation evaluation assistant.", prompt,
-            new List<ChatMessage>(),
-            null,
-            cancellationToken);
+        var llmResponse = await _llmFacade.ExecuteAsync(
+            systemPrompt: "You are a documentation evaluation assistant.",
+            textToProcess: prompt,
+            history: null,
+            options: null,
+            cancellationToken: cancellationToken);
+        
+        var response = llmResponse.Content;
 
         var rubric = ParseRubricFromResponse(response);
 

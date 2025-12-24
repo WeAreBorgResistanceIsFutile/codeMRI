@@ -2,6 +2,7 @@ using System.Text;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
+using codeMRI.Core.Services.MessageComposition;
 // For PromptTemplates
 
 namespace codeMRI.Visualization.Services;
@@ -12,12 +13,12 @@ namespace codeMRI.Visualization.Services;
 public class DiagramGeneratorService : IDiagramGenerator
 {
     private readonly HttpClient _httpClient;
-    private readonly ILLMClient _llmClient;
+    private readonly ILLMServiceFacade _llmFacade;
 
-    public DiagramGeneratorService(HttpClient httpClient, ILLMClient llmClient)
+    public DiagramGeneratorService(HttpClient httpClient, ILLMServiceFacade llmFacade)
     {
         _httpClient = httpClient;
-        _llmClient = llmClient;
+        _llmFacade = llmFacade;
     }
 
     public async Task<string> GenerateDeploymentDiagramAsync(ModuleNode module, EnhancedDependencyGraph graph)
@@ -30,7 +31,13 @@ public class DiagramGeneratorService : IDiagramGenerator
         // WikiGenerationService uses "_documentationModel" configuration.
         // Here we might just pass null to use default.
 
-        var content = await _llmClient.ChatAsync("", prompt, new List<ChatMessage>());
+        var llmResponse = await _llmFacade.ExecuteAsync(
+            systemPrompt: "",
+            textToProcess: prompt,
+            history: null,
+            options: null);
+        
+        var content = llmResponse.Content;
 
         // Extract mermaid code block
         return ExtractMermaidCode(content);

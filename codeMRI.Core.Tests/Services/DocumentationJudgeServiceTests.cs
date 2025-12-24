@@ -1,7 +1,9 @@
 using System.Diagnostics.Metrics;
+using NUnit.Framework;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -13,8 +15,7 @@ public class DocumentationJudgeServiceTests
     [SetUp]
     public void Setup()
     {
-        _mockLlmClient = new Mock<ILLMClient>();
-        _mockLlmClient.Setup(x => x.ContextSize).Returns(4096);
+        _mockLlmFacade = new Mock<ILLMServiceFacade>();
         _mockLogger = new Mock<ILogger<DocumentationJudgeService>>();
         _mockMeterFactory = new Mock<IMeterFactory>();
         _mockPromptBuilder = new Mock<IEvaluationPromptBuilder>();
@@ -36,13 +37,13 @@ public class DocumentationJudgeServiceTests
 
         _service = new DocumentationJudgeService(
             _mockLogger.Object,
-            _mockLlmClient.Object,
+            _mockLlmFacade.Object,
             _mockMeterFactory.Object,
             _mockPromptBuilder.Object,
             _mockRagPromptBuilder.Object);
     }
 
-    private Mock<ILLMClient> _mockLlmClient;
+    private Mock<ILLMServiceFacade> _mockLlmFacade;
     private Mock<ILogger<DocumentationJudgeService>> _mockLogger;
     private Mock<IMeterFactory> _mockMeterFactory;
     private Mock<IEvaluationPromptBuilder> _mockPromptBuilder;
@@ -60,29 +61,31 @@ public class DocumentationJudgeServiceTests
         var structure = new WikiStructure();
         var judgeModels = new List<string> { "model-a", "model-b" };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": 0.8, \"reasoning\": \"Good\"}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": 0.8, \"reasoning\": \"Good\"}", StrategyUsed = "Simple" });
 
         // Act
         await _service.EvaluateRequirementsAsync(requirements, structure, judgeModels);
 
         // Assert
-        _mockLlmClient.Verify(x => x.ChatAsync(
+        _mockLlmFacade.Verify(x => x.ExecuteAsync(
             It.IsAny<string>(),
             It.IsAny<string>(),
             It.IsAny<List<ChatMessage>>(),
-            "model-a", It.IsAny<CancellationToken>()), Times.Once, "Should call ChatAsync with model-a");
+            It.Is<MessageCompositionOptions>(o => o.ModelName == "model-a"),
+            It.IsAny<CancellationToken>()), Times.Once, "Should call ExecuteAsync with model-a");
 
-        _mockLlmClient.Verify(x => x.ChatAsync(
+        _mockLlmFacade.Verify(x => x.ExecuteAsync(
             It.IsAny<string>(),
             It.IsAny<string>(),
             It.IsAny<List<ChatMessage>>(),
-            "model-b", It.IsAny<CancellationToken>()), Times.Once, "Should call ChatAsync with model-b");
+            It.Is<MessageCompositionOptions>(o => o.ModelName == "model-b"),
+            It.IsAny<CancellationToken>()), Times.Once, "Should call ExecuteAsync with model-b");
     }
 
     [Test]
@@ -94,13 +97,13 @@ public class DocumentationJudgeServiceTests
         var jsonContent = "{\"score\": 0.9, \"reasoning\": \"Excellent\", \"evidence\": []}";
         var markdownResponse = $"```json\n{jsonContent}\n```";
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(markdownResponse);
+            .ReturnsAsync(new LLMResponse { Content = markdownResponse, StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.EvaluateRequirementAsync(requirement, structure);
@@ -116,13 +119,13 @@ public class DocumentationJudgeServiceTests
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
         var structure = new WikiStructure();
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": -0.5, \"reasoning\": \"Test\"}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": -0.5, \"reasoning\": \"Test\"}", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.EvaluateRequirementAsync(requirement, structure);
@@ -137,13 +140,13 @@ public class DocumentationJudgeServiceTests
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
         var structure = new WikiStructure();
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": 1.5, \"reasoning\": \"Test\"}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": 1.5, \"reasoning\": \"Test\"}", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.EvaluateRequirementAsync(requirement, structure);
@@ -158,13 +161,13 @@ public class DocumentationJudgeServiceTests
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
         var structure = new WikiStructure();
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": 0.8}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": 0.8}", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.EvaluateRequirementAsync(requirement, structure);
@@ -180,13 +183,13 @@ public class DocumentationJudgeServiceTests
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
         var structure = new WikiStructure();
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": 0.8, \"reasoning\": \"Good\"}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": 0.8, \"reasoning\": \"Good\"}", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.EvaluateRequirementAsync(requirement, structure);
@@ -207,29 +210,29 @@ public class DocumentationJudgeServiceTests
         var structure = new WikiStructure();
         var judgeModels = new List<string> { "model-a", "model-b", "model-c" };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                "model-a",
+                It.Is<MessageCompositionOptions>(o => o.ModelName == "model-a"),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": 0.8, \"reasoning\": \"Good\"}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": 0.8, \"reasoning\": \"Good\"}", StrategyUsed = "Simple" });
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                "model-b",
+                It.Is<MessageCompositionOptions>(o => o.ModelName == "model-b"),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Model unavailable"));
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                "model-c",
+                It.Is<MessageCompositionOptions>(o => o.ModelName == "model-c"),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": 0.9, \"reasoning\": \"Excellent\"}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": 0.9, \"reasoning\": \"Excellent\"}", StrategyUsed = "Simple" });
 
         // Act
         var results = await _service.EvaluateRequirementsAsync(requirements, structure, judgeModels);
@@ -250,29 +253,29 @@ public class DocumentationJudgeServiceTests
         var structure = new WikiStructure();
         var judgeModels = new List<string> { "model-a", "model-b", "model-c" };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                "model-a",
+                It.Is<MessageCompositionOptions>(o => o.ModelName == "model-a"),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": 0.6, \"reasoning\": \"OK\"}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": 0.6, \"reasoning\": \"OK\"}", StrategyUsed = "Simple" });
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                "model-b",
+                It.Is<MessageCompositionOptions>(o => o.ModelName == "model-b"),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": 0.8, \"reasoning\": \"Good\"}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": 0.8, \"reasoning\": \"Good\"}", StrategyUsed = "Simple" });
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                "model-c",
+                It.Is<MessageCompositionOptions>(o => o.ModelName == "model-c"),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": 1.0, \"reasoning\": \"Perfect\"}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": 1.0, \"reasoning\": \"Perfect\"}", StrategyUsed = "Simple" });
 
         // Act
         var results = await _service.EvaluateRequirementsAsync(requirements, structure, judgeModels);
@@ -294,13 +297,13 @@ public class DocumentationJudgeServiceTests
         var response =
             "Here's my analysis:\n```json\n{\"score\": 0.85, \"reasoning\": \"First JSON\"}\n```\nAnd another:\n```json\n{\"other\": \"data\"}\n```";
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+            .ReturnsAsync(new LLMResponse { Content = response, StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.EvaluateRequirementAsync(requirement, structure);
@@ -315,13 +318,13 @@ public class DocumentationJudgeServiceTests
         // Arrange
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
         var structure = new WikiStructure();
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{invalid json syntax}}");
+            .ReturnsAsync(new LLMResponse { Content = "{invalid json syntax}}", StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.EvaluateRequirementAsync(requirement, structure);
@@ -340,13 +343,13 @@ public class DocumentationJudgeServiceTests
         var response =
             "Okay, I have analyzed the documentation. Here is the JSON you requested:\n\n{ \"score\": 0.95, \"reasoning\": \"Extremely clear\", \"evidence\": [] }\n\nHope this helps!";
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+            .ReturnsAsync(new LLMResponse { Content = response, StrategyUsed = "Simple" });
 
         // Act
         var result = await _service.EvaluateRequirementAsync(requirement, structure);
@@ -368,13 +371,13 @@ public class DocumentationJudgeServiceTests
         var structure = new WikiStructure();
         var judgeModels = new List<string> { "model-a" };
 
-        _mockLlmClient.Setup(x => x.ChatAsync(
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<List<ChatMessage>>(),
-                It.IsAny<string?>(),
+                It.IsAny<MessageCompositionOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"score\": 0.9, \"reasoning\": \"Fast\"}");
+            .ReturnsAsync(new LLMResponse { Content = "{\"score\": 0.9, \"reasoning\": \"Fast\"}", StrategyUsed = "Simple" });
 
         // Act
         var results = await _service.EvaluateRequirementsAsync(requirements, structure, judgeModels, 2);
