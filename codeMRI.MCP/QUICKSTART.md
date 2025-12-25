@@ -31,7 +31,34 @@ Starting initial repository indexing...
 
 Wait for indexing to complete (usually 10-30 seconds for medium repos).
 
-### 3. Configure Claude Desktop
+### 3. Configure Your AI Assistant
+
+#### Option A: Antigravity (Recommended for Docker)
+
+Add to your `antigravity_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "codeMRI": {
+      "url": "http://localhost:8080/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+Then start with Docker:
+
+```bash
+# Start all services including MCP server
+docker compose up -d
+
+# Verify MCP server is running
+docker compose ps mcp-server
+```
+
+#### Option B: Claude Desktop (Local Development)
 
 Edit your Claude Desktop config file:
 

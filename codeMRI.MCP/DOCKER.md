@@ -1,5 +1,23 @@
 # codeMRI MCP Server - Docker Usage
 
+## Streamable HTTP Transport
+
+The MCP server uses **Streamable HTTP transport** when running in Docker, which is required for containerized deployments.
+
+### Why HTTP Transport?
+
+- **stdio doesn't work in containers**: Standard input/output transport requires direct process access
+- **Network accessibility**: HTTP allows remote AI assistants to connect
+- **Multiple clients**: Supports concurrent connections from different AI assistants
+
+### Endpoint
+
+When running via docker-compose, the MCP server is available at:
+
+```
+http://localhost:8080/mcp
+```
+
 ## Building the Image
 
 ```bash
@@ -37,6 +55,7 @@ docker run -it --rm \
 - `AST_SERVICE_URL`: AST service endpoint (default: `http://ast-service:3002`)
 - `UPDATE_STRATEGY`: Change detection strategy: `hybrid` or `polling` (default: `hybrid`)
 - `INDEX_ON_START`: Initial indexing on startup (default: `true`)
+- `TRANSPORT_MODE`: Transport mode: `http` for Streamable HTTP (default: `http`)
 
 ## Connecting from Claude Desktop
 
@@ -60,6 +79,44 @@ Update your Claude Desktop MCP config to use the Docker container:
   }
 }
 ```
+
+## Connecting from Antigravity
+
+Antigravity supports Streamable HTTP transport for Docker deployments.
+
+### Configuration
+
+Add to your `antigravity_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "codeMRI": {
+      "url": "http://localhost:8080/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+### Testing the Connection
+
+1. Start the MCP server:
+
+   ```bash
+   docker compose up -d
+   ```
+
+2. Verify it's running:
+
+   ```bash
+   docker compose ps mcp-server
+   docker compose logs -f mcp-server
+   ```
+
+3. Open Antigravity and try a query:
+   - "Find all references to `GraphIndexService`"
+   - "Show me the call hierarchy for `IndexRepositoryAsync`"
 
 ## View Logs
 

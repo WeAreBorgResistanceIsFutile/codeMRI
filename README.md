@@ -30,6 +30,86 @@
   - **Context Window Management**: Automatic validation to prevent exceeding LLM context limits
 - **Interactive Citations**: RAG responses include styled citation markers with hover popovers showing source document details
 
+## 🤖 MCP Server
+
+codeMRI includes a **Model Context Protocol (MCP) server** that exposes the codebase's AST graph to AI assistants like Antigravity and Claude Desktop, enabling intelligent code queries and navigation.
+
+### MCP Features
+
+- **7 Powerful Query Tools**:
+  - `find_references` - Find all references to a symbol (class, method, variable)
+  - `call_hierarchy` - Explore who calls a method and what it calls
+  - `find_implementations` - Discover all implementations of an interface or base class
+  - `query_dependencies` - Navigate component dependencies and dependents
+  - `type_hierarchy` - View inheritance relationships (ancestors/descendants)
+  - `semantic_search` - Search for code elements by name or description
+  - `refresh_graph` - Manually update the code graph
+
+- **4 Update Strategies**:
+  - **Event-driven**: Real-time updates via HTTP API integration
+  - **Polling**: Periodic file system scanning for changes
+  - **Hybrid**: FileSystemWatcher with automatic polling fallback
+  - **Manual**: Explicit refresh control via AI commands
+
+- **Streamable HTTP Transport**: Docker-compatible transport for containerized deployment
+- **Multi-Language Support**: C# (Roslyn) + JavaScript/Python/Go/Rust/Java (tree-sitter)
+- **Smart Query Gating**: Ensures queries only execute when index is ready and synchronized
+- **Incremental Updates**: Efficiently updates graph when files change
+
+### Quick Start with MCP
+
+#### Docker Deployment (Recommended)
+
+The MCP server is included in `docker-compose.yml`:
+
+```bash
+docker compose up -d
+```
+
+The server will be available at `http://localhost:8080` with Streamable HTTP transport.
+
+#### Antigravity Configuration
+
+Add to your `antigravity_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "codeMRI": {
+      "url": "http://localhost:8080/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+#### Claude Desktop Configuration
+
+For local development, add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "codeMRI": {
+      "command": "/path/to/codeMRI.MCP/bin/Debug/net10.0/codeMRI.MCP",
+      "args": ["--repository", "/path/to/your/repo"]
+    }
+  }
+}
+```
+
+#### Example Queries
+
+Once connected, ask your AI assistant:
+
+- "Find all references to `OllamaLLMService`"
+- "Show me the call hierarchy for `ChatAsync`"
+- "What classes implement `IASTServiceClient`?"
+- "Show dependencies for `GraphIndexService`"
+- "Search for 'message composition' in the codebase"
+
+See [codeMRI.MCP/README.md](codeMRI.MCP/README.md) for detailed documentation.
+
 ## 🏗️ Architecture
 
 codeMRI follows a clean architecture pattern with the following components:
@@ -44,6 +124,7 @@ codeMRI follows a clean architecture pattern with the following components:
 - **codeMRI.Frontend**: Blazor WebAssembly frontend
 - **codeMRI.CLI**: Command-line interface for headless operations
 - **codeMRI.ASTService**: Node.js-based AST parsing service
+- **codeMRI.MCP**: Model Context Protocol server for AI assistant integration
 
 ### External Services
 
@@ -104,6 +185,7 @@ You should see:
 - **code-mri-qdrant** on ports 6333 (HTTP) and 6334 (gRPC)
 - **code-mri-neo4j** on ports 7474 (HTTP) and 7687 (Bolt)
 - **code-mri-sqlite** (volume mount for database)
+- **code-mri-mcp-server** on port 8080 (Streamable HTTP MCP transport)
 
 ### 2. Start the Backend API
 
@@ -319,6 +401,12 @@ Edit `docker-compose.yml` to adjust resource limits, ports, or environment varia
 - **SQLite** (volume: `./data/sqlite`)
   - Lightweight Alpine container
   - Persistent storage for wiki and ingestion data
+- **MCP Server** (port 8080)
+  - Memory limit: 1GB
+  - Streamable HTTP transport for AI assistants
+  - Hybrid update strategy (FileSystemWatcher + polling fallback)
+  - Connects to AST service for multi-language parsing
+  - Index storage: `./data/codemri-index`
 
 ## 🧪 Testing
 
@@ -415,6 +503,22 @@ codeMRI/
   - Red-Green-Refactor cycle for all changes
   - Generic-to-specific test progression
   - High code quality and maintainability
+
+### MCP Server (December 2024)
+
+- **Model Context Protocol Integration**: Full MCP server implementation for AI assistants
+  - 7 query tools: find_references, call_hierarchy, find_implementations, query_dependencies, type_hierarchy, semantic_search, refresh_graph
+  - Smart query gating prevents stale results during indexing
+  - Multi-language support via Roslyn (C#) and tree-sitter (JS/Python/Go/Rust/Java)
+- **Update Strategies**: 4 change detection mechanisms
+  - Event-driven: Real-time updates via HTTP API
+  - Polling: Periodic file system scanning
+  - Hybrid: FileSystemWatcher with automatic fallback
+  - Manual: Explicit AI-controlled refresh
+- **Streamable HTTP Transport**: Docker-compatible transport for containerized deployment
+  - Enables integration with Antigravity and other MCP clients
+  - Health check endpoints for monitoring
+  - Network-accessible via docker-compose
 
 ## 🤝 Contributing
 

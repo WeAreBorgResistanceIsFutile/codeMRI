@@ -9,6 +9,7 @@ Model Context Protocol (MCP) server that provides AI assistants with powerful co
 - **Incremental Updates**: Efficiently updates the graph when files change
 - **Multi-Language Support**: C# (via Roslyn) and JavaScript/Python/Go/Rust/Java (via tree-sitter)
 - **Rich Query Tools**: Find references, call hierarchies, implementations, dependencies, and more
+- **Streamable HTTP Transport**: Docker-compatible HTTP transport for containerized deployment
 
 ## Installation
 
@@ -59,6 +60,50 @@ Add to your `claude_desktop_config.json`:
   }
 }
 ```
+
+## Streamable HTTP Transport
+
+The MCP server supports **Streamable HTTP transport** (MCP 2025-03-26 specification), which is essential for Docker deployments and integration with AI assistants like Antigravity.
+
+### Why Streamable HTTP?
+
+- **Docker Compatibility**: stdio transport doesn't work in containerized environments
+- **Network Accessibility**: Allows remote AI assistants to connect over HTTP
+- **Session Management**: Supports multiple concurrent client connections
+- **Standard Protocol**: Implements the official MCP Streamable HTTP specification
+
+### How It Works
+
+The transport uses a single `/mcp` endpoint with three HTTP methods:
+
+- **POST /mcp**: Send JSON-RPC messages (requests/notifications)
+- **GET /mcp**: Open Server-Sent Events (SSE) stream for server-to-client messages
+- **DELETE /mcp**: Terminate a session
+
+### Configuration
+
+The server automatically uses Streamable HTTP when running in Docker:
+
+```yaml
+# docker-compose.yml
+mcp-server:
+  ports:
+    - "8080:8080"  # HTTP endpoint
+  environment:
+    - TRANSPORT_MODE=http  # Use Streamable HTTP transport
+```
+
+### Endpoints
+
+- **MCP Endpoint**: `http://localhost:8080/mcp`
+- **Health Check**: `http://localhost:8080/health` (coming soon)
+
+### Session Management
+
+The transport supports both:
+
+1. **Session-based**: Client sends `Mcp-Session-Id` header after initialization
+2. **Standalone SSE**: Client opens SSE stream without prior session
 
 ## Repository Configuration
 
@@ -129,6 +174,71 @@ docker run -d --name mcp-server-project2 \
   codemri-mcp-server:latest
 ```
 
+### Antigravity Integration
+
+Antigravity is a powerful AI assistant that supports MCP via Streamable HTTP transport.
+
+#### Configuration
+
+Add to your `antigravity_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "codeMRI": {
+      "url": "http://localhost:8080/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+#### Docker Setup for Antigravity
+
+When using Docker, ensure the MCP server is accessible:
+
+```bash
+# Start all services including MCP server
+docker compose up -d
+
+# Verify MCP server is running
+docker compose ps mcp-server
+
+# Check logs
+docker compose logs -f mcp-server
+```
+
+The MCP server will be available at `http://localhost:8080/mcp`.
+
+#### Testing the Connection
+
+Once configured, test the connection in Antigravity:
+
+1. Open Antigravity
+2. The codeMRI MCP server should appear in available servers
+3. Try a query: "Find all references to `GraphIndexService`"
+4. You should see results from your codebase
+
+#### Troubleshooting
+
+**Connection Refused**:
+
+- Ensure Docker containers are running: `docker compose ps`
+- Check MCP server logs: `docker compose logs mcp-server`
+- Verify port 8080 is not in use: `lsof -i :8080`
+
+**No Results Returned**:
+
+- Wait for initial indexing to complete (check logs)
+- Try refreshing the graph: "Refresh the code graph"
+- Verify repository path is correct in docker-compose.yml
+
+**Session Errors**:
+
+- Restart the MCP server: `docker compose restart mcp-server`
+- Clear Antigravity's MCP cache
+- Check for network connectivity issues
+
 ## Configuration
 
 ### Command-Line Arguments
@@ -149,6 +259,8 @@ docker run -d --name mcp-server-project2 \
 If neither command-line argument nor environment variable is set, the server will index the current working directory.
 
 ## Available Tools
+
+All 7 tools are fully implemented and available:
 
 ### find_references
 
