@@ -9,7 +9,9 @@
         "--index-on-start",
         "false"
       ],
-      "env": {}
+      "env": {
+        "CODEMRI_REPO_PATH": "/Users/levente/AI/codeMRI"
+      }
     }
   }
 }

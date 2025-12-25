@@ -1,6 +1,7 @@
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace codeMRI.MCP.Services;
 
@@ -17,6 +18,10 @@ public class GraphIndexService
     private readonly Dictionary<string, List<ASTGraphNode>> _nodesByName = new();
     private readonly Dictionary<string, string> _fileToNodesMap = new(); // filePath -> comma-separated node IDs
 
+    private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = false };
+    private const string IndexFileName = "graph_index.json";
+    private const string IndexDirName = ".codemri";
+
     private readonly object _lock = new();
 
     public GraphIndexService(
@@ -32,6 +37,18 @@ public class GraphIndexService
     public async Task IndexRepositoryAsync(string repositoryPath)
     {
         _logger.LogInformation("Starting repository indexing: {RepositoryPath}", repositoryPath);
+
+        // Try to load existing index
+        var loaded = await LoadIndexAsync(repositoryPath);
+        if (loaded)
+        {
+            _logger.LogInformation("Loaded existing index from disk");
+            _indexState.MarkIndexingComplete();
+            // TODO: In a real implementation, we would scan for changes here (Incremental update)
+            // For now, we trust the loaded index but kick off a background update check
+            _ = Task.Run(() => UpdateIndexAsync(repositoryPath)); // Fire and forget update
+            return;
+        }
 
         var codeFiles = Directory.EnumerateFiles(repositoryPath, "*.*", SearchOption.AllDirectories)
             .Where(f => IsCodeFile(f))
@@ -59,9 +76,127 @@ public class GraphIndexService
         });
 
         _indexState.MarkIndexingComplete();
+        await SaveIndexAsync(repositoryPath);
 
         _logger.LogInformation("Repository indexing completed. {NodeCount} nodes, {EdgeCount} edges",
             _nodesById.Count, _incomingEdges.Values.Sum(e => e.Count));
+    }
+
+    public async Task UpdateIndexAsync(string repositoryPath)
+    {
+        _logger.LogInformation("Checking for updates in repository: {RepositoryPath}", repositoryPath);
+        var codeFiles = Directory.EnumerateFiles(repositoryPath, "*.*", SearchOption.AllDirectories)
+            .Where(f => IsCodeFile(f))
+            .ToList();
+        
+        // Simple incremental strategy: 
+        // 1. Identify new files
+        // 2. Identify deleted files (in index but not on disk)
+        // 3. Identify modified files (check timestamps? or just re-index all for now since we don't track timestamps yet)
+        
+        // For this iteration, we'll just check for missing files in index
+        var filesInIndex = _fileToNodesMap.Keys.ToHashSet();
+        var filesOnDisk = codeFiles.ToHashSet();
+
+        var newFiles = filesOnDisk.Except(filesInIndex).ToList();
+        var deletedFiles = filesInIndex.Except(filesOnDisk).ToList();
+
+        if (newFiles.Any() || deletedFiles.Any())
+        {
+            _logger.LogInformation("Found {New} new files and {Deleted} deleted files", newFiles.Count, deletedFiles.Count);
+            
+            if (deletedFiles.Any())
+            {
+                foreach (var file in deletedFiles) RemoveFileFromIndex(file);
+            }
+
+            if (newFiles.Any())
+            {
+                await UpdateFilesAsync(newFiles);
+            }
+            
+            await SaveIndexAsync(repositoryPath);
+        }
+        else 
+        {
+            _logger.LogInformation("Index is up to date (file list match).");
+        }
+    }
+
+    private async Task SaveIndexAsync(string repositoryPath)
+    {
+        try 
+        {
+            var indexDir = Path.Combine(repositoryPath, IndexDirName);
+            if (!Directory.Exists(indexDir)) Directory.CreateDirectory(indexDir);
+
+            var indexPath = Path.Combine(indexDir, IndexFileName);
+            
+            var data = new GraphIndexData
+            {
+                Nodes = _nodesById.Values.ToList(),
+                IncomingEdges = _incomingEdges,
+                OutgoingEdges = _outgoingEdges,
+                FileToNodesMap = _fileToNodesMap
+            };
+
+            var json = JsonSerializer.Serialize(data, _jsonOptions);
+            await File.WriteAllTextAsync(indexPath, json);
+            _logger.LogInformation("Index saved to {Path}", indexPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save index to disk");
+        }
+    }
+
+    private async Task<bool> LoadIndexAsync(string repositoryPath)
+    {
+        try
+        {
+            var indexPath = Path.Combine(repositoryPath, IndexDirName, IndexFileName);
+            if (!File.Exists(indexPath)) return false;
+
+            var json = await File.ReadAllTextAsync(indexPath);
+            var data = JsonSerializer.Deserialize<GraphIndexData>(json, _jsonOptions);
+
+            if (data == null) return false;
+
+            lock (_lock)
+            {
+                _nodesById.Clear();
+                _incomingEdges.Clear();
+                _outgoingEdges.Clear();
+                _nodesByName.Clear();
+                _fileToNodesMap.Clear();
+
+                foreach (var node in data.Nodes)
+                {
+                    _nodesById[node.Id] = node;
+                    if (!_nodesByName.ContainsKey(node.Id)) _nodesByName[node.Id] = new List<ASTGraphNode>();
+                    _nodesByName[node.Id].Add(node);
+                }
+
+                foreach (var kvp in data.IncomingEdges) _incomingEdges[kvp.Key] = kvp.Value;
+                foreach (var kvp in data.OutgoingEdges) _outgoingEdges[kvp.Key] = kvp.Value;
+                foreach (var kvp in data.FileToNodesMap) _fileToNodesMap[kvp.Key] = kvp.Value;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load index from disk");
+            return false;
+        }
+    }
+
+    private class GraphIndexData
+    {
+        public List<ASTGraphNode> Nodes { get; set; } = new();
+        public Dictionary<string, List<ASTGraphEdge>> IncomingEdges { get; set; } = new();
+        public Dictionary<string, List<ASTGraphEdge>> OutgoingEdges { get; set; } = new();
+        public Dictionary<string, string> FileToNodesMap { get; set; } = new();
     }
 
     public async Task UpdateFilesAsync(List<string> filePaths)

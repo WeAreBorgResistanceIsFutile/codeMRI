@@ -88,7 +88,7 @@ class Program
         {
             var httpPort = int.Parse(GetArgument(args, "--port", "8080"));
             services.AddSingleton<IMcpTransport>(sp => 
-                new HttpMcpTransport(sp.GetRequiredService<ILogger<HttpMcpTransport>>(), httpPort));
+                new StreamableHttpMcpTransport(sp.GetRequiredService<ILogger<StreamableHttpMcpTransport>>(), httpPort));
         }
         else
         {
