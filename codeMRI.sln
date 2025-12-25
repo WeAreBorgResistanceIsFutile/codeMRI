@@ -33,6 +33,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "codeMRI.Server.Tests", "cod
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "codeMRI.MCP", "codeMRI.MCP\codeMRI.MCP.csproj", "{70425C9E-24D2-4F8A-AB8D-108A2ABD4F97}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "codeMRI.MCP.Tests", "codeMRI.MCP.Tests\codeMRI.MCP.Tests.csproj", "{DB4DCE14-B3F6-443B-8466-832B3578E126}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -223,6 +225,18 @@ Global
 		{70425C9E-24D2-4F8A-AB8D-108A2ABD4F97}.Release|x64.Build.0 = Release|Any CPU
 		{70425C9E-24D2-4F8A-AB8D-108A2ABD4F97}.Release|x86.ActiveCfg = Release|Any CPU
 		{70425C9E-24D2-4F8A-AB8D-108A2ABD4F97}.Release|x86.Build.0 = Release|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Debug|x64.Build.0 = Debug|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Debug|x86.Build.0 = Debug|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Release|x64.ActiveCfg = Release|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Release|x64.Build.0 = Release|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Release|x86.ActiveCfg = Release|Any CPU
+		{DB4DCE14-B3F6-443B-8466-832B3578E126}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -4,6 +4,8 @@ using codeMRI.Infrastructure.Services;
 using codeMRI.MCP.Services;
 using codeMRI.MCP.Server;
 using codeMRI.MCP.UpdateStrategies;
+using codeMRI.Core.Services;
+using codeMRI.Agents.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -76,6 +78,9 @@ class Program
 
         // Register core services
         services.AddSingleton<ICSharpParser, RoslynCSharpParser>();
+        services.AddSingleton<IProgressService, ProgressService>();
+        services.AddSingleton<IComponentIdentificationService, ComponentIdentificationService>();
+        services.AddSingleton<IEnhancedDependencyGraphService, EnhancedDependencyGraphService>();
         services.AddSingleton<QueryEngine>();
         services.AddSingleton<IndexStateService>();
         services.AddSingleton<GraphIndexService>();

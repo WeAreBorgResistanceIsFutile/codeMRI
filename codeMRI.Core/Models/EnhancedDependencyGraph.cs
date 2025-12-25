@@ -67,6 +67,47 @@ public class EnhancedDependencyGraph
     {
         return _nodes.Values.Where(n => n.OutEdges.Count > threshold).Select(n => n.ComponentId);
     }
+
+    public void RemoveNodesByFilePath(string filePath)
+    {
+        var nodesToRemove = _nodes.Values
+            .Where(n => n.Metadata.FilePath != null && n.Metadata.FilePath.Equals(filePath, StringComparison.OrdinalIgnoreCase))
+            .Select(n => n.ComponentId)
+            .ToList();
+
+        foreach (var nodeId in nodesToRemove)
+        {
+            RemoveNode(nodeId);
+        }
+    }
+
+    public void RemoveNode(string nodeId)
+    {
+        if (_nodes.TryRemove(nodeId, out var node))
+        {
+            // Remove edges where this node is the source
+            foreach (var targetId in node.OutEdges)
+            {
+                if (_nodes.TryGetValue(targetId, out var targetNode))
+                {
+                    var remainingIn = targetNode.InEdges.Where(id => id != nodeId).ToList();
+                    targetNode.InEdges = new ConcurrentBag<string>(remainingIn);
+                }
+                _edges.TryRemove((nodeId, targetId), out _);
+            }
+
+            // Remove edges where this node is the target
+            foreach (var sourceId in node.InEdges)
+            {
+                if (_nodes.TryGetValue(sourceId, out var sourceNode))
+                {
+                    var remainingOut = sourceNode.OutEdges.Where(id => id != nodeId).ToList();
+                    sourceNode.OutEdges = new ConcurrentBag<string>(remainingOut);
+                }
+                _edges.TryRemove((sourceId, nodeId), out _);
+            }
+        }
+    }
 }
 
 public class GraphNode

@@ -99,6 +99,66 @@ public class RoslynCSharpParser : ICSharpParser
             base.VisitStructDeclaration(node);
         }
 
+        public override void VisitEnumDeclaration(EnumDeclarationSyntax node)
+        {
+            var enumName = node.Identifier.Text;
+            var previousClassName = _currentClassName;
+            _currentClassName = enumName;
+
+            // Create node for the enum
+            var typeNodeId = CreateNodeId(enumName);
+            GraphNodes.Add(new ASTGraphNode
+            {
+                Id = typeNodeId,
+                Type = "enums",
+                Language = "C#",
+                FilePath = _filePath,
+                Properties = new ASTNodeProperties()
+            });
+
+            var members = node.Members.ToList();
+            var memberNames = new List<string>();
+
+            foreach (var member in members)
+            {
+                var memberName = member.Identifier.Text;
+                memberNames.Add(memberName);
+                
+                // Create node for each enum member
+                var memberNodeId = CreateNodeId($"{enumName}.{memberName}");
+                GraphNodes.Add(new ASTGraphNode
+                {
+                    Id = memberNodeId,
+                    Type = "enum_member",
+                    Language = "C#",
+                    FilePath = _filePath,
+                    Properties = new ASTNodeProperties()
+                });
+
+                // Create edge from member to enum
+                GraphEdges.Add(new ASTGraphEdge
+                {
+                    Source = memberNodeId,
+                    Target = typeNodeId,
+                    Type = "contains",
+                    Subtype = "member_to_enum",
+                    TargetLanguage = "C#"
+                });
+            }
+
+            Classes.Add(new
+            {
+                Name = enumName,
+                Type = "Enum",
+                Metrics = new { Lines = node.GetText().Lines.Count, Complexity = 1 },
+                Methods = new List<string>(),
+                Properties = memberNames
+            });
+
+            _currentClassName = previousClassName;
+            base.VisitEnumDeclaration(node);
+        }
+
         private void ExtractTypeDeclaration(TypeDeclarationSyntax node, string typeDisplayName, string graphNodeType)
         {
             var className = node.Identifier.Text;
@@ -112,6 +172,7 @@ public class RoslynCSharpParser : ICSharpParser
                 Id = typeNodeId,
                 Type = graphNodeType,
                 Language = "C#",
+                FilePath = _filePath,
                 Properties = new ASTNodeProperties()
             });
 
@@ -130,6 +191,7 @@ public class RoslynCSharpParser : ICSharpParser
                     Id = methodNodeId,
                     Type = "functions",
                     Language = "C#",
+                    FilePath = _filePath,
                     Properties = new ASTNodeProperties()
                 });
 
@@ -159,6 +221,7 @@ public class RoslynCSharpParser : ICSharpParser
                     Id = propertyNodeId,
                     Type = "properties",
                     Language = "C#",
+                    FilePath = _filePath,
                     Properties = new ASTNodeProperties()
                 });
 

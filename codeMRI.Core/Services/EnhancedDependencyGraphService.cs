@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -641,6 +642,201 @@ public class EnhancedDependencyGraphService : IEnhancedDependencyGraphService
         if (currentPartition.Count > 0) result[$"partition_{partitionIndex}"] = new HashSet<string>(currentPartition);
 
         return await Task.FromResult(result);
+    }
+
+    public async Task IndexRepositoryAsync(string repositoryPath, EnhancedDependencyGraph graph, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Starting repository indexing: {RepositoryPath}", repositoryPath);
+
+        var codeFiles = Directory.EnumerateFiles(repositoryPath, "*.*", SearchOption.AllDirectories)
+            .Where(f => IsCodeFile(f))
+            .ToList();
+
+        _progressService.Report(new ProgressInfo
+        {
+            Phase = "Indexing",
+            Message = $"Found {codeFiles.Count} code files",
+            Percentage = 0
+        });
+
+        // Limit concurrency to prevent overloading AST service
+        var parallelOptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = 2,
+            CancellationToken = cancellationToken
+        };
+
+        var processed = 0;
+        var total = codeFiles.Count;
+        var allEdges = new ConcurrentBag<ASTGraphEdge>();
+
+        await Parallel.ForEachAsync(codeFiles, parallelOptions, async (file, ct) =>
+        {
+            try
+            {
+                var code = await File.ReadAllTextAsync(file, ct);
+                var language = GetLanguageFromExtension(file);
+
+                var parseResult = await _astServiceClient.ParseCodeAsync(code, language, file, ct);
+                if (parseResult != null)
+                {
+                    // Add nodes immediately
+                    if (parseResult.DependencyGraph?.Nodes != null)
+                    {
+                        foreach (var node in parseResult.DependencyGraph.Nodes)
+                        {
+                            var metadata = new NodeMetadata
+                            {
+                                Id = node.Id,
+                                Type = node.Type,
+                                Language = node.Language,
+                                FilePath = file,
+                                Properties = new Dictionary<string, object>
+                                {
+                                    ["Annotations"] = node.Properties?.Annotations ?? new List<string>(),
+                                    ["Decorators"] = node.Properties?.Decorators ?? new List<string>()
+                                },
+                                EstimatedTokens = code.Split('\n').Length * 1.3
+                            };
+                            graph.AddNode(node.Id, metadata);
+                        }
+                    }
+
+                    // Collect edges for later
+                    if (parseResult.DependencyGraph?.Edges != null)
+                    {
+                        foreach (var edge in parseResult.DependencyGraph.Edges)
+                        {
+                            allEdges.Add(edge);
+                        }
+                    }
+                }
+                
+                var current = Interlocked.Increment(ref processed);
+                if (total > 0)
+                {
+                    _progressService.Report(new ProgressInfo
+                    {
+                        Phase = "Indexing",
+                        Message = $"Analyzed {Path.GetFileName(file)}",
+                        Percentage = (int)((double)current / total * 100)
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to index file: {FilePath}", file);
+            }
+        });
+
+        _logger.LogInformation("Adding {EdgeCount} edges to graph", allEdges.Count);
+        foreach (var edge in allEdges)
+        {
+            if (Enum.TryParse<EdgeType>(edge.Type, true, out var type))
+                graph.AddEdge(edge.Source, edge.Target, type, 1.0);
+            else
+                graph.AddEdge(edge.Source, edge.Target, EdgeType.Dependency, 1.0);
+        }
+
+        _logger.LogInformation("Repository indexing completed. {NodeCount} nodes, {EdgeCount} edges",
+            graph.NodeCount, graph.EdgeCount);
+    }
+
+    public async Task IndexFileAsync(string filePath, EnhancedDependencyGraph graph, CancellationToken cancellationToken = default)
+    {
+        var code = await File.ReadAllTextAsync(filePath, cancellationToken);
+        var language = GetLanguageFromExtension(filePath);
+
+        var parseResult = await _astServiceClient.ParseCodeAsync(code, language, filePath, cancellationToken);
+        if (parseResult == null)
+        {
+            _logger.LogWarning("Failed to parse file: {FilePath}", filePath);
+            return;
+        }
+
+        // Remove old nodes associated with this file if they exist
+        graph.RemoveNodesByFilePath(filePath);
+
+        if (parseResult.DependencyGraph?.Nodes != null)
+        {
+            foreach (var node in parseResult.DependencyGraph.Nodes)
+            {
+                var metadata = new NodeMetadata
+                {
+                    Id = node.Id,
+                    Type = node.Type,
+                    Language = node.Language,
+                    FilePath = filePath,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["Annotations"] = node.Properties?.Annotations ?? new List<string>(),
+                        ["Decorators"] = node.Properties?.Decorators ?? new List<string>()
+                    },
+                    // We don't have full CodeComponent metrics here yet unless we estimate them
+                    EstimatedTokens = code.Split('\n').Length * 1.3 
+                };
+                graph.AddNode(node.Id, metadata);
+            }
+        }
+
+        if (parseResult.DependencyGraph?.Edges != null)
+        {
+            foreach (var edge in parseResult.DependencyGraph.Edges)
+            {
+                if (Enum.TryParse<EdgeType>(edge.Type, true, out var type))
+                {
+                    graph.AddEdge(edge.Source, edge.Target, type, 1.0);
+                }
+                else
+                {
+                    graph.AddEdge(edge.Source, edge.Target, EdgeType.Dependency, 1.0);
+                }
+            }
+        }
+    }
+
+    private static bool IsCodeFile(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return false;
+        if (ShouldIgnorePath(filePath)) return false;
+
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        return extension is ".cs" or ".js" or ".ts" or ".py" or ".go" or ".rs" or ".java" or ".cpp" or ".c" or ".h";
+    }
+
+    private static bool ShouldIgnorePath(string filePath)
+    {
+        var segments = filePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return segments.Any(s =>
+            s.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals(".vs", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals(".idea", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("dist", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("build", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("coverage", StringComparison.OrdinalIgnoreCase) ||
+            s.StartsWith("."));
+    }
+
+    private static string GetLanguageFromExtension(string filePath)
+    {
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        return extension switch
+        {
+            ".cs" => "C#",
+            ".js" => "JavaScript",
+            ".ts" => "TypeScript",
+            ".py" => "Python",
+            ".go" => "Go",
+            ".rs" => "Rust",
+            ".java" => "Java",
+            ".cpp" or ".cc" or ".cxx" => "C++",
+            ".c" => "C",
+            ".h" or ".hpp" => "C++",
+            _ => "Unknown"
+        };
     }
 
     private string ExtractDirectoryName(string filePath)

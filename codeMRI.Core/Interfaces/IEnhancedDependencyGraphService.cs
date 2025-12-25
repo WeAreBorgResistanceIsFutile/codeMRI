@@ -26,4 +26,8 @@ public interface IEnhancedDependencyGraphService
 
     Task<Dictionary<string, HashSet<string>>> PartitionByDirectoryStructureAsync(EnhancedDependencyGraph graph,
         CancellationToken cancellationToken = default);
+    
+    Task IndexRepositoryAsync(string repositoryPath, EnhancedDependencyGraph graph, CancellationToken cancellationToken = default);
+    
+    Task IndexFileAsync(string filePath, EnhancedDependencyGraph graph, CancellationToken cancellationToken = default);
 }

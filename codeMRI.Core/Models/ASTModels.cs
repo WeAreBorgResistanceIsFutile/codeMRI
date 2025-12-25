@@ -25,6 +25,7 @@ public class ASTGraphNode
     public string Id { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public string Language { get; set; } = string.Empty;
+    public string FilePath { get; set; } = string.Empty;
     public ASTNodeProperties Properties { get; set; } = new();
 }
 
