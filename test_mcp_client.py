@@ -82,7 +82,7 @@ def run_test():
         call_msg = create_message("tools/call", {
             "name": "find_references",
             "arguments": {
-                "symbolName": "GraphIndexService"
+                "symbol": "GraphIndexService"  # Fixed: was symbolName, should be symbol
             }
         }, 3)
         process.stdin.write(json.dumps(call_msg) + "\n")
