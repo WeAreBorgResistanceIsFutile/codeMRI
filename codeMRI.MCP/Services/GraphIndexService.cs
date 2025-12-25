@@ -229,7 +229,10 @@ public class GraphIndexService
     public List<ASTGraphNode> FindNodesByName(string name)
     {
         return _graph.GetNodes()
-            .Where(n => n.ComponentId.Equals(name, StringComparison.OrdinalIgnoreCase))
+            .Where(n => 
+                n.ComponentId.Equals(name, StringComparison.OrdinalIgnoreCase) ||
+                n.ComponentId.EndsWith($"::{name}", StringComparison.OrdinalIgnoreCase) ||
+                n.ComponentId.EndsWith($".{name}", StringComparison.OrdinalIgnoreCase))
             .Select(MapToASTNode)
             .ToList();
     }
