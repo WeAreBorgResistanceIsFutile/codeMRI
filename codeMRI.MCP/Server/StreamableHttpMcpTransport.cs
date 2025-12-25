@@ -201,6 +201,7 @@ public class StreamableHttpMcpTransport : IMcpTransport
 
     /// <summary>
     /// GET /mcp - Opens an SSE stream for server-to-client messages
+    /// Supports both session-based and standalone SSE streams per MCP 2025-03-26
     /// </summary>
     private async Task HandleGetAsync(HttpContext context)
     {
@@ -212,10 +213,24 @@ public class StreamableHttpMcpTransport : IMcpTransport
         }
 
         var sessionId = context.Request.Headers["Mcp-Session-Id"].ToString();
-        if (string.IsNullOrEmpty(sessionId) || !_sessions.TryGetValue(sessionId, out var session))
+        StreamableSession? session = null;
+
+        if (!string.IsNullOrEmpty(sessionId))
         {
-            context.Response.StatusCode = 400;
-            return;
+            // Existing session
+            if (!_sessions.TryGetValue(sessionId, out session))
+            {
+                context.Response.StatusCode = 404; // Session not found
+                return;
+            }
+        }
+        else
+        {
+            // Standalone SSE stream - create ephemeral session
+            sessionId = Guid.NewGuid().ToString();
+            session = new StreamableSession { SessionId = sessionId };
+            _sessions.TryAdd(sessionId, session);
+            _logger.LogInformation("Created standalone SSE session: {SessionId}", sessionId);
         }
 
         _logger.LogInformation("GET /mcp SSE stream opened for session: {SessionId}", sessionId);
@@ -223,6 +238,7 @@ public class StreamableHttpMcpTransport : IMcpTransport
         context.Response.ContentType = "text/event-stream";
         context.Response.Headers.CacheControl = "no-cache";
         context.Response.Headers.Connection = "keep-alive";
+        context.Response.Headers["Mcp-Session-Id"] = sessionId;
         await context.Response.Body.FlushAsync();
 
         try

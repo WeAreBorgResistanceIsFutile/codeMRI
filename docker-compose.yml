@@ -90,6 +90,7 @@ services:
       - "8080:8080"  # HTTP MCP server
     volumes:
       - .:/repository:ro  # Mount repository as read-only
+      - ./data/codemri-index:/repository/.codemri:rw  # Writable index directory
     environment:
       - CODEMRI_REPO_PATH=/repository
       - AST_SERVICE_URL=http://ast-service:3002
