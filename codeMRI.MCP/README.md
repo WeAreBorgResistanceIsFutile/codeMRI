@@ -60,6 +60,75 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
+## Repository Configuration
+
+### Docker Setup (Recommended)
+
+By default, **the MCP server analyzes the codeMRI repository itself** (the directory where `docker-compose.yml` is located).
+
+#### How It Works
+
+The repository is configured via Docker volume mount in `docker-compose.yml`:
+
+```yaml
+mcp-server:
+  volumes:
+    - .:/repository:ro  # Current directory mounted as /repository
+  environment:
+    - CODEMRI_REPO_PATH=/repository
+```
+
+**What this means:**
+
+- `.` = Current directory (where docker-compose.yml lives)
+- Mounted at `/repository` inside the container (read-only for safety)
+- `CODEMRI_REPO_PATH` environment variable tells the server where to look
+
+#### Analyzing a Different Repository
+
+**Method 1: Modify docker-compose.yml**
+
+Edit the mcp-server volume:
+
+```yaml
+volumes:
+  - /absolute/path/to/your/repo:/repository:ro
+```
+
+Then restart:
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+**Method 2: Run Standalone Container**
+
+```bash
+docker run -it --rm \
+  -v "/path/to/your/repo:/repository:ro" \
+  -e CODEMRI_REPO_PATH=/repository \
+  -e AST_SERVICE_URL=http://host.docker.internal:3000 \
+  --network code-mri-network \
+  codemri-mcp-server:latest
+```
+
+**Method 3: Multiple Repositories**
+
+Run multiple MCP server containers, each analyzing a different repo:
+
+```bash
+# Server 1 - codeMRI itself (via docker-compose)
+docker compose up -d
+
+# Server 2 - Another repo
+docker run -d --name mcp-server-project2 \
+  -v "/path/to/project2:/repository:ro" \
+  -e CODEMRI_REPO_PATH=/repository \
+  --network code-mri-network \
+  codemri-mcp-server:latest
+```
+
 ## Configuration
 
 ### Command-Line Arguments
