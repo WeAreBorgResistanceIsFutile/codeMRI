@@ -38,6 +38,8 @@
 /codeMRI.Server/logs/
 /codeMRI.CLI/bin/
 /codeMRI.CLI/obj/
+/codeMRI.MCP/bin/
+/codeMRI.MCP/obj/
 /md/
 /TestResults/
 ./codemri_cli.db

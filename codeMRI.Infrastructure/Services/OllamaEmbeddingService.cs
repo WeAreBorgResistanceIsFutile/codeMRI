@@ -30,24 +30,22 @@ public class OllamaEmbeddingService : IEmbeddingService
 
     public async Task<float[]> GetEmbeddingAsync(string text)
     {
-        try
+        var response = await _httpClient.PostAsJsonAsync("/api/embeddings", new
         {
-            var response = await _httpClient.PostAsJsonAsync("/api/embeddings", new
-            {
-                model = _options.EmbeddingModel,
-                prompt = text
-            });
+            model = _options.EmbeddingModel,
+            prompt = text
+        });
 
-            response.EnsureSuccessStatusCode();
-            var result = await response.Content.ReadFromJsonAsync<OllamaEmbeddingResponse>();
-            
-            return result?.Embedding ?? Array.Empty<float>();
-        }
-        catch (Exception ex)
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<OllamaEmbeddingResponse>();
+        
+        if (result?.Embedding == null || result.Embedding.Length == 0)
         {
-            _logger.LogError(ex, "Failed to get embedding from Ollama for model {Model}", _options.EmbeddingModel);
-            return Array.Empty<float>();
+            _logger.LogError("Ollama returned null or empty embedding for model {Model}", _options.EmbeddingModel);
+            throw new InvalidOperationException($"Ollama returned null or empty embedding for model {_options.EmbeddingModel}");
         }
+
+        return result.Embedding;
     }
 
     public async Task<List<float[]>> GetEmbeddingsAsync(List<string> texts)
