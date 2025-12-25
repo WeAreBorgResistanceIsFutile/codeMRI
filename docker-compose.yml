@@ -80,6 +80,31 @@ services:
         limits:
           memory: 512M
 
+  mcp-server:
+    build:
+      context: .
+      dockerfile: codeMRI.MCP/Dockerfile
+    image: codemri-mcp-server:latest
+    container_name: code-mri-mcp-server
+    volumes:
+      - .:/repository:ro  # Mount repository as read-only
+    environment:
+      - CODEMRI_REPO_PATH=/repository
+      - AST_SERVICE_URL=http://ast-service:3002
+      - UPDATE_STRATEGY=hybrid
+      - INDEX_ON_START=true
+    depends_on:
+      - ast-service
+      - neo4j
+      - qdrant
+    restart: unless-stopped
+    stdin_open: true  # Required for MCP stdio communication
+    tty: true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
 networks:
   default:
     name: code-mri-network
