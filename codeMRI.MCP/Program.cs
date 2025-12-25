@@ -19,14 +19,21 @@ class Program
         // Parse arguments
         var repositoryPath = GetRepositoryPath(args);
         var indexOnStart = GetBoolArgument(args, "--index-on-start", true);
+        var transportMode = GetArgument(args, "--transport", "stdio");
+        var httpPort = int.Parse(GetArgument(args, "--port", "8080"));
 
         Console.Error.WriteLine("========================================");
         Console.Error.WriteLine("CodeMRI MCP Server");
         Console.Error.WriteLine($"Repository: {repositoryPath}");
+        Console.Error.WriteLine($"Transport: {transportMode}");
         Console.Error.WriteLine($"Index on Start: {indexOnStart}");
         
         var updateStrategy = GetArgument(args, "--update-strategy", "hybrid");
         Console.Error.WriteLine($"Update Strategy: {updateStrategy}");
+        if (transportMode == "http")
+            Console.Error.WriteLine($"HTTP Port: {httpPort}");
+        if (transportMode == "http-client")
+            Console.Error.WriteLine($"Remote URL: {GetArgument(args, "--url", "http://localhost:8080/sse")}");
         Console.Error.WriteLine("========================================");
 
         // Build host
@@ -34,7 +41,7 @@ class Program
         ConfigureServices(builder.Services, args, repositoryPath);
         
         var app = builder.Build();
-        await RunServerAsync(app, repositoryPath, indexOnStart);
+        await RunServerAsync(app, args, repositoryPath, indexOnStart);
     }
 
     private static void ConfigureServices(IServiceCollection services, string[] args, string repositoryPath)
@@ -56,38 +63,41 @@ class Program
             builder.SetMinimumLevel(LogLevel.Information);
         });
 
-        // Configure AST Service Settings with defaults
+        // Configure AST Service Settings
         services.Configure<ASTServiceSettings>(options =>
         {
-            // Start with defaults from the class
             options.BaseUrl = "http://localhost:3000";
             options.TimeoutSeconds = 120;
             options.Enabled = true;
-
-            // Override with configuration if available
             configuration.GetSection(ASTServiceSettings.SectionName).Bind(options);
-
-            // Override with command-line if specified
-            var astServiceUrl = GetArgument(args, "--ast-service-url", string.Empty);
-            if (!string.IsNullOrEmpty(astServiceUrl))
-            {
-                options.BaseUrl = astServiceUrl;
-            }
         });
 
-        // Register AST Service with configured settings
         services.AddHttpClient<IASTServiceClient, ASTServiceClient>();
 
         // Register core services
         services.AddSingleton<ICSharpParser, RoslynCSharpParser>();
         services.AddSingleton<QueryEngine>();
         services.AddSingleton<IndexStateService>();
+        services.AddSingleton<GraphIndexService>();
 
         // Register MCP server components
         services.AddSingleton<McpProtocolHandler>();
+        
+        var transportMode = GetArgument(args, "--transport", "stdio");
+        if (transportMode == "http")
+        {
+            var httpPort = int.Parse(GetArgument(args, "--port", "8080"));
+            services.AddSingleton<IMcpTransport>(sp => 
+                new HttpMcpTransport(sp.GetRequiredService<ILogger<HttpMcpTransport>>(), httpPort));
+        }
+        else
+        {
+            services.AddSingleton<IMcpTransport, StdioTransport>();
+        }
+
         services.AddSingleton<JsonRpcServer>();
 
-        // Register change detection (hybrid strategy) - with factory to pass repositoryPath
+        // Register change detection
         services.AddSingleton<HybridChangeDetector>(sp =>
             new HybridChangeDetector(
                 sp.GetRequiredService<GraphIndexService>(),
@@ -95,10 +105,7 @@ class Program
                 sp.GetRequiredService<ILogger<HybridChangeDetector>>(),
                 repositoryPath));
 
-        // Register graph indexer
-        services.AddSingleton<GraphIndexService>();
-
-        // Register MCP Tools
+        // Tools
         services.AddTransient<codeMRI.MCP.Tools.FindReferencesTool>();
         services.AddTransient<codeMRI.MCP.Tools.CallHierarchyTool>();
         services.AddTransient<codeMRI.MCP.Tools.FindImplementationsTool>();
@@ -108,29 +115,22 @@ class Program
         services.AddTransient<codeMRI.MCP.Tools.RefreshGraphTool>();
     }
 
-    private static async Task RunServerAsync(IHost app, string repositoryPath, bool indexOnStart)
+    private static async Task RunServerAsync(IHost app, string[] args, string repositoryPath, bool indexOnStart)
     {
         var logger = app.Services.GetRequiredService<ILogger<Program>>();
         var graphIndexService = app.Services.GetRequiredService<GraphIndexService>();
-        var jsonRpcServer = app.Services.GetRequiredService<JsonRpcServer>();
 
-        // Perform initial indexing if requested
         if (indexOnStart)
         {
-            Console.Error.WriteLine("Update Strategy: Hybrid (FileSystemWatcher with polling fallback)");
             logger.LogInformation("Starting initial indexing...");
             await graphIndexService.IndexRepositoryAsync(repositoryPath);
             logger.LogInformation("Initial indexing complete");
         }
 
-        // Start the MCP server
         using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (sender, e) =>
-        {
-            e.Cancel = true;
-            cts.Cancel();
-        };
+        Console.CancelKeyPress += (sender, e) => { e.Cancel = true; cts.Cancel(); };
 
+        var jsonRpcServer = app.Services.GetRequiredService<JsonRpcServer>();
         await jsonRpcServer.RunAsync(cts.Token);
     }
 

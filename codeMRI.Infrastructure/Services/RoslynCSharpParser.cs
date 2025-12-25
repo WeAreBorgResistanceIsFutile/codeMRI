@@ -17,17 +17,22 @@ public class RoslynCSharpParser : ICSharpParser
         var tree = CSharpSyntaxTree.ParseText(code);
         var root = tree.GetRoot();
 
-        var walker = new StructureWalker();
+        var walker = new StructureWalker(filePath);
         walker.Visit(root);
 
         return new ASTParseResult
         {
             Language = "C#",
             FilePath = filePath,
-            Tree = root.ToString(), // Or some other representation
+            Tree = root.ToString(),
             Timestamp = DateTime.UtcNow.ToString("o"),
             Metrics = new { Lines = code.Split('\n').Length, Complexity = walker.TotalComplexity },
-            DependencyGraph = new DependencyGraphData { Dependencies = walker.Dependencies },
+            DependencyGraph = new DependencyGraphData 
+            { 
+                Dependencies = walker.Dependencies,
+                Nodes = walker.GraphNodes,
+                Edges = walker.GraphEdges
+            },
             EntryPoints = walker.EntryPoints.Cast<object>().ToList(),
             HierarchicalStructure = new
             {
@@ -39,11 +44,29 @@ public class RoslynCSharpParser : ICSharpParser
 
     private class StructureWalker : CSharpSyntaxWalker
     {
+        private readonly string _filePath;
+        
         public List<object> Classes { get; } = new();
         public List<object> Functions { get; } = new();
         public List<string?> Dependencies { get; } = new();
         public List<string> EntryPoints { get; } = new();
         public int TotalComplexity { get; private set; }
+        
+        // New properties for dependency graph
+        public List<ASTGraphNode> GraphNodes { get; } = new();
+        public List<ASTGraphEdge> GraphEdges { get; } = new();
+        
+        private string? _currentClassName;
+
+        public StructureWalker(string filePath)
+        {
+            _filePath = filePath;
+        }
+
+        private string CreateNodeId(string identifier)
+        {
+            return $"{_filePath}::{identifier}";
+        }
 
         public override void VisitUsingDirective(UsingDirectiveSyntax node)
         {
@@ -54,37 +77,125 @@ public class RoslynCSharpParser : ICSharpParser
 
         public override void VisitClassDeclaration(ClassDeclarationSyntax node)
         {
-            ExtractTypeDeclaration(node, "Class");
+            ExtractTypeDeclaration(node, "Class", "classes");
             base.VisitClassDeclaration(node);
         }
 
         public override void VisitInterfaceDeclaration(InterfaceDeclarationSyntax node)
         {
-            ExtractTypeDeclaration(node, "Interface");
+            ExtractTypeDeclaration(node, "Interface", "interfaces");
             base.VisitInterfaceDeclaration(node);
         }
 
         public override void VisitRecordDeclaration(RecordDeclarationSyntax node)
         {
-            ExtractTypeDeclaration(node, "Record");
+            ExtractTypeDeclaration(node, "Record", "records");
             base.VisitRecordDeclaration(node);
         }
 
         public override void VisitStructDeclaration(StructDeclarationSyntax node)
         {
-            ExtractTypeDeclaration(node, "Struct");
+            ExtractTypeDeclaration(node, "Struct", "structs");
             base.VisitStructDeclaration(node);
         }
 
-        private void ExtractTypeDeclaration(TypeDeclarationSyntax node, string type)
+        private void ExtractTypeDeclaration(TypeDeclarationSyntax node, string typeDisplayName, string graphNodeType)
         {
-            var methods = node.Members.OfType<MethodDeclarationSyntax>()
-                .Select(m => m.Identifier.Text).ToList();
+            var className = node.Identifier.Text;
+            var previousClassName = _currentClassName;
+            _currentClassName = className;
 
-            var properties = node.Members.OfType<PropertyDeclarationSyntax>()
-                .Select(p => p.Identifier.Text).ToList();
+            // Create node for the type itself
+            var typeNodeId = CreateNodeId(className);
+            GraphNodes.Add(new ASTGraphNode
+            {
+                Id = typeNodeId,
+                Type = graphNodeType,
+                Language = "C#",
+                Properties = new ASTNodeProperties()
+            });
 
-            // Calculate complexity (naive)
+            var methods = node.Members.OfType<MethodDeclarationSyntax>().ToList();
+            var methodNames = new List<string>();
+
+            foreach (var method in methods)
+            {
+                var methodName = method.Identifier.Text;
+                methodNames.Add(methodName);
+                
+                // Create node for each method
+                var methodNodeId = CreateNodeId($"{className}.{methodName}");
+                GraphNodes.Add(new ASTGraphNode
+                {
+                    Id = methodNodeId,
+                    Type = "functions",
+                    Language = "C#",
+                    Properties = new ASTNodeProperties()
+                });
+
+                // Create edge from method to its containing class
+                GraphEdges.Add(new ASTGraphEdge
+                {
+                    Source = methodNodeId,
+                    Target = typeNodeId,
+                    Type = "contains",
+                    Subtype = "method_to_class",
+                    TargetLanguage = "C#"
+                });
+            }
+
+            var properties = node.Members.OfType<PropertyDeclarationSyntax>().ToList();
+            var propertyNames = new List<string>();
+
+            foreach (var property in properties)
+            {
+                var propertyName = property.Identifier.Text;
+                propertyNames.Add(propertyName);
+                
+                // Create node for each property
+                var propertyNodeId = CreateNodeId($"{className}.{propertyName}");
+                GraphNodes.Add(new ASTGraphNode
+                {
+                    Id = propertyNodeId,
+                    Type = "properties",
+                    Language = "C#",
+                    Properties = new ASTNodeProperties()
+                });
+
+                // Create edge from property to its containing class
+                GraphEdges.Add(new ASTGraphEdge
+                {
+                    Source = propertyNodeId,
+                    Target = typeNodeId,
+                    Type = "contains",
+                    Subtype = "property_to_class",
+                    TargetLanguage = "C#"
+                });
+            }
+
+            // Handle inheritance and interface implementation
+            if (node.BaseList != null)
+            {
+                foreach (var baseType in node.BaseList.Types)
+                {
+                    var baseTypeName = baseType.Type.ToString();
+                    var baseTypeNodeId = CreateNodeId(baseTypeName);
+                    
+                    // Determine if it's inheritance or implementation
+                    var edgeType = typeDisplayName == "Interface" ? "extends" : "inherits";
+                    
+                    GraphEdges.Add(new ASTGraphEdge
+                    {
+                        Source = typeNodeId,
+                        Target = baseTypeNodeId,
+                        Type = edgeType,
+                        Subtype = "",
+                        TargetLanguage = "C#"
+                    });
+                }
+            }
+
+            // Calculate complexity
             var complexity = node.DescendantNodes().OfType<IfStatementSyntax>().Count()
                              + node.DescendantNodes().OfType<ForStatementSyntax>().Count()
                              + node.DescendantNodes().OfType<ForEachStatementSyntax>().Count()
@@ -96,21 +207,20 @@ public class RoslynCSharpParser : ICSharpParser
             TotalComplexity += complexity;
 
             // Check for Main method
-            if (methods.Contains("Main")) EntryPoints.Add(node.Identifier.Text);
+            if (methodNames.Contains("Main")) EntryPoints.Add(className);
 
             var lineCount = node.GetText().Lines.Count;
 
             Classes.Add(new
             {
-                Name = node.Identifier.Text,
-                Type = type,
+                Name = className,
+                Type = typeDisplayName,
                 Metrics = new { Lines = lineCount, Complexity = complexity },
-                Methods = methods,
-                Properties = properties
+                Methods = methodNames,
+                Properties = propertyNames
             });
-        }
 
-        // Handle File-Scoped Namespaces or Top Level statements? 
-        // For now this covers standard class structures.
+            _currentClassName = previousClassName;
+        }
     }
 }

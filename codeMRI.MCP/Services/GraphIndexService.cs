@@ -97,7 +97,7 @@ public class GraphIndexService
         var parseResult = await _astService.ParseCodeAsync(code, language, filePath);
         if (parseResult == null)
         {
-            // _logger.LogWarning("Failed to parse file: {FilePath}", filePath);
+            _logger.LogWarning("Failed to parse file: {FilePath}", filePath);
             return;
         }
 

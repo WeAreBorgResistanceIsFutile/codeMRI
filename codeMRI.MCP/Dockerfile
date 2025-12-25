@@ -24,7 +24,7 @@ WORKDIR /src/codeMRI.MCP
 RUN dotnet publish -c Release -o /app/publish
 
 # Runtime stage
-FROM mcr.microsoft.com/dotnet/nightly/runtime:10.0-preview
+FROM mcr.microsoft.com/dotnet/nightly/aspnet:10.0-preview
 WORKDIR /app
 
 # Copy published application
@@ -35,10 +35,12 @@ ENV CODEMRI_REPO_PATH=/repository
 ENV AST_SERVICE_URL=http://ast-service:3002
 ENV UPDATE_STRATEGY=hybrid
 ENV INDEX_ON_START=true
+ENV TRANSPORT_MODE=http
+ENV HTTP_PORT=8080
 
-# Expose stdio for MCP protocol (no ports needed)
-# The MCP server uses stdin/stdout for communication
+# Expose HTTP port for MCP server
+EXPOSE 8080
 
 # Entry point
 ENTRYPOINT ["dotnet", "codeMRI.MCP.dll"]
-CMD ["--update-strategy", "hybrid", "--ast-service-url", "http://ast-service:3002"]
+CMD ["--transport", "http", "--update-strategy", "hybrid", "--ast-service-url", "http://ast-service:3002"]

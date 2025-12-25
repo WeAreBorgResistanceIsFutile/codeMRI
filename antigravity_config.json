@@ -1,15 +1,15 @@
 {
-    "mcpServers": {
-        "codeMRI": {
-            "command": "dotnet",
-            "args": [
-                "/Users/levente/AI/codeMRI/codeMRI.MCP/bin/Debug/net10.0/codeMRI.MCP.dll",
-                "--repository",
-                "/Users/levente/AI/codeMRI",
-                "--update-strategy",
-                "hybrid"
-            ],
-            "env": {}
-        }
+  "mcpServers": {
+    "codeMRI": {
+      "command": "/usr/local/share/dotnet/dotnet",
+      "args": [
+        "/Users/levente/AI/codeMRI/codeMRI.MCP/bin/Debug/net10.0/codeMRI.MCP.dll",
+        "--transport",
+        "stdio",
+        "--index-on-start",
+        "false"
+      ],
+      "env": {}
     }
+  }
 }
