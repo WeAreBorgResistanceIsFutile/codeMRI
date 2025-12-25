@@ -87,7 +87,7 @@ class Program
 
         // Register MCP server components
         services.AddSingleton<McpProtocolHandler>();
-        
+       
         var transportMode = GetArgument(args, "--transport", "stdio");
         if (transportMode == "http")
         {
@@ -102,13 +102,26 @@ class Program
 
         services.AddSingleton<JsonRpcServer>();
 
-        // Register change detection
-        services.AddSingleton<HybridChangeDetector>(sp =>
-            new HybridChangeDetector(
-                sp.GetRequiredService<GraphIndexService>(),
-                sp.GetRequiredService<IndexStateService>(),
-                sp.GetRequiredService<ILogger<HybridChangeDetector>>(),
-                repositoryPath));
+        // Register change detection based on strategy
+        var updateStrategy = GetArgument(args, "--update-strategy", "hybrid");
+        if (updateStrategy == "hybrid")
+        {
+            services.AddHostedService<HybridChangeDetector>(sp =>
+                new HybridChangeDetector(
+                    sp.GetRequiredService<GraphIndexService>(),
+                    sp.GetRequiredService<IndexStateService>(),
+                    sp.GetRequiredService<ILogger<HybridChangeDetector>>(),
+                    repositoryPath));
+        }
+        else if (updateStrategy == "polling")
+        {
+             services.AddHostedService<PollingChangeDetector>(sp =>
+                new PollingChangeDetector(
+                    sp.GetRequiredService<GraphIndexService>(),
+                    sp.GetRequiredService<IndexStateService>(),
+                    sp.GetRequiredService<ILogger<PollingChangeDetector>>(),
+                    repositoryPath));
+        }
 
         // Tools
         services.AddTransient<codeMRI.MCP.Tools.FindReferencesTool>();
@@ -125,6 +138,9 @@ class Program
         var logger = app.Services.GetRequiredService<ILogger<Program>>();
         var graphIndexService = app.Services.GetRequiredService<GraphIndexService>();
 
+        // Start background services (HostedServices)
+        await app.StartAsync();
+
         if (indexOnStart)
         {
             logger.LogInformation("Starting initial indexing...");
@@ -136,7 +152,16 @@ class Program
         Console.CancelKeyPress += (sender, e) => { e.Cancel = true; cts.Cancel(); };
 
         var jsonRpcServer = app.Services.GetRequiredService<JsonRpcServer>();
-        await jsonRpcServer.RunAsync(cts.Token);
+        
+        try 
+        {
+            await jsonRpcServer.RunAsync(cts.Token);
+        }
+        finally
+        {
+            // Graceful shutdown of background services
+            await app.StopAsync();
+        }
     }
 
     private static string GetRepositoryPath(string[] args)
