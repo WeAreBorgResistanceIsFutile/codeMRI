@@ -167,7 +167,7 @@ if not logger.hasHandlers():
                 It.Is<It.IsAnyType>((o, t) =>
                     o.ToString()!.Contains($"Failed to parse code using AST Service for language: {language}")),
                 It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception, string>>()),
+                It.IsAny<Func<It.IsAnyType, Exception, string>>()!),
             Times.Once);
     }
 }

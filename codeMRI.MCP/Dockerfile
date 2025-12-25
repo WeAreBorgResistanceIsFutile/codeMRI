@@ -41,4 +41,4 @@ ENV INDEX_ON_START=true
 
 # Entry point
 ENTRYPOINT ["dotnet", "codeMRI.MCP.dll"]
-CMD ["--repository", "/repository", "--update-strategy", "hybrid", "--ast-service-url", "http://ast-service:3002"]
+CMD ["--update-strategy", "hybrid", "--ast-service-url", "http://ast-service:3002"]
