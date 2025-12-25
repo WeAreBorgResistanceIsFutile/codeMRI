@@ -20,9 +20,14 @@ class Program
         var repositoryPath = GetRepositoryPath(args);
         var indexOnStart = GetBoolArgument(args, "--index-on-start", true);
 
-        Console.Error.WriteLine($"CodeMRI MCP Server");
+        Console.Error.WriteLine("========================================");
+        Console.Error.WriteLine("CodeMRI MCP Server");
         Console.Error.WriteLine($"Repository: {repositoryPath}");
         Console.Error.WriteLine($"Index on Start: {indexOnStart}");
+        
+        var updateStrategy = GetArgument(args, "--update-strategy", "hybrid");
+        Console.Error.WriteLine($"Update Strategy: {updateStrategy}");
+        Console.Error.WriteLine("========================================");
 
         // Build host
         var builder = Host.CreateApplicationBuilder(args);
