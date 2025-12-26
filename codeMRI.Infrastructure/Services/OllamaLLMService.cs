@@ -18,14 +18,17 @@ public class OllamaLLMService : ILLMClient, ILLMValidator
     private readonly HttpClient _httpClient;
     private readonly ILogger<OllamaLLMService> _logger;
     private readonly OllamaSettings _settings;
+    private readonly ModelRoutingSettings _routingSettings;
 
     public OllamaLLMService(
         HttpClient httpClient,
         IOptions<OllamaSettings> settings,
+        IOptions<ModelRoutingSettings> routingSettings,
         ILogger<OllamaLLMService> logger)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
+        _routingSettings = routingSettings?.Value ?? throw new ArgumentNullException(nameof(routingSettings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         
         _httpClient.BaseAddress = new Uri(_settings.BaseUrl);
@@ -109,7 +112,7 @@ public class OllamaLLMService : ILLMClient, ILLMValidator
 
         var request = new
         {
-            model = model ?? _settings.ChatModel,
+            model = model ?? _routingSettings.ChatModel,
             messages = ollamaMessages,
             stream = false,
             options = new

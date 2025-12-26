@@ -7,6 +7,21 @@ namespace codeMRI.Infrastructure.Configuration;
 public class ModelRoutingSettings
 {
     /// <summary>
+    ///     Primary model for documentation generation.
+    /// </summary>
+    public string DocumentationModel { get; set; } = "llama3";
+
+    /// <summary>
+    ///     Primary model for chat/interaction.
+    /// </summary>
+    public string ChatModel { get; set; } = "llama3";
+
+    /// <summary>
+    ///     Models used as judges for quality assessment.
+    /// </summary>
+    public List<string> JudgeModels { get; set; } = new();
+
+    /// <summary>
     ///     Enable specialized model routing based on task type.
     ///     When enabled, different models are used for code analysis vs natural language tasks.
     /// </summary>

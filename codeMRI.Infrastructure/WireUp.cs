@@ -127,10 +127,10 @@ public class WireUp
         services.AddScoped<IEnhancedDependencyGraphService, EnhancedDependencyGraphService>();
         services.AddScoped<IWikiGenerationService>(sp =>
         {
-            var settings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
-            var docModel = settings.DocumentationModel;
+            var routingSettings = sp.GetRequiredService<IOptions<ModelRoutingSettings>>().Value;
+            var docModel = routingSettings.DocumentationModel;
             if (string.IsNullOrWhiteSpace(docModel))
-                throw new InvalidOperationException("DocumentationModel is not configured in OllamaSettings.");
+                throw new InvalidOperationException("DocumentationModel is not configured in ModelRoutingSettings.");
 
             var inner = new WikiGenerationService(
                 sp.GetRequiredService<ILLMServiceFacade>(),
@@ -180,25 +180,25 @@ public class WireUp
         // Multi-Model Services with configuration injection
         services.AddSingleton<IModelRoutingService>(sp =>
         {
-            var ollamaSettings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
+            var routingSettings = sp.GetRequiredService<IOptions<ModelRoutingSettings>>().Value;
             var config = new ModelRoutingConfig
             {
-                EnableModelRouting = ollamaSettings.ModelRouting.EnableModelRouting,
-                CodeAnalysisModel = ollamaSettings.ModelRouting.CodeAnalysisModel,
-                NaturalLanguageModel = ollamaSettings.ModelRouting.NaturalLanguageModel,
-                SynthesisJudgeModel = ollamaSettings.ModelRouting.SynthesisJudgeModel
+                EnableModelRouting = routingSettings.EnableModelRouting,
+                CodeAnalysisModel = routingSettings.CodeAnalysisModel,
+                NaturalLanguageModel = routingSettings.NaturalLanguageModel,
+                SynthesisJudgeModel = routingSettings.SynthesisJudgeModel
             };
             return new ModelRoutingService(config, sp.GetRequiredService<ILogger<ModelRoutingService>>());
         });
 
         services.AddScoped<IMultiModelOrchestrationService>(sp =>
         {
-            var ollamaSettings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
+            var routingSettings = sp.GetRequiredService<IOptions<ModelRoutingSettings>>().Value;
             var config = new EnsembleConfig
             {
-                EnableEnsembleGeneration = ollamaSettings.ModelRouting.EnableEnsembleGeneration,
-                EnsembleModels = ollamaSettings.ModelRouting.EnsembleModels,
-                MinimumAgreementThreshold = ollamaSettings.ModelRouting.MinimumAgreementThreshold
+                EnableEnsembleGeneration = routingSettings.EnableEnsembleGeneration,
+                EnsembleModels = routingSettings.EnsembleModels,
+                MinimumAgreementThreshold = routingSettings.MinimumAgreementThreshold
             };
             return new MultiModelOrchestrationService(
                 sp.GetRequiredService<ILLMServiceFacade>(),
@@ -220,7 +220,7 @@ public class WireUp
         });
         services.AddScoped<ICodeWikiOrchestrator, CodeWikiOrchestrator>(sp =>
         {
-            var settings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
+            var routingSettings = sp.GetRequiredService<IOptions<ModelRoutingSettings>>().Value;
             return new CodeWikiOrchestrator(
                 sp.GetRequiredService<IHierarchicalDecompositionService>(),
                 sp.GetRequiredService<IEnhancedDependencyGraphService>(),
@@ -238,8 +238,8 @@ public class WireUp
                 sp.GetRequiredService<IOptions<CodeWikiOptions>>(),
                 sp.GetRequiredService<ILLMInvocationContext>(),
                 sp.GetRequiredService<ILogger<CodeWikiOrchestrator>>(),
-                // Use configured Judge model, or fall back to DocumentationModel, then to "llama3"
-                (settings.JudgeModels.Any() ? settings.JudgeModels.First() : settings.DocumentationModel) ?? "llama3");
+                // Use configured Judge model from ModelRoutingSettings
+                (routingSettings.JudgeModels.Any() ? routingSettings.JudgeModels.First() : routingSettings.DocumentationModel) ?? "llama3");
         });
     }
 }

@@ -33,6 +33,7 @@ builder.Services.AddSwaggerGen();
 
 // Configuration
 builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
+builder.Services.Configure<ModelRoutingSettings>(builder.Configuration.GetSection("ModelRouting"));
 builder.Services.Configure<ASTServiceSettings>(builder.Configuration.GetSection("ASTService"));
 builder.Services.Configure<CodeWikiOptions>(builder.Configuration.GetSection("CodeWiki"));
 
