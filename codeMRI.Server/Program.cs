@@ -66,6 +66,7 @@ builder.Services.AddSingleton<IIngestionJobManager, DbIngestionManager>(sp =>
     var logger = sp.GetRequiredService<ILogger<DbIngestionManager>>();
     var messageBus = sp.GetRequiredService<AgentMessageBus>();
     var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
+    var snapshotService = sp.GetRequiredService<IDebugSnapshotService>();
 
     var connectionString = builder.Configuration.GetConnectionString("IngestionDb");
     string dbPath;
@@ -90,7 +91,7 @@ builder.Services.AddSingleton<IIngestionJobManager, DbIngestionManager>(sp =>
         dbPath = Path.Combine(appDataPath, "ingestion.db");
     }
 
-    return new DbIngestionManager(logger, messageBus, scopeFactory, dbPath);
+    return new DbIngestionManager(logger, messageBus, scopeFactory, snapshotService, dbPath);
 });
 
 

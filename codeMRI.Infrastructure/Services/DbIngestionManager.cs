@@ -17,16 +17,19 @@ public class DbIngestionManager : IIngestionJobManager
     private readonly AgentMessageBus _messageBus;
 
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IDebugSnapshotService _snapshotService;
 
     public DbIngestionManager(
         ILogger<DbIngestionManager> logger,
         AgentMessageBus messageBus,
         IServiceScopeFactory scopeFactory,
+        IDebugSnapshotService snapshotService,
         string dbPath)
     {
         _logger = logger;
         _messageBus = messageBus;
         _scopeFactory = scopeFactory;
+        _snapshotService = snapshotService;
 
         // Ensure directory exists
         var builder = new SqliteConnectionStringBuilder($"Data Source={dbPath}");
@@ -296,6 +299,16 @@ public class DbIngestionManager : IIngestionJobManager
             {
                 await wikiRepo.SetRepositoryRemoteUrlAsync(targetDir, repoUrl);
                 _logger.LogInformation("Saved remote URL {RemoteUrl} for repository {RepoPath}", repoUrl, targetDir);
+            }
+
+            // Cleanup debug snapshots
+            try
+            {
+                await _snapshotService.DeleteSnapshotsAsync(targetDir);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to cleanup debug snapshots for {RepoPath} after ingestion, but continuing.", targetDir);
             }
 
             await UpdateJobStatusAsync(jobId, IngestionStatus.Completed, 100, "Ingestion complete");

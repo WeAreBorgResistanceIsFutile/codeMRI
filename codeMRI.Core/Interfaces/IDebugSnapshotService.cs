@@ -18,4 +18,9 @@ public interface IDebugSnapshotService
     ///     Gets all snapshots for a given repository
     /// </summary>
     Task<IEnumerable<DebugSnapshot>> GetSnapshotsAsync(string repoPath);
+
+    /// <summary>
+    ///     Deletes all snapshots for a given repository
+    /// </summary>
+    Task DeleteSnapshotsAsync(string repoPath);
 }

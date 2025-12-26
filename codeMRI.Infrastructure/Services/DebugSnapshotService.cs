@@ -75,4 +75,23 @@ public class DebugSnapshotService : IDebugSnapshotService
 
         return snapshots.OrderByDescending(s => s.Timestamp);
     }
+
+    public Task DeleteSnapshotsAsync(string repoPath)
+    {
+        try
+        {
+            var debugDir = Path.Combine(repoPath, DebugDirName);
+            if (Directory.Exists(debugDir))
+            {
+                Directory.Delete(debugDir, true);
+                _logger.LogInformation("Deleted debug snapshots directory: {DebugDir}", debugDir);
+            }
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete debug snapshots for repo: {RepoPath}", repoPath);
+            throw;
+        }
+    }
 }
