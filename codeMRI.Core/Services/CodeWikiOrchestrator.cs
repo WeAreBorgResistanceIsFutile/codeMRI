@@ -25,6 +25,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private readonly IDocumentIndexer _documentIndexer;
     private readonly IWikiGenerationService _wikiGenerationService;
     private readonly IWikiRepository _wikiRepo;
+    private readonly ILLMInvocationContext _invocationContext;
 
     public CodeWikiOrchestrator(
         IHierarchicalDecompositionService decompositionService,
@@ -41,6 +42,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IDocumentIndexer documentIndexer,
         INavigationStructureService navigationService,
         IOptions<CodeWikiOptions> options,
+        ILLMInvocationContext invocationContext,
         ILogger<CodeWikiOrchestrator> logger,
         string judgeModel = "default")
     {
@@ -58,6 +60,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _documentIndexer = documentIndexer;
         _navigationService = navigationService;
         _options = options.Value;
+        _invocationContext = invocationContext;
         _logger = logger;
         _judgeModel = judgeModel;
         _semaphore = new SemaphoreSlim(_options.MaxDegreeOfParallelism);
@@ -77,6 +80,11 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
 
         _logger.LogInformation("Starting CodeWiki Advanced Workflow for {Repo}", repositoryPath);
         repositoryInfo.RepoPath = repositoryPath;
+        
+        // Initialize Invocation Context
+        _invocationContext.RepoPath = repositoryPath;
+        _invocationContext.JobId = Guid.NewGuid().ToString("N")[..8]; // Fallback if not injected externally
+
         _telemetryService.TrackAgentActivity("Orchestrator",
             $"Starting CodeWiki Advanced Workflow for {repositoryPath}");
 
@@ -87,14 +95,14 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _telemetryService.TrackAgentActivity("Orchestrator", "Phase 1: Hierarchical Decomposition");
 
         ModuleTree moduleTree = null!;
-        EnhancedDependencyGraph dependencyGraph = null!;
+        EnhancedDependencyGraph dependencyGraph = new(); // Initialize to allow decorators to fill it
 
         // Scale Decomposition (Global 5% to 15%: Start=5, Width=10)
         await _progressService.WithScalingAsync(5, 10,
             async () =>
             {
                 moduleTree =
-                    await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, null!, cancellationToken);
+                    await _decompositionService.DecomposeHierarchicallyAsync(repositoryPath, dependencyGraph, cancellationToken);
             });
 
         // Build dependency graph for file path resolution

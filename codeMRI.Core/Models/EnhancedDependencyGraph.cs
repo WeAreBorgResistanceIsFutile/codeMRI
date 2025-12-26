@@ -141,7 +141,9 @@ public enum EdgeType
     PropertyAccess,
     TypeReference,
     CrossBoundary,
-    Call // Added missing type from tests
+    Call, // Added missing type from tests
+    Contains,
+    ChildOf
 }
 
 public class NodeMetadata

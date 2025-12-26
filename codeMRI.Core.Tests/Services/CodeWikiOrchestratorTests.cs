@@ -28,6 +28,7 @@ public class CodeWikiOrchestratorTests
         _mockDelegationService = new Mock<IDelegationService>();
         _mockDocumentIndexer = new Mock<IDocumentIndexer>();
         _mockNavigationService = new Mock<INavigationStructureService>();
+        _mockInvocationContext = new Mock<ILLMInvocationContext>();
 
         // Setup delegation to always return no delegation needed
         _mockDelegationService
@@ -83,6 +84,7 @@ public class CodeWikiOrchestratorTests
             _mockDocumentIndexer.Object,
             _mockNavigationService.Object,
             mockOptions.Object,
+            _mockInvocationContext.Object,
             _mockLogger.Object
         );
     }
@@ -121,6 +123,7 @@ public class CodeWikiOrchestratorTests
     private Mock<IDelegationService> _mockDelegationService;
     private Mock<IDocumentIndexer> _mockDocumentIndexer;
     private Mock<INavigationStructureService> _mockNavigationService;
+    private Mock<ILLMInvocationContext> _mockInvocationContext;
     private CodeWikiOrchestrator _orchestrator;
 
     [Test]
@@ -143,7 +146,7 @@ public class CodeWikiOrchestratorTests
         };
 
         _mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, null!, It.IsAny<CancellationToken>()))
+            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(moduleTree);
 
         _mockRubricService
@@ -204,7 +207,7 @@ public class CodeWikiOrchestratorTests
         };
 
         _mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, null!, It.IsAny<CancellationToken>()))
+            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(moduleTree);
 
         _mockRubricService
@@ -272,7 +275,7 @@ public class CodeWikiOrchestratorTests
         var moduleTree = new ModuleTree { Root = rootModule };
 
         _mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, null!, It.IsAny<CancellationToken>()))
+            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(moduleTree);
 
         _mockRubricService
@@ -334,7 +337,7 @@ public class CodeWikiOrchestratorTests
         };
 
         _mockDecompositionService
-            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, null!, It.IsAny<CancellationToken>()))
+            .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(moduleTree);
 
         _mockGraphService

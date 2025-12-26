@@ -72,4 +72,22 @@ public class IngestionProcessingState
     /// </summary>
     [JsonPropertyName("errors")]
     public Dictionary<string, string> Errors { get; set; } = new();
+    
+    /// <summary>
+    ///     IDs of modules that have been successfully documented
+    /// </summary>
+    [JsonPropertyName("completedModuleIds")]
+    public HashSet<string> CompletedModuleIds { get; set; } = new();
+
+    /// <summary>
+    ///     Serialized version of the unified dependency and hierarchy graph
+    /// </summary>
+    [JsonPropertyName("serializedGraph")]
+    public string? SerializedGraph { get; set; }
+
+    /// <summary>
+    ///     Serialized version of the rubric used for evaluation
+    /// </summary>
+    [JsonPropertyName("serializedRubric")]
+    public string? SerializedRubric { get; set; }
 }

@@ -28,7 +28,7 @@ public class CodeWikiOrchestratorProgressTests
         _mockDelegationService = new Mock<IDelegationService>();
         _mockDocumentIndexer = new Mock<IDocumentIndexer>();
         _mockNavigationService = new Mock<INavigationStructureService>();
-        _mockNavigationService = new Mock<INavigationStructureService>();
+        _mockInvocationContext = new Mock<ILLMInvocationContext>();
 
         // Setup delegation to always return no delegation needed
         _mockDelegationService
@@ -74,6 +74,7 @@ public class CodeWikiOrchestratorProgressTests
             _mockDocumentIndexer.Object,
             _mockNavigationService.Object,
             mockOptions.Object,
+            _mockInvocationContext.Object,
             _mockLogger.Object
         );
     }
@@ -92,6 +93,7 @@ public class CodeWikiOrchestratorProgressTests
     private Mock<IDelegationService> _mockDelegationService;
     private Mock<IDocumentIndexer> _mockDocumentIndexer;
     private Mock<INavigationStructureService> _mockNavigationService;
+    private Mock<ILLMInvocationContext> _mockInvocationContext;
     private CodeWikiOrchestrator _orchestrator;
 
     [Test]
@@ -124,7 +126,7 @@ public class CodeWikiOrchestratorProgressTests
         rootNode.Children.Add(childNode);
         var moduleTree = new ModuleTree { Root = rootNode };
 
-        _mockDecompositionService.Setup(x => x.DecomposeHierarchicallyAsync(repoPath, null!, It.IsAny<CancellationToken>()))
+        _mockDecompositionService.Setup(x => x.DecomposeHierarchicallyAsync(repoPath, It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(moduleTree);
 
         var rubric = new EvaluationRubric

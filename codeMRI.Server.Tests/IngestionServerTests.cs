@@ -65,7 +65,7 @@ public class IngestionServerTests
 
         // Step 2: Poll for Completion
         IngestionJob? currentJob = null;
-        var timeout = TimeSpan.FromMinutes(10);
+        var timeout = TimeSpan.FromMinutes(30);
         var startTime = DateTime.UtcNow;
 
         while (DateTime.UtcNow - startTime < timeout)

@@ -8,6 +8,7 @@ using codeMRI.Core.Services;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
 using codeMRI.Core.Services.MessageComposition;
+using codeMRI.Core.Services.Decorators;
 using codeMRI.Core.Services.MessageComposition.Strategies;
 using codeMRI.Visualization.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,7 +24,19 @@ public class WireUp
     {
         // LLM Services
         services.AddSingleton<OllamaLLMService>();
-        services.AddSingleton<ILLMClient>(sp => sp.GetRequiredService<OllamaLLMService>());
+        
+        // Debug and Context Services
+        services.AddSingleton<ILLMInvocationContext, LLMInvocationContext>();
+        services.AddSingleton<IDebugSnapshotService, DebugSnapshotService>();
+
+        services.AddSingleton<ILLMClient>(sp => {
+            var inner = sp.GetRequiredService<OllamaLLMService>();
+            return new DebugSnapshotLLMClientDecorator(
+                inner,
+                sp.GetRequiredService<IDebugSnapshotService>(),
+                sp.GetRequiredService<ILLMInvocationContext>(),
+                sp.GetRequiredService<ILogger<DebugSnapshotLLMClientDecorator>>());
+        });
         services.AddSingleton<ILLMValidator>(sp => sp.GetRequiredService<OllamaLLMService>());
 
         // Message Composition Strategies - Composition
@@ -86,14 +99,14 @@ public class WireUp
 
         services.AddScoped<IArchitecturalPatternService, ArchitecturalPatternService>();
         services.AddScoped<IEnhancedDependencyGraphService, EnhancedDependencyGraphService>();
-        services.AddScoped<IWikiGenerationService, WikiGenerationService>(sp =>
+        services.AddScoped<IWikiGenerationService>(sp =>
         {
             var settings = sp.GetRequiredService<IOptions<OllamaSettings>>().Value;
             var docModel = settings.DocumentationModel;
             if (string.IsNullOrWhiteSpace(docModel))
                 throw new InvalidOperationException("DocumentationModel is not configured in OllamaSettings.");
 
-            return new WikiGenerationService(
+            var inner = new WikiGenerationService(
                 sp.GetRequiredService<ILLMServiceFacade>(),
                 sp.GetRequiredService<IDiagramGenerator>(),
                 sp.GetRequiredService<IEnhancedDependencyGraphService>(),
@@ -104,16 +117,37 @@ public class WireUp
                 docModel,
                 sp.GetService<IModelRoutingService>(),
                 sp.GetService<IMultiModelOrchestrationService>());
+
+            return new ResumableWikiGenerationDecorator(
+                inner,
+                sp.GetRequiredService<IWikiRepository>(),
+                sp.GetRequiredService<ILLMInvocationContext>(),
+                sp.GetRequiredService<ILogger<ResumableWikiGenerationDecorator>>());
         });
-        services.AddScoped<IHierarchicalDecompositionService, HierarchicalDecompositionService>();
+
+        services.AddScoped<HierarchicalDecompositionService>();
+        services.AddScoped<IHierarchicalDecompositionService>(sp => 
+            new ResumableDecompositionDecorator(
+                sp.GetRequiredService<HierarchicalDecompositionService>(),
+                sp.GetRequiredService<IWikiRepository>(),
+                sp.GetRequiredService<ILogger<ResumableDecompositionDecorator>>()));
+
         services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();
         services.AddScoped<IHierarchicalSummaryService, HierarchicalSummaryService>();
         services.AddScoped<IDocumentationRevisionService, DocumentationRevisionService>();
         services.AddSingleton<IReferenceManagementService, ReferenceManagementService>();
         services.AddScoped<IEvaluationPromptBuilder, DefaultEvaluationPromptBuilder>();
         services.AddScoped<RagEvaluationPromptBuilder>();
-        services.AddScoped<IDocumentationJudgeService, DocumentationJudgeService>();
-        services.AddScoped<IRubricGenerationService, RubricGenerationService>();
+        services.AddScoped<DocumentationJudgeService>();
+        services.AddScoped<IDocumentationJudgeService>(sp => sp.GetRequiredService<DocumentationJudgeService>());
+
+        services.AddScoped<RubricGenerationService>();
+        services.AddScoped<IRubricGenerationService>(sp => 
+            new ResumableRubricDecorator(
+                sp.GetRequiredService<RubricGenerationService>(),
+                sp.GetRequiredService<IWikiRepository>(),
+                sp.GetRequiredService<ILogger<ResumableRubricDecorator>>()));
+
         services.AddScoped<IProgressService, ProgressService>();
         services.AddScoped<INavigationStructureService, NavigationStructureService>();
 
@@ -176,6 +210,7 @@ public class WireUp
                 sp.GetRequiredService<IDocumentIndexer>(),
                 sp.GetRequiredService<INavigationStructureService>(),
                 sp.GetRequiredService<IOptions<CodeWikiOptions>>(),
+                sp.GetRequiredService<ILLMInvocationContext>(),
                 sp.GetRequiredService<ILogger<CodeWikiOrchestrator>>(),
                 // Use configured Judge model, or fall back to DocumentationModel, then to "llama3"
                 (settings.JudgeModels.Any() ? settings.JudgeModels.First() : settings.DocumentationModel) ?? "llama3");

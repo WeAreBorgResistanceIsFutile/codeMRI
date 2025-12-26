@@ -69,9 +69,54 @@ public class HierarchicalDecompositionService : IHierarchicalDecompositionServic
         // Calculate Quality Metrics for all modules
         CalculateAllQualityMetrics(moduleTree, graph);
 
+        // SYNC: Mirror the tree structure into the unified graph
+        SyncTreeToGraph(moduleTree, graph);
+
         _logger.LogInformation("Completed hierarchical decomposition. Total modules: {Count}", moduleTree.Nodes.Count);
 
         return moduleTree;
+    }
+
+    private void SyncTreeToGraph(ModuleTree tree, EnhancedDependencyGraph graph)
+    {
+        _logger.LogInformation("Syncing ModuleTree to Unified Graph...");
+        
+        foreach (var module in tree.Nodes.Values.Concat(new[] { tree.Root }))
+        {
+            var metadata = new NodeMetadata
+            {
+                Id = module.Id,
+                Type = "Module",
+                Language = "None",
+                EstimatedTokens = module.EstimatedTokens,
+                CyclomaticComplexity = module.ComplexityScore,
+                Properties = new Dictionary<string, object>
+                {
+                    ["Level"] = module.Level,
+                    ["IsLeaf"] = module.IsLeaf,
+                    ["Cohesion"] = module.QualityMetrics.Cohesion,
+                    ["Coupling"] = module.QualityMetrics.Coupling,
+                    ["MaintainabilityIndex"] = module.QualityMetrics.MaintainabilityIndex
+                }
+            };
+            
+            if (!string.IsNullOrEmpty(module.Description))
+                metadata.Properties["Description"] = module.Description;
+
+            graph.AddNode(module.Id, metadata);
+
+            // Add ParentOf relationships (using ChildOf edge type)
+            if (module.Parent != null)
+            {
+                graph.AddEdge(module.Id, module.Parent.Id, EdgeType.ChildOf, 1.0);
+            }
+
+            // Add Contains relationships for components
+            foreach (var componentId in module.Components)
+            {
+                graph.AddEdge(module.Id, componentId, EdgeType.Contains, 1.0);
+            }
+        }
     }
 
     private void IdentifyEntryPoints(EnhancedDependencyGraph graph)
