@@ -95,25 +95,54 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
             prompt = await _defaultPromptBuilder.BuildPromptAsync(requirement, documentationStructure);
         }
 
-        var llmResponse = await _llmFacade.ExecuteAsync(
-            systemPrompt: SystemPrompt,
-            textToProcess: prompt,
-            history: null,
-            options: new MessageCompositionOptions { ModelName = model },
-            cancellationToken: cancellationToken);
+        const int maxRetries = 1;
+        
+        for (var attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                var llmResponse = await _llmFacade.ExecuteAsync(
+                    systemPrompt: SystemPrompt,
+                    textToProcess: prompt,
+                    history: null,
+                    options: new MessageCompositionOptions { ModelName = model },
+                    cancellationToken: cancellationToken);
 
-        var assessment = ParseAssessmentFromResponse(llmResponse.Content, requirement);
+                var assessment = ParseAssessmentFromResponse(llmResponse.Content, requirement);
 
-        stopwatch.Stop();
+                stopwatch.Stop();
 
-        // Record metrics
-        _evaluationCounter.Add(1, tags);
-        _evaluationDuration.Record(stopwatch.Elapsed.TotalMilliseconds, tags);
-        _scoreDistribution.Record(assessment.MeanScore, tags);
+                // Record metrics
+                _evaluationCounter.Add(1, tags);
+                _evaluationDuration.Record(stopwatch.Elapsed.TotalMilliseconds, tags);
+                _scoreDistribution.Record(assessment.MeanScore, tags);
 
-        _logger.LogInformation("Requirement assessment completed with score: {Score}", assessment.MeanScore);
+                _logger.LogInformation("Requirement assessment completed with score: {Score}", assessment.MeanScore);
 
-        return assessment;
+                return assessment;
+            }
+            catch (JsonException ex)
+            {
+                if (attempt == maxRetries)
+                {
+                    _logger.LogError(ex, "Failed to parse assessment JSON after {Retries} retries", maxRetries);
+                    
+                    stopwatch.Stop();
+                    // Record failure metric
+                    _evaluationCounter.Add(1, tags); 
+                    // Should we record failure as 0 score? Yes, default assessment does that.
+                    
+                    return CreateDefaultAssessment(requirement);
+                }
+
+                _logger.LogWarning(ex, "JSON parsing failed (Attempt {Attempt}/{Max}), retrying with strict instruction.", attempt + 1, maxRetries);
+                
+                // Add strong instruction for the retry
+                prompt += "\n\nIMPORTANT: The previous response failed to parse as JSON. You MUST return valid, strict JSON format only. Do not include markdown formatting or extra text.";
+            }
+        }
+        
+        return CreateDefaultAssessment(requirement); // Should not be reached
     }
 
     public async Task<List<RequirementAssessment>> EvaluateRequirementsAsync(
@@ -234,62 +263,51 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
 
     private RequirementAssessment ParseAssessmentFromResponse(string response, RubricRequirement requirement)
     {
-        try
+        // 1. Try to extract from markdown blocks
+        if (response.Contains("```"))
         {
-            // 1. Try to extract from markdown blocks
-            if (response.Contains("```"))
+            var match = MarkdownJsonBlockRegex().Match(response);
+            if (match.Success)
             {
-                var match = MarkdownJsonBlockRegex().Match(response);
-                if (match.Success)
+                response = match.Groups[1].Value;
+            }
+            else
+            {
+                // Fallback: strip leading ```json or ``` if present, to help with truncated responses
+                var trimmed = response.TrimStart();
+                if (trimmed.StartsWith("```"))
                 {
-                    response = match.Groups[1].Value;
-                }
-                else
-                {
-                    // Fallback: strip leading ```json or ``` if present, to help with truncated responses
-                    var trimmed = response.TrimStart();
-                    if (trimmed.StartsWith("```"))
-                    {
-                        var newlineIndex = trimmed.IndexOf('\n');
-                        if (newlineIndex >= 0)
-                            response = trimmed.Substring(newlineIndex + 1);
-                        else if (trimmed.Length >= 3)
-                            response = trimmed.Substring(3);
-                    }
+                    var newlineIndex = trimmed.IndexOf('\n');
+                    if (newlineIndex >= 0)
+                        response = trimmed.Substring(newlineIndex + 1);
+                    else if (trimmed.Length >= 3)
+                        response = trimmed.Substring(3);
                 }
             }
-
-            // 2. Fallback: Use bracket counting or simple index finding to extract valid JSON
-            var extractedJson = ExtractValidJson(response);
-            if (!string.IsNullOrWhiteSpace(extractedJson)) response = extractedJson;
-
-            var assessment = JsonSerializer.Deserialize<JudgeResponse>(response, JsonParsingOptions);
-
-            if (assessment == null || !IsValidAssessment(assessment))
-            {
-                _logger.LogWarning("Failed to parse valid assessment from LLM response");
-                return CreateDefaultAssessment(requirement);
-            }
-
-            return new RequirementAssessment
-            {
-                RequirementId = requirement.Title,
-                RequirementTitle = requirement.Title,
-                MeanScore = Math.Clamp(assessment.Score, 0.0, 1.0),
-                StandardDeviation = 0.0,
-                IndividualScores = new List<double> { Math.Clamp(assessment.Score, 0.0, 1.0) },
-                Reasoning = new List<string> { assessment.Reasoning ?? "No reasoning provided" },
-                Evidence = assessment.Evidence ?? new List<string>()
-            };
         }
-        catch (JsonException ex)
+
+        // 2. Fallback: Use bracket counting or simple index finding to extract valid JSON
+        var extractedJson = ExtractValidJson(response);
+        if (!string.IsNullOrWhiteSpace(extractedJson)) response = extractedJson;
+
+        var assessment = JsonSerializer.Deserialize<JudgeResponse>(response, JsonParsingOptions);
+
+        if (assessment == null || !IsValidAssessment(assessment))
         {
-            var preview = response.Length > 500 ? response.Substring(0, 500) + "..." : response;
-            _logger.LogError(ex,
-                "Error parsing assessment JSON from LLM response. Raw response (first 500 chars): {ResponsePreview}",
-                preview);
+            _logger.LogWarning("Failed to parse valid assessment from LLM response");
             return CreateDefaultAssessment(requirement);
         }
+
+        return new RequirementAssessment
+        {
+            RequirementId = requirement.Title,
+            RequirementTitle = requirement.Title,
+            MeanScore = Math.Clamp(assessment.Score, 0.0, 1.0),
+            StandardDeviation = 0.0,
+            IndividualScores = new List<double> { Math.Clamp(assessment.Score, 0.0, 1.0) },
+            Reasoning = new List<string> { assessment.Reasoning ?? "No reasoning provided" },
+            Evidence = assessment.Evidence ?? new List<string>()
+        };
     }
 
     /// <summary>

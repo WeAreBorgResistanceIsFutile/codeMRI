@@ -19,6 +19,7 @@ public class WikiController : ControllerBase
 {
     private readonly IHubContext<WikiHub> _hubContext;
     private readonly IIngestionJobManager _ingestionManager;
+    private readonly IGenerationJobManager _generationManager;
     private readonly ILogger<WikiController> _logger;
     private readonly AgentMessageBus _messageBus;
     private readonly ICodeWikiOrchestrator _orchestrator;
@@ -34,7 +35,8 @@ public class WikiController : ControllerBase
         ILogger<WikiController> logger,
         AgentMessageBus messageBus,
         IAgentTelemetryService telemetryService,
-        IIngestionJobManager ingestionManager)
+        IIngestionJobManager ingestionManager,
+        IGenerationJobManager generationManager)
     {
         _wikiService = wikiService;
         _wikiRepo = wikiRepo;
@@ -44,6 +46,7 @@ public class WikiController : ControllerBase
         _messageBus = messageBus;
         _telemetryService = telemetryService;
         _ingestionManager = ingestionManager;
+        _generationManager = generationManager;
     }
 
 
@@ -330,6 +333,50 @@ public class WikiController : ControllerBase
                 _messageBus.Unsubscribe(AgentMessageTypes.TaskFailed, lifecycleSubscriber);
             }
         }
+    }
+
+    [HttpPost("generate-async")]
+    public async Task<IActionResult> GenerateAdvancedWikiAsyncEndpoint([FromBody] StructureRequest request)
+    {
+        _logger.LogInformation("Async generation requested for {RepoPath}", request.RepoPath);
+        
+        // Basic validation
+        if (string.IsNullOrEmpty(request.RepoPath)) return BadRequest("RepoPath is required");
+
+        // Start job
+        var job = await _generationManager.StartJobAsync(request.RepoPath, request, request.ConnectionId);
+        
+        return Ok(new { JobId = job.Id, Status = job.Status });
+    }
+
+    [HttpGet("generations/active")]
+    public async Task<IActionResult> GetActiveGenerations()
+    {
+        var jobs = await _generationManager.ListActiveJobsAsync();
+        return Ok(jobs);
+    }
+
+    [HttpGet("generation/{jobId}")]
+    public async Task<IActionResult> GetGenerationStatus(string jobId)
+    {
+        var job = await _generationManager.GetJobAsync(jobId);
+        if (job == null) return NotFound("Job not found");
+        return Ok(job);
+    }
+
+    [HttpGet("generation/{jobId}/result")]
+    public async Task<IActionResult> GetGenerationResult(string jobId)
+    {
+        var job = await _generationManager.GetJobAsync(jobId);
+        if (job == null) return NotFound("Job not found");
+
+        if (job.Status != GenerationStatus.Completed)
+            return BadRequest($"Job is not complete. Status: {job.Status}");
+            
+        if (string.IsNullOrEmpty(job.ResultJson))
+            return NoContent();
+
+        return Content(job.ResultJson, "application/json");
     }
 
     // Helper Method

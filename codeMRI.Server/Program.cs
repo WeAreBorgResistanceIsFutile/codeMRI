@@ -94,6 +94,34 @@ builder.Services.AddSingleton<IIngestionJobManager, DbIngestionManager>(sp =>
     return new DbIngestionManager(logger, messageBus, scopeFactory, snapshotService, dbPath);
 });
 
+builder.Services.AddSingleton<IGenerationJobManager, DbGenerationJobManager>(sp =>
+{
+    var logger = sp.GetRequiredService<ILogger<DbGenerationJobManager>>();
+    var messageBus = sp.GetRequiredService<AgentMessageBus>();
+    var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
+
+    var connectionString = builder.Configuration.GetConnectionString("GenerationDb");
+    string dbPath;
+
+    if (!string.IsNullOrEmpty(connectionString) && connectionString.Contains("Data Source="))
+    {
+        var connStringBuilder = new SqliteConnectionStringBuilder(connectionString);
+        dbPath = connStringBuilder.DataSource;
+    }
+    else if (!string.IsNullOrEmpty(connectionString))
+    {
+        dbPath = connectionString;
+    }
+    else
+    {
+        var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
+        if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
+        dbPath = Path.Combine(appDataPath, "generation.db");
+    }
+
+    return new DbGenerationJobManager(logger, messageBus, scopeFactory, dbPath);
+});
+
 
 // CORS
 builder.Services.AddCors(options =>

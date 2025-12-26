@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using codeMRI.Infrastructure.Services;
 using Microsoft.AspNetCore.SignalR.Client;
+using codeMRI.Core.Models;
 
 namespace codeMRI.CLI;
 
@@ -23,10 +24,10 @@ internal class Program
     {
         var wikiCommand = new Command("wiki", "Generate documentation wiki for a repository");
 
-        var inputOption = new Option<string>(
+        var inputOption = new Option<string?>(
                 new[] { "--input", "-i" },
-                "Path to local repository or Git URL")
-            { IsRequired = true };
+                "Path to local repository or Git URL"); 
+                // Made optional because --resume doesn't need input
 
         var serverOption = new Option<string>(
             new[] { "--server", "-s" },
@@ -49,6 +50,14 @@ internal class Program
             new[] { "--audience", "-a" },
             description: "Target audience for documentation generation (Developer, Tester, DevOps)",
             getDefaultValue: () => "Developer");
+            
+        var resumeOption = new Option<string?>(
+            new[] { "--resume" },
+            "Resume tracking an existing generation job by ID");
+
+        var listOption = new Option<bool>(
+            new[] { "--list" },
+            "List all active generation jobs on the server");
 
         wikiCommand.AddOption(inputOption);
         wikiCommand.AddOption(serverOption);
@@ -56,10 +65,19 @@ internal class Program
         wikiCommand.AddOption(forceOption);
         wikiCommand.AddOption(outputOption);
         wikiCommand.AddOption(audienceOption);
+        wikiCommand.AddOption(resumeOption);
+        wikiCommand.AddOption(listOption);
 
         wikiCommand.SetHandler(
-            async (input, serverUrl, verbose, force, output, audience) =>
+            async (input, serverUrl, verbose, force, output, audience, resumeJobId, list) =>
             {
+                // Validate input or resume or list
+                if (string.IsNullOrEmpty(input) && string.IsNullOrEmpty(resumeJobId) && !list)
+                {
+                    Console.WriteLine("Error: Either --input, --resume, or --list must be specified.");
+                    return;
+                }
+
                 // Validate audience
                 if (!Enum.TryParse<AudienceType>(audience, ignoreCase: true, out var audienceType))
                 {
@@ -67,8 +85,8 @@ internal class Program
                     return;
                 }
                 
-                await RunWikiAsync(input, serverUrl, verbose, force, output, audienceType);
-            }, inputOption, serverOption, verboseOption, forceOption, outputOption, audienceOption);
+                await RunWikiAsync(input, serverUrl, verbose, force, output, audienceType, resumeJobId, list);
+            }, inputOption, serverOption, verboseOption, forceOption, outputOption, audienceOption, resumeOption, listOption);
 
         return wikiCommand;
     }
@@ -107,107 +125,183 @@ internal class Program
         return testCommand;
     }
 
-    private static async Task RunWikiAsync(string input, string serverUrl, bool verbose, bool force, string? output, AudienceType audience)
+    private static async Task RunWikiAsync(string? input, string serverUrl, bool verbose, bool force, string? output, AudienceType audience, string? resumeJobId, bool list)
     {
         using var client = new HttpClient();
         client.BaseAddress = new Uri(serverUrl);
-        client.Timeout = TimeSpan.FromMinutes(30); // Long timeout for generation
+        client.Timeout = TimeSpan.FromHours(2); // Increased timeout even for polling loop safety
 
         if (verbose) Console.WriteLine($"Connecting to {serverUrl}...");
 
-        var targetPath = input;
-        var isTemp = false;
-
-        // 1. Handle Git Cloning (Client-side preparation)
-        if (GitHelper.IsGitUrl(input))
+        if (list)
         {
-            try
+            try 
             {
-                if (verbose) Console.WriteLine($"Cloning {input}...");
-                targetPath = await GitHelper.CloneRepositoryAsync(input);
-                isTemp = true;
-                if (verbose) Console.WriteLine($"Cloned to {targetPath}");
+                var response = await client.GetAsync("api/Wiki/generations/active");
+                if (response.IsSuccessStatusCode)
+                {
+                    var jobs = await response.Content.ReadFromJsonAsync<List<GenerationJob>>();
+                    Console.WriteLine($"Active Jobs ({jobs?.Count ?? 0}):");
+                    Console.WriteLine("--------------------------------------------------------------------------------");
+                    Console.WriteLine($"{"Job ID",-38} | {"Status",-12} | {"Progress",-8} | {"Repo"}");
+                    Console.WriteLine("--------------------------------------------------------------------------------");
+                    
+                    if (jobs != null)
+                    {
+                        foreach (var job in jobs)
+                        {
+                            Console.WriteLine($"{job.Id,-38} | {job.Status,-12} | {job.ProgressPercentage + "%",-8} | {job.RepoPath}");
+                        }
+                    }
+                    Console.WriteLine("--------------------------------------------------------------------------------");
+                    Console.WriteLine("Use --resume <JobId> to resume tracking a specific job.");
+                }
+                else
+                {
+                    Console.WriteLine($"Error retrieving jobs: {response.StatusCode} - {await response.Content.ReadAsStringAsync()}");
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error cloning repository: {ex.Message}");
-                return;
+                Console.WriteLine($"Error connecting to server: {ex.Message}");
             }
+            return;
+        }
+
+        string jobId;
+        string? targetPath = input;
+        bool isTemp = false;
+
+        if (!string.IsNullOrEmpty(resumeJobId))
+        {
+            jobId = resumeJobId;
+            Console.WriteLine($"Resuming tracking for Job ID: {jobId}");
         }
         else
         {
-            targetPath = Path.GetFullPath(input);
-            if (!Directory.Exists(targetPath))
+            // Start New Job
+            if (string.IsNullOrEmpty(input)) return; // Should be caught by handler check
+
+            // 1. Handle Git Cloning (Client-side preparation)
+            if (GitHelper.IsGitUrl(input))
             {
-                Console.WriteLine($"Error: Directory not found: {targetPath}");
+                try
+                {
+                    if (verbose) Console.WriteLine($"Cloning {input}...");
+                    targetPath = await GitHelper.CloneRepositoryAsync(input);
+                    isTemp = true;
+                    if (verbose) Console.WriteLine($"Cloned to {targetPath}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error cloning repository: {ex.Message}");
+                    return;
+                }
+            }
+            else
+            {
+                targetPath = Path.GetFullPath(input);
+                if (!Directory.Exists(targetPath))
+                {
+                    Console.WriteLine($"Error: Directory not found: {targetPath}");
+                    return;
+                }
+            }
+
+            // 2. Call Server to Start Job
+            var request = new
+            {
+                RepoPath = targetPath,
+                Language = "Detected automatically",
+                ForceRegenerate = force,
+                SkipPersistence = !string.IsNullOrEmpty(output),
+                ConnectionId = (string?)null, // SignalR not strictly needed with polling, but could be added
+                Audience = audience.ToString()
+            };
+
+            try
+            {
+                if (verbose) Console.WriteLine($"Starting generation job for {targetPath}...");
+                var response = await client.PostAsJsonAsync("api/Wiki/generate-async", request);
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"Error starting job: {response.StatusCode} - {await response.Content.ReadAsStringAsync()}");
+                    return;
+                }
+
+                var jobInfo = await response.Content.ReadFromJsonAsync<JsonElement>();
+                jobId = jobInfo.GetProperty("jobId").GetString() ?? string.Empty;
+                Console.WriteLine($"Job started. Job ID: {jobId}");
+                Console.WriteLine($"You can resume tracking this job later with: --resume {jobId}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error starting job: {ex.Message}");
                 return;
             }
         }
 
-        // 2. Connect to SignalR Hub for progress updates
-        await using var hubConnection = new HubConnectionBuilder()
-            .WithUrl($"{serverUrl}/wikiHub")
-            .WithAutomaticReconnect()
-            .Build();
+        // 3. Poll for Status
+        Console.WriteLine("Waiting for completion...");
+        bool isComplete = false;
+        GenerationJob? finalJobState = null;
 
-        hubConnection.On<ProgressInfo>("ReceiveProgress", info =>
+        while (!isComplete)
         {
-            // Clear current line if possible to make it look like a progress bar, or just write lines
-            // Simple approach: [Phase] Message (Percentage%)
-            Console.WriteLine($"[{info.Phase}] {info.Message} ({info.Percentage}%)");
-        });
-
-        string? connectionId = null;
-        try
-        {
-            if (verbose) Console.WriteLine("Connecting to progress hub...");
-            await hubConnection.StartAsync();
-            connectionId = hubConnection.ConnectionId;
-            if (verbose) Console.WriteLine($"Connected to hub. ID: {connectionId}");
-        }
-        catch (Exception ex)
-        {
-            if (verbose)
-                Console.WriteLine(
-                    $"Warning: Could not connect to progress hub: {ex.Message}. functionality will be limited.");
-        }
-
-        // 3. Call Server
-        var request = new
-        {
-            RepoPath = targetPath,
-            Language = "Detected automatically",
-            ForceRegenerate = force,
-            SkipPersistence = !string.IsNullOrEmpty(output),
-            ConnectionId = connectionId,
-            Audience = audience.ToString()
-        };
-
-        try
-        {
-            if (verbose) Console.WriteLine($"Sending request to server for {targetPath}...");
-            
-            // Debug: Show the JSON being sent
-            if (verbose)
+            try
             {
-                var debugJson = System.Text.Json.JsonSerializer.Serialize(request, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                Console.WriteLine($"Request JSON:\n{debugJson}");
-            }
-
-            var response = await client.PostAsJsonAsync("api/Wiki/generate-advanced", request);
-
-            if (response.IsSuccessStatusCode)
-            {
-                Console.WriteLine("Success! Documentation generated.");
-
-                if (!string.IsNullOrEmpty(output))
+                var statusResponse = await client.GetAsync($"api/Wiki/generation/{jobId}");
+                if (!statusResponse.IsSuccessStatusCode)
                 {
-                    try
+                    Console.WriteLine($"Error checking status: {statusResponse.StatusCode}");
+                    await Task.Delay(5000);
+                    continue;
+                }
+
+                var job = await statusResponse.Content.ReadFromJsonAsync<GenerationJob>();
+                if (job == null) break;
+
+                finalJobState = job;
+
+                // Simple progress display
+                Console.Write($"\r[{job.Status}] {job.Message} ({job.ProgressPercentage}%)   ");
+
+                if (job.Status == GenerationStatus.Completed || 
+                    job.Status == GenerationStatus.Failed || 
+                    job.Status == GenerationStatus.Cancelled)
+                {
+                    isComplete = true;
+                    Console.WriteLine(); // New line after loop
+                }
+                else
+                {
+                    await Task.Delay(2000);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\nError polling status: {ex.Message}");
+                await Task.Delay(5000);
+            }
+        }
+
+        // 4. Retrieve Result
+        if (finalJobState?.Status == GenerationStatus.Completed)
+        {
+            Console.WriteLine("Generation complete. Retrieving results...");
+            try
+            {
+                var resultResponse = await client.GetAsync($"api/Wiki/generation/{jobId}/result");
+                if (resultResponse.IsSuccessStatusCode)
+                {
+                    // If output directory is specified, save files
+                    if (!string.IsNullOrEmpty(output))
                     {
                         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                        var structure = await response.Content.ReadFromJsonAsync<WikiStructure>(options);
-
-                        if (structure != null)
+                        var structure = await resultResponse.Content.ReadFromJsonAsync<WikiStructure>(options);
+                        
+                         if (structure != null)
                         {
                             // Create audience-specific subdirectory
                             var outputDir = Path.Combine(output, audience.ToString());
@@ -231,58 +325,36 @@ internal class Program
 
                             Console.WriteLine($"Saved {structure.Pages.Count} files to {outputDir}");
                         }
-                        else
+                    }
+                    else
+                    {
+                        Console.WriteLine("Job completed successfully. Use --output to save files, or view in Web UI.");
+                         if (verbose)
                         {
-                            Console.WriteLine("Warning: Received empty structure from server.");
+                             var json = await resultResponse.Content.ReadAsStringAsync();
+                             Console.WriteLine("Result: " + (json.Length > 1000 ? json.Substring(0, 1000) + "..." : json));
                         }
-                    }
-                    catch (JsonException jex)
-                    {
-                        Console.WriteLine($"Error parsing response for file output: {jex.Message}");
-                        if (verbose) Console.WriteLine(await response.Content.ReadAsStringAsync());
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error saving files: {ex.Message}");
                     }
                 }
                 else
                 {
-                    if (verbose)
-                    {
-                        var json = await response.Content.ReadAsStringAsync();
-                        Console.WriteLine("Server Response: " + json);
-                    }
-                    else
-                    {
-                        Console.WriteLine("You can view it now in the Web UI.");
-                    }
+                     Console.WriteLine($"Error retrieving result: {resultResponse.StatusCode}");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine($"Server Error: {response.StatusCode}");
-                var error = await response.Content.ReadAsStringAsync();
-                Console.WriteLine(error);
+                 Console.WriteLine($"Error processing result: {ex.Message}");
+                 if (verbose) Console.WriteLine(ex.StackTrace);
             }
         }
-        catch (HttpRequestException ex)
+        else if (finalJobState?.Status == GenerationStatus.Failed)
         {
-            Console.WriteLine($"Error connecting to server: {ex.Message}");
-            Console.WriteLine("Is codeMRI.Server running?");
+            Console.WriteLine($"Job failed: {finalJobState.Error}");
         }
-        catch (Exception ex)
+
+        if (isTemp && !string.IsNullOrEmpty(targetPath))
         {
-            Console.WriteLine($"Unexpected error: {ex.Message}");
-        }
-        finally
-        {
-            if (isTemp)
-            {
-                Console.WriteLine($"Note: Repository was cloned to temporary path: {targetPath}");
-                Console.WriteLine(
-                    "It is required for viewing file contents in the UI. Do not delete it manually if you plan to browse source code.");
-            }
+            if (verbose) Console.WriteLine($"Note: Repository was cloned to: {targetPath}");
         }
     }
 
