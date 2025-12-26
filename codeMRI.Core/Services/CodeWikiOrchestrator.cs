@@ -289,32 +289,40 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         try
         {
             // Check cache first
-            // If a page with this title already exists in the repo, skip generation
-            var existingPage = await _wikiRepo.GetPageByTitleAsync(repoPath, module.Name);
-            if (existingPage != null)
+            // If a page with this ID already exists in the repo, skip generation
+            // BUT: skip only if it's a leaf. Parent pages should be synthesized to ensure they are up to date 
+            // with their children (which might have been regenerated/updated).
+            if (module.IsLeaf)
             {
-                _logger.LogInformation("Skipping generation for page '{PageTitle}' (cached)", module.Name);
-                lock (structure.Pages)
-                {
-                    structure.Pages.Add(existingPage);
-                }
+                var existingPage = await _wikiRepo.GetPageAsync(repoPath, module.Id);
+                // Fallback to title for backwards compatibility during migration
+                if (existingPage == null) existingPage = await _wikiRepo.GetPageByTitleAsync(repoPath, module.Name);
 
-                // Update the section reference for this cached page
-                if (structure.ModuleToSectionMap.TryGetValue(module.Id, out var cachedPageSectionId))
+                if (existingPage != null)
                 {
-                    var cachedPageSection = FindSectionById(structure.Sections, cachedPageSectionId);
-                    if (cachedPageSection != null)
+                    _logger.LogInformation("Skipping generation for leaf page '{PageTitle}' (cached)", module.Name);
+                    lock (structure.Pages)
                     {
-                        lock (cachedPageSection)
+                        structure.Pages.Add(existingPage);
+                    }
+
+                    // Update the section reference for this cached page
+                    if (structure.ModuleToSectionMap.TryGetValue(module.Id, out var cachedPageSectionId))
+                    {
+                        var cachedPageSection = FindSectionById(structure.Sections, cachedPageSectionId);
+                        if (cachedPageSection != null)
                         {
-                            if (!cachedPageSection.PageRefs.Contains(existingPage.Id))
-                                cachedPageSection.PageRefs.Add(existingPage.Id);
+                            lock (cachedPageSection)
+                            {
+                                if (!cachedPageSection.PageRefs.Contains(existingPage.Id))
+                                    cachedPageSection.PageRefs.Add(existingPage.Id);
+                            }
                         }
                     }
-                }
 
-                UpdateProgress(progressState, module.Name);
-                return;
+                    UpdateProgress(progressState, module.Name);
+                    return;
+                }
             }
 
             // Dynamic delegation: check if this leaf module needs to be subdivided
@@ -423,7 +431,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                 lock (structure.Pages)
                 {
                     childPages = structure.Pages
-                        .Where(p => module.Children.Any(c => c.Name == p.Title)) // Loose matching by title
+                        .Where(p => module.Children.Any(c => c.Id == p.Id)) // Robust matching by ID
                         .ToList();
                 }
 

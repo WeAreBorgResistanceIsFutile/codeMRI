@@ -71,7 +71,7 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
             var simplePageTitle = GetFriendlyPageTitle(module.Name);
             return new WikiPage
             {
-                Id = Guid.NewGuid().ToString(),
+                Id = module.Id,
                 Title = simplePageTitle,
                 Content = CleanContent(simpleContent, simplePageTitle),
                 RelevantFiles = new List<string>()
@@ -104,7 +104,7 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
             var mergedPageTitle = GetFriendlyPageTitle(module.Name);
             return new WikiPage
             {
-                Id = Guid.NewGuid().ToString(),
+                Id = module.Id,
                 Title = mergedPageTitle,
                 Content = CleanContent(mergedContent, mergedPageTitle),
                 RelevantFiles = childPages.SelectMany(p => p.RelevantFiles ?? new List<string>()).Distinct().ToList(),
@@ -230,7 +230,7 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
         var friendlyTitle = GetFriendlyPageTitle(module.Name);
         var resultPage = new WikiPage
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = module.Id,
             Title = friendlyTitle,
             Content = CleanContent(finalContent, friendlyTitle),
             RelevantFiles = childPages.SelectMany(p => p.RelevantFiles ?? new List<string>()).Distinct().ToList(),

@@ -482,7 +482,7 @@ public class WikiGenerationService : IWikiGenerationService
 
         return new WikiPage
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = module.Id,
             Title = module.Name,
             Content = content,
             RelevantFiles = filePaths
