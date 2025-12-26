@@ -104,6 +104,21 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Initialize vector store collections at startup
+using (var scope = app.Services.CreateScope())
+{
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        var vectorStoreInit = scope.ServiceProvider.GetRequiredService<IVectorStoreInitializationService>();
+        await vectorStoreInit.InitializeAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to initialize vector store, continuing with application startup");
+    }
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {

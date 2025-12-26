@@ -33,11 +33,28 @@ public class IngestionServerTests
                     ["ConnectionStrings:IngestionDb"] = connectionString,
                     ["Serilog:WriteTo:0:Name"] = "File",
                     ["Serilog:WriteTo:0:Args:path"] = logPath,
-                    ["Serilog:WriteTo:0:Args:rollingInterval"] = "Day"
+                    ["Serilog:WriteTo:0:Args:rollingInterval"] = "Day",
+                    // Override chunking configuration - use conservative limit for Ollama
+                    ["Embedding:Chunking:MaxTokens"] = "512",
+                    ["Embedding:Chunking:OverlapTokens"] = "50"
                 });
             });
         });
         _services = _factory.Services;
+        
+        // Initialize vector store collections (same as in Program.cs startup)
+        using (var scope = _services.CreateScope())
+        {
+            try
+            {
+                var vectorStoreInit = scope.ServiceProvider.GetRequiredService<IVectorStoreInitializationService>();
+                vectorStoreInit.InitializeAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                TestContext.WriteLine($"Warning: Failed to initialize vector store: {ex.Message}");
+            }
+        }
     }
 
     [OneTimeTearDown]
@@ -46,7 +63,7 @@ public class IngestionServerTests
         _factory.Dispose();
     }
 
-    [Ignore("It takes long time to complete")]
+    //[Ignore("It takes long time to complete")]
     [TestCase("https://github.com/WeAreBorgResistanceIsFutile/codeMRI.git")]
     [TestCase("https://github.com/WilliamNT/tunesynctool.git")]
     [TestCase("https://github.com/WilliamNT/Elva.git")]

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
+using Grpc.Core;
 
 namespace codeMRI.Infrastructure.Services;
 
@@ -116,6 +117,11 @@ public class QdrantVectorStoreService : IVectorStoreService, IDisposable
                     Metadata = r.Payload.ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value.StringValue)
                 }
             }).ToList();
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.NotFound)
+        {
+            _logger.LogDebug("Collection {CollectionName} not found, returning empty results", collectionName);
+            return new List<ScoredDocument>();
         }
         catch (Exception ex)
         {

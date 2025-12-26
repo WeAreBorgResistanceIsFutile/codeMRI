@@ -76,11 +76,37 @@ public class WireUp
 
         // Configure VectorStore and Embedding
         services.Configure<VectorStoreSettings>(configuration.GetSection("VectorStore"));
-        services.AddSingleton<IEmbeddingService, OllamaEmbeddingService>();
+        services.Configure<EmbeddingSettings>(configuration.GetSection("Embedding"));
+        
+        services.AddSingleton<OllamaEmbeddingService>();
+        services.AddSingleton<IEmbeddingService>(sp =>
+        {
+            var inner = sp.GetRequiredService<OllamaEmbeddingService>();
+            return new DebugSnapshotEmbeddingServiceDecorator(
+                inner,
+                sp.GetRequiredService<IDebugSnapshotService>(),
+                sp.GetRequiredService<ILLMInvocationContext>(),
+                sp.GetRequiredService<ILogger<DebugSnapshotEmbeddingServiceDecorator>>());
+        });
         services.AddSingleton<IVectorStoreService, QdrantVectorStoreService>();
         services.AddScoped<IDocumentIndexer, DocumentationIndexer>();
-        services.AddSingleton<SemanticDocumentChunker>();
-        services.AddSingleton<CodeChunker>();
+        services.AddSingleton<IVectorStoreInitializationService, VectorStoreInitializationService>();
+        
+        // Register chunkers with configured settings from Embedding section
+        services.AddSingleton<SemanticDocumentChunker>(sp =>
+        {
+            var embeddingSettings = sp.GetRequiredService<IOptions<EmbeddingSettings>>().Value;
+            return new SemanticDocumentChunker(
+                maxTokens: embeddingSettings.Chunking.MaxTokens,
+                overlapTokens: embeddingSettings.Chunking.OverlapTokens);
+        });
+        
+        services.AddSingleton<CodeChunker>(sp =>
+        {
+            var embeddingSettings = sp.GetRequiredService<IOptions<EmbeddingSettings>>().Value;
+            return new CodeChunker(
+                maxTokens: embeddingSettings.Chunking.MaxTokens);
+        });
 
         services.AddSingleton<ICSharpParser, RoslynCSharpParser>();
         services.AddSingleton<AgentMessageBus>();
