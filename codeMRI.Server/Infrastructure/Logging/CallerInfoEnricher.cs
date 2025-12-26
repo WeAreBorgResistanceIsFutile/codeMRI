@@ -9,6 +9,8 @@ namespace codeMRI.Server.Infrastructure.Logging
     {
         public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
         {
+            if (logEvent.Level == LogEventLevel.Information) return;
+
             var skip = 3;
             while (true)
             {

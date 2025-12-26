@@ -240,7 +240,23 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
             if (response.Contains("```"))
             {
                 var match = MarkdownJsonBlockRegex().Match(response);
-                if (match.Success) response = match.Groups[1].Value;
+                if (match.Success)
+                {
+                    response = match.Groups[1].Value;
+                }
+                else
+                {
+                    // Fallback: strip leading ```json or ``` if present, to help with truncated responses
+                    var trimmed = response.TrimStart();
+                    if (trimmed.StartsWith("```"))
+                    {
+                        var newlineIndex = trimmed.IndexOf('\n');
+                        if (newlineIndex >= 0)
+                            response = trimmed.Substring(newlineIndex + 1);
+                        else if (trimmed.Length >= 3)
+                            response = trimmed.Substring(3);
+                    }
+                }
             }
 
             // 2. Fallback: Use bracket counting or simple index finding to extract valid JSON
