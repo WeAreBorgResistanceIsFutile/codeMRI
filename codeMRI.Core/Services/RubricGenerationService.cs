@@ -1,5 +1,5 @@
 using System.Text.Json;
-using codeMRI.Core.Converters;
+using System.Text.Json.Serialization;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services.MessageComposition;
@@ -309,24 +309,102 @@ Return **ONLY** valid JSON. Do not include markdown blocks or preamble.
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                ReferenceHandler = ReferenceHandler.IgnoreCycles
             };
-            options.Converters.Add(new RubricNodeConverter());
 
-            var rubric = JsonSerializer.Deserialize<EvaluationRubric>(cleanResponse, options);
-
-            if (rubric == null)
+            // Using a local helper to pre-process JSON and add $type discriminators if missing, 
+            // allowing us to use built-in polymorphic deserialization without a custom converter.
+            using (var doc = JsonDocument.Parse(cleanResponse))
             {
-                _logger.LogWarning("Failed to parse rubric from LLM response");
-                return CreateDefaultRubric();
-            }
+                var root = doc.RootElement;
+                var enrichedJson = EnrichJsonWithDiscriminators(root);
+                
+                var rubric = JsonSerializer.Deserialize<EvaluationRubric>(enrichedJson, options);
 
-            return rubric;
+                if (rubric == null)
+                {
+                    _logger.LogWarning("Failed to parse rubric from LLM response");
+                    return CreateDefaultRubric();
+                }
+
+                return rubric;
+            }
         }
-        catch (JsonException ex)
+        catch (Exception ex)
         {
             _logger.LogError(ex, "Error parsing rubric JSON from LLM response");
             return CreateDefaultRubric();
+        }
+    }
+
+    private string EnrichJsonWithDiscriminators(JsonElement element)
+    {
+        // Simple recursive enrichment to add $type based on content if missing
+        using (var stream = new MemoryStream())
+        {
+            using (var writer = new Utf8JsonWriter(stream))
+            {
+                EnrichRecursive(writer, element);
+            }
+            return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+        }
+    }
+
+    private void EnrichRecursive(Utf8JsonWriter writer, JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            writer.WriteStartObject();
+            
+            bool hasType = false;
+            bool isLeaf = false;
+            bool isEvaluationRubric = false;
+
+            foreach (var prop in element.EnumerateObject())
+            {
+                if (prop.NameEquals("$type")) hasType = true;
+                if (prop.Name.ToLowerInvariant().Replace("_", "") == "isleaf" && prop.Value.ValueKind == JsonValueKind.True) isLeaf = true;
+                // Heuristic: root object usually has repository info or specific title
+                if (prop.Name.ToLowerInvariant() == "title" && prop.Value.GetString()?.Contains("Rubric") == true) isEvaluationRubric = true;
+            }
+
+            if (!hasType)
+            {
+                if (isLeaf) writer.WriteString("$type", "requirement");
+                else if (isEvaluationRubric) writer.WriteString("$type", "rubric");
+                else writer.WriteString("$type", "category");
+            }
+
+            foreach (var prop in element.EnumerateObject())
+            {
+                if (prop.Name.ToLowerInvariant() == "children")
+                {
+                    writer.WritePropertyName("children");
+                    if (prop.Value.ValueKind == JsonValueKind.Array)
+                    {
+                        writer.WriteStartArray();
+                        foreach (var item in prop.Value.EnumerateArray()) EnrichRecursive(writer, item);
+                        writer.WriteEndArray();
+                    }
+                    else writer.WriteNullValue();
+                }
+                else
+                {
+                    prop.WriteTo(writer);
+                }
+            }
+            writer.WriteEndObject();
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            writer.WriteStartArray();
+            foreach (var item in element.EnumerateArray()) EnrichRecursive(writer, item);
+            writer.WriteEndArray();
+        }
+        else
+        {
+            element.WriteTo(writer);
         }
     }
 

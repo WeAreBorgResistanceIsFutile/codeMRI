@@ -1,6 +1,6 @@
+using System.Text.Json.Serialization;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
-using codeMRI.Core.Converters;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -27,7 +27,8 @@ public class ResumableRubricDecorator : IRubricGenerationService
         _jsonOptions = new JsonSerializerOptions
         {
             WriteIndented = false,
-            Converters = { new RubricNodeConverter() }
+            PropertyNameCaseInsensitive = true,
+            ReferenceHandler = ReferenceHandler.IgnoreCycles
         };
     }
 
