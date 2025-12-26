@@ -8,6 +8,7 @@ using codeMRI.Core.Services.MessageComposition;
 using codeMRI.Server.Hubs;
 using Microsoft.Data.Sqlite;
 using Serilog;
+using codeMRI.Server.Infrastructure.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +17,7 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
     .ReadFrom.Services(services)
     .Enrich.FromLogContext()
+    .Enrich.With(new CallerInfoEnricher())
     .WriteTo.Console());
 
 // Add services to the container.
