@@ -86,24 +86,23 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
         var chunkSystemPrompt = ReformulateSystemPrompt(context.SystemPrompt);
         
         // Process chunks iteratively
-        var accumulatedFindings = string.Empty;
+        var iterationFindings = new List<string>();
+        var rollingState = string.Empty;
         
         for (var i = 0; i < chunks.Count; i++)
         {
-            // Ensure findings don't exceed 30% of available input
+            // Ensure findings don't exceed 30% of available input for the rolling context
             var maxFindingsTokens = (int)(availableInputTokens * 0.3);
-            var findingsTokens = context.Validator.EstimateTokenCount(accumulatedFindings);
+            var findingsTokens = context.Validator.EstimateTokenCount(rollingState);
             
             if (findingsTokens > maxFindingsTokens)
             {
-                _logger.LogWarning(
-                    "Accumulated findings too large ({FindingsTokens} tokens). Truncating to {MaxTokens} tokens",
+                _logger.LogInformation(
+                    "Rolling findings context too large ({FindingsTokens} tokens). Compacting to fit within {MaxTokens} tokens",
                     findingsTokens,
                     maxFindingsTokens);
                 
-                var maxFindingsChars = maxFindingsTokens * 4;
-                accumulatedFindings = "... [EARLIER FINDINGS TRUNCATED]\n\n" + 
-                                    accumulatedFindings.Substring(Math.Max(0, accumulatedFindings.Length - maxFindingsChars));
+                rollingState = await CompactFindingsAsync(rollingState, maxFindingsTokens, llmClient, context.Model, cancellationToken);
             }
             
             // Build chunk prompt
@@ -112,7 +111,7 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
                 chunks[i],
                 i + 1,
                 chunks.Count,
-                accumulatedFindings
+                rollingState
             );
             
             var messages = new List<ChatMessage>
@@ -127,18 +126,22 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
                 chunks.Count,
                 chunks[i].Length);
             
-            accumulatedFindings = await llmClient.ChatAsync(messages, context.Model, cancellationToken);
+            var response = await llmClient.ChatAsync(messages, context.Model, cancellationToken);
+            iterationFindings.Add(response);
+            rollingState = response; // For next iteration, our "rolling state" is the latest finding
         }
         
         // RESULT RECONSTRUCTION: Synthesize final coherent result
-        _logger.LogInformation("Reconstructing final result from accumulated findings ({FindingsLength} chars)", 
-            accumulatedFindings.Length);
+        _logger.LogInformation("Reconstructing final result from {FindingsCount} iteration findings", 
+            iterationFindings.Count);
         
         var finalResult = await SynthesizeFinalResult(
             context.SystemPrompt ?? "",
-            accumulatedFindings,
+            iterationFindings,
             llmClient,
+            context.Validator,
             context.Model,
+            0, // Initial recursion depth
             cancellationToken
         );
         
@@ -151,9 +154,34 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
                 ["UseSemanticChunking"] = useSemanticChunking,
                 ["ChunkSize"] = chunkSize,
                 ["OriginalTextLength"] = context.TextToProcess.Length,
-                ["AccumulatedFindingsLength"] = accumulatedFindings.Length
+                ["FindingsCount"] = iterationFindings.Count
             }
         };
+    }
+
+    private async Task<string> CompactFindingsAsync(
+        string findings,
+        int maxTokens,
+        ILLMClient llmClient,
+        string? model,
+        CancellationToken cancellationToken)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new() 
+            { 
+                Role = "system", 
+                Content = "You are an expert at distilling and summarizing information while preserving core insights. " +
+                          "Provide a concise summary that captures all key findings and critical details, fitting within the specified token limit."
+            },
+            new() 
+            { 
+                Role = "user", 
+                Content = $"Summarize these findings to be more concise (target {maxTokens} tokens), while preserving all information needed for subsequent analysis:\n\n{findings}" 
+            }
+        };
+
+        return await llmClient.ChatAsync(messages, model, cancellationToken);
     }
     
     private string ReformulateSystemPrompt(string? originalSystemPrompt)
@@ -206,7 +234,80 @@ Provide updated comprehensive findings:";
     
     private async Task<string> SynthesizeFinalResult(
         string originalRequest,
-        string accumulatedFindings,
+        List<string> iterationFindings,
+        ILLMClient llmClient,
+        ILLMValidator validator,
+        string? model,
+        int recursionDepth,
+        CancellationToken cancellationToken)
+    {
+        // Safety guard against infinite recursion
+        if (recursionDepth > 5)
+        {
+            _logger.LogWarning("Hierarchical synthesis reached max recursion depth {Depth}. Forcing final synthesis with potentially large context.", recursionDepth);
+            // Optimization: If we have iterationFindings, we join them.
+            // But we already do that in combinedFindings below. 
+            // We should just proceed to ExecuteSynthesisCall directly below after check.
+            // But wait, the check 'findingsTokens <= available' is done first.
+            // We should force it.
+            
+            var forceCombined = string.Join("\n\n---\n\n", iterationFindings);
+            return await ExecuteSynthesisCall(originalRequest, forceCombined, llmClient, model, cancellationToken);
+        }
+
+        var combinedFindings = string.Join("\n\n---\n\n", iterationFindings);
+        var findingsTokens = validator.EstimateTokenCount(combinedFindings);
+        
+        // Calculate available tokens for the synthesis prompt
+        var inputSafetyMargin = 300; // Slightly larger for final synthesis
+        var availableInputTokens = validator.ContextSize - validator.ResponseBuffer - inputSafetyMargin;
+        
+        // If combined findings fit, do it in one call
+        if (findingsTokens <= availableInputTokens * 0.8) // Use 80% to be safe
+        {
+            return await ExecuteSynthesisCall(originalRequest, combinedFindings, llmClient, model, cancellationToken);
+        }
+
+        // Hierarchical Synthesis: We need to reduce findings in groups
+        _logger.LogInformation("Combined findings ({Tokens} tokens) exceed available synthesis context ({Available} tokens). Performing hierarchical synthesis.", 
+            findingsTokens, availableInputTokens);
+
+        var reducedFindings = new List<string>();
+        var currentBatch = new List<string>();
+        var currentBatchTokens = 0;
+
+        foreach (var finding in iterationFindings)
+        {
+            var tokenCount = validator.EstimateTokenCount(finding);
+            if (currentBatchTokens + tokenCount > availableInputTokens * 0.7 && currentBatch.Any())
+            {
+                // Process current batch
+                var batchString = string.Join("\n\n", currentBatch);
+                var summary = await CompactFindingsAsync(batchString, (int)(availableInputTokens * 0.4), llmClient, model, cancellationToken);
+                reducedFindings.Add(summary);
+                
+                currentBatch.Clear();
+                currentBatchTokens = 0;
+            }
+            
+            currentBatch.Add(finding);
+            currentBatchTokens += tokenCount;
+        }
+
+        if (currentBatch.Any())
+        {
+            var batchString = string.Join("\n\n", currentBatch);
+            var summary = await CompactFindingsAsync(batchString, (int)(availableInputTokens * 0.4), llmClient, model, cancellationToken);
+            reducedFindings.Add(summary);
+        }
+
+        // Final recursive call with reduced findings
+        return await SynthesizeFinalResult(originalRequest, reducedFindings, llmClient, validator, model, recursionDepth + 1, cancellationToken);
+    }
+
+    private async Task<string> ExecuteSynthesisCall(
+        string originalRequest,
+        string combinedFindings,
         ILLMClient llmClient,
         string? model,
         CancellationToken cancellationToken)
@@ -223,7 +324,7 @@ Provide updated comprehensive findings:";
                 Role = "user", 
                 Content = $@"Create a final well-structured response based on these accumulated findings:
 
-{accumulatedFindings}
+{combinedFindings}
 
 Original request: {originalRequest}
 

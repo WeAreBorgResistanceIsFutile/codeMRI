@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using System.Text.Json;
 using NUnit.Framework;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
@@ -386,5 +387,39 @@ public class DocumentationJudgeServiceTests
         Assert.That(results, Has.Count.EqualTo(2));
         Assert.That(results[0].MeanScore, Is.EqualTo(0.9));
         Assert.That(results[1].MeanScore, Is.EqualTo(0.9));
+    }
+
+    [Test]
+    public async Task EvaluateRequirementAsync_ShouldHandleTruncatedMarkdownJson()
+    {
+        // Arrange
+        var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
+        var structure = new WikiStructure();
+        // Truncated JSON inside markdown block (missing closing brace and backticks)
+        var response = "```json\n{\"score\": 0.9, \"reasoning\": \"Truncat";
+
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = response, StrategyUsed = "Simple" });
+
+        // Act
+        var result = await _service.EvaluateRequirementAsync(requirement, structure);
+
+        // Assert - Should return default assessment
+        Assert.That(result.MeanScore, Is.EqualTo(0.0));
+        
+        // Key verification: The logged exception should NOT be about invalid start character '`'.
+        // It SHOULD be about JSON syntax/truncation.
+        _mockLogger.Verify(logger => logger.Log(
+            LogLevel.Error,
+            It.IsAny<EventId>(),
+            It.Is<It.IsAnyType>((v, t) => true),
+            It.Is<Exception>(ex => ex is JsonException && !ex.Message.Contains("'`' is an invalid start")),
+            It.IsAny<Func<It.IsAnyType, Exception?, string>>()), 
+            Times.Once, "Should log a JSON exception that is NOT about backticks");
     }
 }
