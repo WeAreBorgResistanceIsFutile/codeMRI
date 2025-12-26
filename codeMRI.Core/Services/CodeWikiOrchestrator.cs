@@ -467,16 +467,11 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
             await _wikiRepo.SavePageAsync(repoPath, page);
 
             // Update the section for this module using the mapping from navigation service
-            string sectionId;
-            if (structure.ModuleToSectionMap.TryGetValue(module.Id, out var mappedSectionId))
-            {
-                sectionId = mappedSectionId;
-            }
-            else
+            if (!TryFindMappedSectionId(structure, module, out var sectionId))
             {
                 // Fallback: try the old pattern
                 sectionId = $"section_{module.Id}";
-                _logger.LogWarning("Module {ModuleId} not found in ModuleToSectionMap, using fallback section ID", module.Id);
+                _logger.LogWarning("Module {ModuleId} and its ancestors not found in ModuleToSectionMap, using fallback section ID", module.Id);
             }
             
             var section = FindSectionById(structure.Sections, sectionId);
@@ -499,6 +494,24 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         {
             _semaphore.Release();
         }
+    }
+
+    private bool TryFindMappedSectionId(WikiStructure structure, ModuleNode module, out string sectionId)
+    {
+        var current = module;
+        while (current != null)
+        {
+            if (structure.ModuleToSectionMap.TryGetValue(current.Id, out var mappedId))
+            {
+                sectionId = mappedId;
+                return true;
+            }
+
+            current = current.Parent;
+        }
+
+        sectionId = null!;
+        return false;
     }
 
     private void UpdateProgress(ProgressState state, string moduleName)
