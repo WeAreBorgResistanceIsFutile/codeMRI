@@ -471,7 +471,7 @@ codeMRI/
 
 ## 🆕 Recent Improvements
 
-### Context Window Management (December 2024)
+### Context Window Management (December 2025)
 
 - **Chunking Message Strategy**: Implemented iterative processing for large content that exceeds context windows
   - Automatic chunking with LLM-based processing
@@ -482,7 +482,7 @@ codeMRI/
   - Dynamic buffer allocation for response generation
   - Proper accounting for system prompts, content, and response space
 
-### Interactive Citations (December 2024)
+### Interactive Citations (December 2025)
 
 - **Styled Citation Markers**: RAG responses now include visually appealing citation badges
   - Hover popovers showing source document details
@@ -493,7 +493,7 @@ codeMRI/
   - HTML badge generation with tooltip content
   - Seamless integration with Markdig rendering
 
-### Enhanced Testing (December 2024)
+### Enhanced Testing (December 2025)
 
 - **Comprehensive Test Coverage**: Expanded test suite across all projects
   - Server integration tests (`codeMRI.Server.Tests`)
@@ -504,7 +504,7 @@ codeMRI/
   - Generic-to-specific test progression
   - High code quality and maintainability
 
-### MCP Server (December 2024)
+### MCP Server (December 2025)
 
 - **Model Context Protocol Integration**: Full MCP server implementation for AI assistants
   - 7 query tools: find_references, call_hierarchy, find_implementations, query_dependencies, type_hierarchy, semantic_search, refresh_graph
