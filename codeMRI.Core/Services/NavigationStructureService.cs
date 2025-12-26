@@ -101,6 +101,9 @@ public class NavigationStructureService : INavigationStructureService
                 ModuleToSectionMap = dto.ModuleMapping ?? new Dictionary<string, string>()
             };
 
+            // Backfill map from sections in case LLM missed some in the mapping dict
+            BackfillModuleMap(structure.Sections, structure.ModuleToSectionMap);
+
             return structure;
         }
         catch (JsonException ex)
@@ -198,6 +201,25 @@ public class NavigationStructureService : INavigationStructureService
         foreach (var child in node.Children)
             modules.AddRange(GetAllModules(child));
         return modules;
+    }
+
+    private void BackfillModuleMap(List<WikiSection> sections, Dictionary<string, string> map)
+    {
+        foreach (var section in sections)
+        {
+            foreach (var modId in section.ModuleIds)
+            {
+                if (!string.IsNullOrWhiteSpace(modId) && !map.ContainsKey(modId))
+                {
+                    map[modId] = section.Id;
+                }
+            }
+
+            if (section.SubSections != null)
+            {
+                BackfillModuleMap(section.SubSections, map);
+            }
+        }
     }
 
     // DTOs for JSON parsing
