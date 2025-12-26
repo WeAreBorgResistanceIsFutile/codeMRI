@@ -1,5 +1,6 @@
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services;
 using codeMRI.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -12,6 +13,8 @@ public class DocumentationIndexerTests
     private Mock<IEmbeddingService> _mockEmbeddingService = null!;
     private Mock<IVectorStoreService> _mockVectorStoreService = null!;
     private Mock<ILogger<DocumentationIndexer>> _mockLogger = null!;
+    private SemanticDocumentChunker _documentChunker = null!;
+    private CodeChunker _codeChunker = null!;
     private DocumentationIndexer _indexer = null!;
 
     [SetUp]
@@ -22,10 +25,16 @@ public class DocumentationIndexerTests
         _mockLogger = new Mock<ILogger<DocumentationIndexer>>();
 
         _mockEmbeddingService.Setup(x => x.GetDimensions()).Returns(768);
+        
+        // Use test configuration for chunkers (small chunks for testing)
+        _documentChunker = new SemanticDocumentChunker(maxTokens: 256, overlapTokens: 30);
+        _codeChunker = new CodeChunker(maxTokens: 256);
 
         _indexer = new DocumentationIndexer(
             _mockEmbeddingService.Object,
             _mockVectorStoreService.Object,
+            _documentChunker,
+            _codeChunker,
             _mockLogger.Object);
     }
 

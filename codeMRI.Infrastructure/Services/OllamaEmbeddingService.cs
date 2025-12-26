@@ -11,20 +11,22 @@ public class OllamaEmbeddingService : IEmbeddingService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<OllamaEmbeddingService> _logger;
-    private readonly OllamaSettings _options;
+    private readonly string _model;
 
     public OllamaEmbeddingService(
         HttpClient httpClient,
-        IOptions<OllamaSettings> options,
+        IOptions<OllamaSettings> ollamaOptions,
+        IOptions<EmbeddingSettings> embeddingOptions,
         ILogger<OllamaEmbeddingService> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _options = options.Value;
+        _model = embeddingOptions.Value.Model;
 
-        if (_httpClient.BaseAddress == null && !string.IsNullOrEmpty(_options.BaseUrl))
+        var ollamaSettings = ollamaOptions.Value;
+        if (_httpClient.BaseAddress == null && !string.IsNullOrEmpty(ollamaSettings.BaseUrl))
         {
-            _httpClient.BaseAddress = new Uri(_options.BaseUrl);
+            _httpClient.BaseAddress = new Uri(ollamaSettings.BaseUrl);
         }
     }
 
@@ -32,17 +34,24 @@ public class OllamaEmbeddingService : IEmbeddingService
     {
         var response = await _httpClient.PostAsJsonAsync("/api/embeddings", new
         {
-            model = _options.EmbeddingModel,
+            model = _model,
             prompt = text
         });
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            var statusCode = (int)response.StatusCode;
+            throw new HttpRequestException(
+                $"Response status code does not indicate success: {statusCode} ({response.ReasonPhrase}). Error: {errorBody}");
+        }
+
         var result = await response.Content.ReadFromJsonAsync<OllamaEmbeddingResponse>();
         
         if (result?.Embedding == null || result.Embedding.Length == 0)
         {
-            _logger.LogError("Ollama returned null or empty embedding for model {Model}", _options.EmbeddingModel);
-            throw new InvalidOperationException($"Ollama returned null or empty embedding for model {_options.EmbeddingModel}");
+            _logger.LogError("Ollama returned null or empty embedding for model {Model}", _model);
+            throw new InvalidOperationException($"Ollama returned null or empty embedding for model {_model}");
         }
 
         return result.Embedding;

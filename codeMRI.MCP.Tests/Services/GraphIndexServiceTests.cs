@@ -22,7 +22,7 @@ namespace codeMRI.MCP.Tests.Services
     {
         private ServiceProvider _serviceProvider;
         private GraphIndexService _graphIndexService;
-        private QueryEngine _queryEngine;
+        private QueryEngine? _queryEngine;
 
         [SetUp]
         public void Setup()
@@ -137,7 +137,7 @@ namespace codeMRI.MCP.Tests.Services
             Assert.That(stats.edgeCount, Is.GreaterThan(0), "Graph should contain edges after indexing codeMRI repo");
 
             // Verify that Enums are indexed correctly
-            var references = await _queryEngine.FindAllReferencesAsync(nameof(ArchitecturalPattern));
+            var references = await _queryEngine!.FindAllReferencesAsync(nameof(ArchitecturalPattern));
 
             Assert.That(references, Is.Not.Null, "Should have found ArchitecturalPattern references");
             Assert.That(references.Count, Is.GreaterThan(0), "Should have found at least one refference to ArchitecturalPattern");

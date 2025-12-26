@@ -9,19 +9,23 @@ public class DocumentationIndexer : IDocumentIndexer
 {
     private readonly IEmbeddingService _embeddingService;
     private readonly IVectorStoreService _vectorStoreService;
-    private readonly SemanticDocumentChunker _chunker;
+    private readonly SemanticDocumentChunker _documentChunker;
+    private readonly CodeChunker _codeChunker;
     private readonly ILogger<DocumentationIndexer> _logger;
     private const string DocumentationCollection = "documentation";
 
     public DocumentationIndexer(
         IEmbeddingService embeddingService,
         IVectorStoreService vectorStoreService,
+        SemanticDocumentChunker documentChunker,
+        CodeChunker codeChunker,
         ILogger<DocumentationIndexer> logger)
     {
         _embeddingService = embeddingService;
         _vectorStoreService = vectorStoreService;
+        _documentChunker = documentChunker;
+        _codeChunker = codeChunker;
         _logger = logger;
-        _chunker = new SemanticDocumentChunker();
     }
 
     public async Task IndexDocumentationAsync(string repoPath, WikiStructure structure, CancellationToken cancellationToken = default)
@@ -40,7 +44,7 @@ public class DocumentationIndexer : IDocumentIndexer
     {
         if (string.IsNullOrWhiteSpace(page.Content)) return;
 
-        var chunks = _chunker.ChunkMarkdown(page.Content);
+        var chunks = _documentChunker.ChunkMarkdown(page.Content);
         _logger.LogDebug("Indexing page {PageTitle} ({ChunkCount} chunks)", page.Title, chunks.Count);
 
         for (int i = 0; i < chunks.Count; i++)
@@ -71,11 +75,10 @@ public class DocumentationIndexer : IDocumentIndexer
         _logger.LogInformation("Indexing codebase for repository: {RepoPath}", repoPath);
         
         await _vectorStoreService.CreateCollectionAsync("code", _embeddingService.GetDimensions());
-        var codeChunker = new CodeChunker();
 
         foreach (var node in graph.GetNodes())
         {
-            var chunks = codeChunker.ChunkCode(node);
+            var chunks = _codeChunker.ChunkCode(node);
             foreach (var chunk in chunks)
             {
                 var embedding = await _embeddingService.GetEmbeddingAsync(chunk.Text);
