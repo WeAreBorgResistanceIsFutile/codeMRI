@@ -24,6 +24,11 @@ public class ASTServiceClient : IASTServiceClient
     private DateTime _circuitOpenTime = DateTime.MinValue;
     private int _failureCount;
 
+    // Health check cache
+    private readonly TimeSpan _healthCheckTtl = TimeSpan.FromSeconds(5);
+    private DateTime _lastHealthCheckTime = DateTime.MinValue;
+    private bool _lastHealthCheckResult;
+
     public ASTServiceClient(
         HttpClient httpClient,
         ILogger<ASTServiceClient> logger,
@@ -62,6 +67,11 @@ public class ASTServiceClient : IASTServiceClient
             }
         }
 
+        if (DateTime.UtcNow - _lastHealthCheckTime < _healthCheckTtl)
+        {
+            return _lastHealthCheckResult;
+        }
+
         const int maxRetries = 2;
 
         for (var attempt = 1; attempt <= maxRetries; attempt++)
@@ -73,9 +83,20 @@ public class ASTServiceClient : IASTServiceClient
                 var response = await _httpClient.GetAsync("/health", cancellationToken);
                 var success = response.IsSuccessStatusCode;
 
-                if (success) _failureCount = 0; // Reset failure count on success
+                if (success)
+                {
+                    _failureCount = 0; // Reset failure count on success
+                    _lastHealthCheckResult = true;
+                    _lastHealthCheckTime = DateTime.UtcNow;
+                    _logger.LogDebug("AST Service health check result: true");
+                }
+                else
+                {
+                    _lastHealthCheckResult = false;
+                    _lastHealthCheckTime = DateTime.UtcNow;
+                    _logger.LogInformation("AST Service health check result: false");
+                }
 
-                _logger.LogInformation("AST Service health check result: {Success}", success);
                 return success;
             }
             catch (HttpRequestException ex) when (attempt < maxRetries)

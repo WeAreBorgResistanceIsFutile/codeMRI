@@ -209,4 +209,68 @@ if not logger.hasHandlers():
         _httpMessageHandlerMock.Protected().Verify("SendAsync", Times.Never(), ItExpr.IsAny<HttpRequestMessage>(),
             ItExpr.IsAny<CancellationToken>());
     }
+
+    [Test]
+    public async Task IsHealthyAsync_ShouldCacheResult_WithinTtl()
+    {
+        // Arrange
+        _httpMessageHandlerMock.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.ToString().EndsWith("/health")),
+                ItExpr.IsAny<CancellationToken>()
+            )
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK
+            });
+
+        // Act
+        var result1 = await _service.IsHealthyAsync();
+        var result2 = await _service.IsHealthyAsync();
+
+        // Assert
+        Assert.That(result1, Is.True);
+        Assert.That(result2, Is.True);
+        
+        // This should fail currently as it will be called twice
+        _httpMessageHandlerMock.Protected().Verify(
+            "SendAsync",
+            Times.Once(),
+            ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.ToString().EndsWith("/health")),
+            ItExpr.IsAny<CancellationToken>()
+        );
+    }
+
+    [Test]
+    public async Task IsHealthyAsync_ShouldCallHttpAgain_AfterTtl()
+    {
+        // Arrange
+        _httpMessageHandlerMock.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.ToString().EndsWith("/health")),
+                ItExpr.IsAny<CancellationToken>()
+            )
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK
+            });
+
+        // Act
+        await _service.IsHealthyAsync();
+        
+        // Wait for TTL (5s) + some buffer
+        await Task.Delay(5500);
+        
+        await _service.IsHealthyAsync();
+
+        // Assert
+        _httpMessageHandlerMock.Protected().Verify(
+            "SendAsync",
+            Times.Exactly(2),
+            ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.ToString().EndsWith("/health")),
+            ItExpr.IsAny<CancellationToken>()
+        );
+    }
 }
