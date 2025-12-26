@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace codeMRI.Core.Models;
 
 public class RawDependencyData
@@ -33,6 +35,9 @@ public class ASTNodeProperties
 {
     public List<string> Annotations { get; set; } = new();
     public List<string> Decorators { get; set; } = new();
+    
+    [JsonExtensionData]
+    public Dictionary<string, object>? ExtensionData { get; set; }
 }
 
 public class ASTGraphEdge

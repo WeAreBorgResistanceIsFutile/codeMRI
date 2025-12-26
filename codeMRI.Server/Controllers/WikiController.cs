@@ -307,7 +307,8 @@ public class WikiController : ControllerBase
             var structure = await _orchestrator.GenerateAdvancedWikiAsync(
                 request.RepoPath,
                 repoInfo,
-                progress);
+                progress,
+                request.ForceRegenerate);
 
             if (!request.SkipPersistence) await _wikiRepo.SaveStructureAsync(request.RepoPath, structure);
 

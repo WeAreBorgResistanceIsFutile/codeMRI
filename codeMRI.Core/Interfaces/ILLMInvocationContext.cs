@@ -8,4 +8,5 @@ public interface ILLMInvocationContext
     string? JobId { get; set; }
     string? RepoPath { get; set; }
     string? ComponentId { get; set; }
+    bool Force { get; set; }
 }

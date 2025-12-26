@@ -13,6 +13,7 @@ public class ResumableIngestionTests
 {
     private Mock<IHierarchicalDecompositionService> _mockInnerDecomposition;
     private Mock<IWikiRepository> _mockWikiRepo;
+    private Mock<ILLMInvocationContext> _mockInvocationContext;
     private Mock<ILogger<ResumableDecompositionDecorator>> _mockDecompLogger;
     private ResumableDecompositionDecorator _decompositionDecorator;
 
@@ -21,10 +22,12 @@ public class ResumableIngestionTests
     {
         _mockInnerDecomposition = new Mock<IHierarchicalDecompositionService>();
         _mockWikiRepo = new Mock<IWikiRepository>();
+        _mockInvocationContext = new Mock<ILLMInvocationContext>();
         _mockDecompLogger = new Mock<ILogger<ResumableDecompositionDecorator>>();
         _decompositionDecorator = new ResumableDecompositionDecorator(
             _mockInnerDecomposition.Object,
             _mockWikiRepo.Object,
+            _mockInvocationContext.Object,
             _mockDecompLogger.Object);
     }
 
@@ -130,6 +133,7 @@ public class ResumableIngestionTests
         var decorator = new ResumableRubricDecorator(
             mockInnerRubric.Object,
             _mockWikiRepo.Object,
+            _mockInvocationContext.Object,
             mockLogger.Object);
 
         var state = new IngestionProcessingState

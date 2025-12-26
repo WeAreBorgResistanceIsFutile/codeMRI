@@ -11,15 +11,18 @@ public class ResumableDecompositionDecorator : IHierarchicalDecompositionService
 {
     private readonly IHierarchicalDecompositionService _inner;
     private readonly IWikiRepository _wikiRepo;
+    private readonly ILLMInvocationContext _invocationContext;
     private readonly ILogger<ResumableDecompositionDecorator> _logger;
 
     public ResumableDecompositionDecorator(
         IHierarchicalDecompositionService inner,
         IWikiRepository wikiRepo,
+        ILLMInvocationContext invocationContext,
         ILogger<ResumableDecompositionDecorator> logger)
     {
         _inner = inner;
         _wikiRepo = wikiRepo;
+        _invocationContext = invocationContext;
         _logger = logger;
     }
 
@@ -27,7 +30,7 @@ public class ResumableDecompositionDecorator : IHierarchicalDecompositionService
     {
         var state = await _wikiRepo.GetIngestionProcessingStateAsync(repositoryPath);
         
-        if (!string.IsNullOrEmpty(state?.SerializedGraph))
+        if (!string.IsNullOrEmpty(state?.SerializedGraph) && !_invocationContext.Force)
         {
             _logger.LogInformation("Resuming decomposition: Found existing unified graph in state.");
             GraphSerializer.DeserializeInto(state.SerializedGraph, graph);
@@ -55,8 +58,99 @@ public class ResumableDecompositionDecorator : IHierarchicalDecompositionService
 
     private ModuleTree ReconstructModuleTreeFromGraph(EnhancedDependencyGraph graph)
     {
-        // TODO: Implement logic to build ModuleTree object from Graph Module nodes if needed.
-        // If we move everyone to use the graph directly, this might become obsolete.
-        return new ModuleTree(); 
+        var tree = new ModuleTree();
+        var moduleNodes = graph.GetNodes()
+            .Where(n => n.Metadata.Type == "Module")
+            .ToList();
+
+        var idToModule = new Dictionary<string, ModuleNode>();
+
+        // 1. Create all ModuleNode objects
+        foreach (var graphNode in moduleNodes)
+        {
+            var meta = graphNode.Metadata;
+            var module = new ModuleNode
+            {
+                Id = graphNode.ComponentId,
+                Name = graphNode.ComponentId == "root" ? "Repository" : graphNode.ComponentId, // Fallback naming
+                EstimatedTokens = meta.EstimatedTokens,
+                ComplexityScore = meta.CyclomaticComplexity,
+                Metadata = new Dictionary<string, string>()
+            };
+
+            // Map properties back from the generic dictionary
+            if (meta.Properties.TryGetValue("Level", out var level))
+                module.Level = ConvertToInt(level);
+            if (meta.Properties.TryGetValue("IsLeaf", out var isLeaf))
+                module.IsLeaf = ConvertToBool(isLeaf);
+            if (meta.Properties.TryGetValue("Description", out var desc))
+                module.Description = desc?.ToString();
+
+            if (meta.Properties.TryGetValue("Cohesion", out var coh))
+                module.QualityMetrics.Cohesion = ConvertToDouble(coh);
+            if (meta.Properties.TryGetValue("Coupling", out var coup))
+                module.QualityMetrics.Coupling = ConvertToDouble(coup);
+            if (meta.Properties.TryGetValue("MaintainabilityIndex", out var mi))
+                module.QualityMetrics.MaintainabilityIndex = ConvertToDouble(mi);
+
+            idToModule[module.Id] = module;
+            if (module.Id != "root")
+            {
+                tree.AddNode(module);
+            }
+            else
+            {
+                tree.Root = module;
+            }
+        }
+
+        // 2. Establish hierarchy and components
+        foreach (var edge in graph.GetEdges())
+        {
+            if (edge.Type == EdgeType.ChildOf)
+            {
+                // From (Child) -> To (Parent)
+                if (idToModule.TryGetValue(edge.From, out var child) && idToModule.TryGetValue(edge.To, out var parent))
+                {
+                    parent.AddChild(child);
+                }
+            }
+            else if (edge.Type == EdgeType.Contains)
+            {
+                // From (Module) -> To (Component)
+                if (idToModule.TryGetValue(edge.From, out var module))
+                {
+                    module.Components.Add(edge.To);
+                }
+            }
+        }
+
+        return tree;
+    }
+
+    private static int ConvertToInt(object value)
+    {
+        if (value is int i) return i;
+        if (value is long l) return (int)l;
+        if (value is System.Text.Json.JsonElement je) return je.GetInt32();
+        return 0;
+    }
+
+    private static bool ConvertToBool(object value)
+    {
+        if (value is bool b) return b;
+        if (value is System.Text.Json.JsonElement je) return je.GetBoolean();
+        return false;
+    }
+
+    private static double ConvertToDouble(object value)
+    {
+        if (value is double d) return d;
+        if (value is float f) return f;
+        if (value is decimal m) return (double)m;
+        if (value is int i) return i;
+        if (value is long l) return l;
+        if (value is System.Text.Json.JsonElement je) return je.GetDouble();
+        return 0;
     }
 }

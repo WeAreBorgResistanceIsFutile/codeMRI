@@ -12,5 +12,6 @@ public interface ICodeWikiOrchestrator
         string repositoryPath,
         RepositoryInfo repositoryInfo,
         IProgress<ProgressInfo>? progress = null,
+        bool force = false,
         CancellationToken cancellationToken = default);
 }

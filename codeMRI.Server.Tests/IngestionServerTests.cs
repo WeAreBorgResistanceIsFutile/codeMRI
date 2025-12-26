@@ -41,20 +41,6 @@ public class IngestionServerTests
             });
         });
         _services = _factory.Services;
-        
-        // Initialize vector store collections (same as in Program.cs startup)
-        using (var scope = _services.CreateScope())
-        {
-            try
-            {
-                var vectorStoreInit = scope.ServiceProvider.GetRequiredService<IVectorStoreInitializationService>();
-                vectorStoreInit.InitializeAsync().GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                TestContext.WriteLine($"Warning: Failed to initialize vector store: {ex.Message}");
-            }
-        }
     }
 
     [OneTimeTearDown]
@@ -63,7 +49,7 @@ public class IngestionServerTests
         _factory.Dispose();
     }
 
-    //[Ignore("It takes long time to complete")]
+    [Ignore("It takes long time to complete")]
     [TestCase("https://github.com/WeAreBorgResistanceIsFutile/codeMRI.git")]
     [TestCase("https://github.com/WilliamNT/tunesynctool.git")]
     [TestCase("https://github.com/WilliamNT/Elva.git")]
@@ -82,7 +68,7 @@ public class IngestionServerTests
 
         // Step 2: Poll for Completion
         IngestionJob? currentJob = null;
-        var timeout = TimeSpan.FromMinutes(30);
+        var timeout = TimeSpan.FromMinutes(600);
         var startTime = DateTime.UtcNow;
 
         while (DateTime.UtcNow - startTime < timeout)

@@ -169,7 +169,7 @@ public class WikiControllerTests
         var expectedStructure = new WikiStructure { Title = "Advanced Wiki" };
 
         _mockOrchestrator.Setup(x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(),
-                It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedStructure);
 
         // Act
@@ -186,7 +186,7 @@ public class WikiControllerTests
         // Verify Orchestrator was called
         _mockOrchestrator.Verify(
             x => x.GenerateAdvancedWikiAsync(request.RepoPath, It.IsAny<RepositoryInfo>(),
-                It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<CancellationToken>()), Times.Once);
+                It.IsAny<IProgress<ProgressInfo>?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
 
         // Verify Save was called
         _mockWikiRepo.Verify(x => x.SaveStructureAsync(request.RepoPath, expectedStructure), Times.Once);

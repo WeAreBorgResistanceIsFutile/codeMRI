@@ -10,6 +10,7 @@ public class LLMInvocationContext : ILLMInvocationContext
     private static readonly AsyncLocal<string?> _jobId = new();
     private static readonly AsyncLocal<string?> _repoPath = new();
     private static readonly AsyncLocal<string?> _componentId = new();
+    private static readonly AsyncLocal<bool> _force = new();
 
     public string? JobId
     {
@@ -27,5 +28,11 @@ public class LLMInvocationContext : ILLMInvocationContext
     {
         get => _componentId.Value;
         set => _componentId.Value = value;
+    }
+
+    public bool Force
+    {
+        get => _force.Value;
+        set => _force.Value = value;
     }
 }

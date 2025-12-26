@@ -199,16 +199,23 @@ public class DbIngestionManager : IIngestionJobManager
             cleanName = string.Join("_", cleanName.Split(Path.GetInvalidFileNameChars()));
 
             var targetDir = Path.GetFullPath(Path.Combine("../data/repos", cleanName));
+            bool isLocalReingestion = string.Equals(Path.GetFullPath(repoUrl), targetDir, StringComparison.OrdinalIgnoreCase);
 
             // Ensure data dir exists
             var dataDir = Path.GetDirectoryName(targetDir);
             if (!Directory.Exists(dataDir)) Directory.CreateDirectory(dataDir!);
 
-            // Clean up if exists (fresh clone) or we could pull... for now overwrite
-            if (Directory.Exists(targetDir)) Directory.Delete(targetDir, true);
+            if (!isLocalReingestion)
+            {
+                // Clean up if exists (fresh clone)
+                if (Directory.Exists(targetDir)) Directory.Delete(targetDir, true);
 
-
-            await GitHelper.CloneRepositoryAsync(repoUrl, targetDir, cts.Token);
+                await GitHelper.CloneRepositoryAsync(repoUrl, targetDir, cts.Token);
+            }
+            else
+            {
+                _logger.LogInformation("Source URL matches target directory '{Path}'. Skipping clone.", targetDir);
+            }
 
             // Update Job with path (but don't mark as complete yet - that happens after wiki generation)
             using (var connection = new SqliteConnection(_connectionString))
@@ -287,7 +294,7 @@ public class DbIngestionManager : IIngestionJobManager
                 Branch = branchName
             };
 
-            var structure = await orchestrator.GenerateAdvancedWikiAsync(targetDir, repoInfo, progress, cts.Token);
+            var structure = await orchestrator.GenerateAdvancedWikiAsync(targetDir, repoInfo, progress, forceRegenerate, cts.Token);
 
             // IMPORTANT: Save the generated structure to the repository
             await wikiRepo.SaveStructureAsync(targetDir, structure);

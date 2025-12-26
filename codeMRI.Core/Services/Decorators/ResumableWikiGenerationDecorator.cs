@@ -29,7 +29,7 @@ public class ResumableWikiGenerationDecorator : IWikiGenerationService
 
     public async Task<WikiPage> GeneratePageAsync(string pageTitle, List<string> filePaths, Dictionary<string, string> fileContents, string language = "English", string? repoPath = null, string? remoteUrl = null, string? branch = null)
     {
-        if (!string.IsNullOrEmpty(repoPath))
+        if (!string.IsNullOrEmpty(repoPath) && !_invocationContext.Force)
         {
             var existingPage = await _wikiRepo.GetPageByTitleAsync(repoPath, pageTitle);
             if (existingPage != null && !string.IsNullOrEmpty(existingPage.Content))
@@ -48,7 +48,7 @@ public class ResumableWikiGenerationDecorator : IWikiGenerationService
         _invocationContext.ComponentId = module.Id;
         _invocationContext.RepoPath = repoPath;
 
-        if (!string.IsNullOrEmpty(repoPath))
+        if (!string.IsNullOrEmpty(repoPath) && !_invocationContext.Force)
         {
             // Try to find by ID first, then title
             var existingPage = await _wikiRepo.GetPageAsync(repoPath, module.Id) ?? await _wikiRepo.GetPageByTitleAsync(repoPath, module.Name);

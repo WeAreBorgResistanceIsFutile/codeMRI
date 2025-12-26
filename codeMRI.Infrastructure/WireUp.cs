@@ -156,6 +156,7 @@ public class WireUp
             new ResumableDecompositionDecorator(
                 sp.GetRequiredService<HierarchicalDecompositionService>(),
                 sp.GetRequiredService<IWikiRepository>(),
+                sp.GetRequiredService<ILLMInvocationContext>(),
                 sp.GetRequiredService<ILogger<ResumableDecompositionDecorator>>()));
 
         services.AddScoped<IDocumentationSynthesisService, DocumentationSynthesisService>();
@@ -172,6 +173,7 @@ public class WireUp
             new ResumableRubricDecorator(
                 sp.GetRequiredService<RubricGenerationService>(),
                 sp.GetRequiredService<IWikiRepository>(),
+                sp.GetRequiredService<ILLMInvocationContext>(),
                 sp.GetRequiredService<ILogger<ResumableRubricDecorator>>()));
 
         services.AddScoped<IProgressService, ProgressService>();

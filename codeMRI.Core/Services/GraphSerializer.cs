@@ -44,6 +44,14 @@ public static class GraphSerializer
 
             if (node.Properties != null)
             {
+                if (node.Properties.ExtensionData != null)
+                {
+                    foreach (var kvp in node.Properties.ExtensionData)
+                    {
+                        metadata.Properties[kvp.Key] = kvp.Value;
+                    }
+                }
+                
                 metadata.Properties["Annotations"] = node.Properties.Annotations;
                 metadata.Properties["Decorators"] = node.Properties.Decorators;
             }
@@ -68,17 +76,26 @@ public static class GraphSerializer
 
     private static ASTGraphNode MapToASTNode(GraphNode node)
     {
+        var properties = new ASTNodeProperties
+        {
+            Annotations = node.Metadata.Properties.TryGetValue("Annotations", out var ann) ? (List<string>)ann : new List<string>(),
+            Decorators = node.Metadata.Properties.TryGetValue("Decorators", out var dec) ? (List<string>)dec : new List<string>(),
+            ExtensionData = new Dictionary<string, object>()
+        };
+
+        foreach (var kvp in node.Metadata.Properties)
+        {
+            if (kvp.Key == "Annotations" || kvp.Key == "Decorators") continue;
+            properties.ExtensionData[kvp.Key] = kvp.Value;
+        }
+
         return new ASTGraphNode
         {
             Id = node.ComponentId,
             Type = node.Metadata.Type,
             Language = node.Metadata.Language,
             FilePath = node.Metadata.FilePath,
-            Properties = new ASTNodeProperties
-            {
-                Annotations = node.Metadata.Properties.TryGetValue("Annotations", out var ann) ? (List<string>)ann : new List<string>(),
-                Decorators = node.Metadata.Properties.TryGetValue("Decorators", out var dec) ? (List<string>)dec : new List<string>()
-            }
+            Properties = properties
         };
     }
 

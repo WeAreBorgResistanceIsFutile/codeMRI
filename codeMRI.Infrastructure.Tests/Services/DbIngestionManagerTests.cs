@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NUnit.Framework;
+using System.Diagnostics;
 
 namespace codeMRI.Infrastructure.Tests.Services;
 
@@ -78,6 +79,7 @@ public class DbIngestionManagerTests
             It.IsAny<string>(), 
             It.IsAny<RepositoryInfo>(), 
             It.IsAny<IProgress<ProgressInfo>>(), 
+            It.IsAny<bool>(),
             It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WikiStructure());
 
@@ -96,5 +98,69 @@ public class DbIngestionManagerTests
 
         // Assert
         _mockSnapshotService.Verify(x => x.DeleteSnapshotsAsync(It.IsAny<string>()), Times.Once);
+    }
+
+    [Test]
+    public async Task Reingestion_SamePath_ShouldNotDeleteAndFail()
+    {
+        // This test reproduces the bug where providing the internal repo path as the source URL
+        // causes the manager to delete the directory (target) which is also the source, causing git clone to fail.
+        
+        // Arrange
+        var repoName = "ReingestionTestRepo";
+        // Mirrors the logic in DbIngestionManager
+        var targetDir = Path.GetFullPath(Path.Combine("../data/repos", repoName));
+        
+        // Ensure we clean up before and after
+        if (Directory.Exists(targetDir)) Directory.Delete(targetDir, true);
+        Directory.CreateDirectory(targetDir);
+
+        // Initialize a dummy git repo there
+        var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "git",
+            Arguments = "init",
+            WorkingDirectory = targetDir,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        });
+        await process!.WaitForExitAsync();
+        
+        // Create a dummy file to commit so it's a valid repo
+        File.WriteAllText(Path.Combine(targetDir, "README.md"), "# Test");
+        Process.Start(new ProcessStartInfo { FileName = "git", Arguments = "add .", WorkingDirectory = targetDir })!.WaitForExit();
+        Process.Start(new ProcessStartInfo { FileName = "git", Arguments = "commit -m 'Initial'", WorkingDirectory = targetDir })!.WaitForExit();
+
+        try 
+        {
+            // Act
+            // We pass the targetDir itself as the repoUrl
+            var job = await _manager.StartJobAsync(targetDir, true, AudienceType.Developer);
+
+            // Wait for job to complete or fail
+            var timeout = TimeSpan.FromSeconds(10);
+            var start = DateTime.UtcNow;
+            IngestionJob? finalJob = null;
+            while (DateTime.UtcNow - start < timeout)
+            {
+                finalJob = await _manager.GetJobAsync(job.Id);
+                if (finalJob?.Status == IngestionStatus.Completed || finalJob?.Status == IngestionStatus.Failed)
+                    break;
+                await Task.Delay(100);
+            }
+
+            // Assert
+            // FIXED BEHAVIOR: It should succeed because we skipped deletion
+            if (finalJob?.Status == IngestionStatus.Failed)
+            {
+                Assert.Fail($"Job failed unexpectedly with error: {finalJob.Error}");
+            }
+            Assert.That(finalJob?.Status, Is.EqualTo(IngestionStatus.Completed), "Job should complete successfully when re-ingesting existing repo");
+        }
+        finally
+        {
+            // Cleanup provided it still exists or if it was deleted (handled by EnsureDeleted)
+            if (Directory.Exists(targetDir)) Directory.Delete(targetDir, true);
+        }
     }
 }

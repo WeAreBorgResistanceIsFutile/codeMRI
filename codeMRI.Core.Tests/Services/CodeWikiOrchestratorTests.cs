@@ -36,6 +36,32 @@ public class CodeWikiOrchestratorTests
                 It.IsAny<int>()))
             .Returns(DelegationDecision.NoDelegation());
 
+        // Default returns for core services
+        _mockDecompositionService
+            .Setup(s => s.DecomposeHierarchicallyAsync(It.IsAny<string>(), It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModuleTree { Root = new ModuleNode { Id = "root", Name = "Root" } });
+
+        _mockRubricService
+            .Setup(s => s.GenerateRubricAsync(It.IsAny<WikiStructure>(), It.IsAny<RepositoryInfo>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EvaluationRubric());
+
+        _mockJudgeService
+            .Setup(s => s.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(),
+                It.IsAny<List<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<RequirementAssessment>());
+
+        _mockWikiGenerationService
+            .Setup(s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(),
+                It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<List<string>?>()))
+            .ReturnsAsync(new WikiPage { Id = "mock", Title = "Mock" });
+
+        _mockSynthesisService
+            .Setup(s => s.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(),
+                It.IsAny<AudienceType>(), It.IsAny<bool>(), It.IsAny<SynthesisStrategy?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WikiPage { Id = "parent", Title = "Parent" });
+
         // Ensure WithScalingAsync executes the passed operation
         _mockProgressService
             .Setup(p => p.WithScalingAsync(It.IsAny<double>(), It.IsAny<double>(), It.IsAny<Func<Task>>()))
@@ -127,7 +153,7 @@ public class CodeWikiOrchestratorTests
     private CodeWikiOrchestrator _orchestrator;
 
     [Test]
-    public async Task GenerateAdvancedWikiAsync_ShouldReuseExistingPage_WhenPageExists()
+    public async Task GenerateAdvancedWikiAsync_ShouldAlwaysCallGenerationService_DelegatingCachingToService()
     {
         // Arrange
         var repoPath = "/test/repo";
@@ -158,95 +184,51 @@ public class CodeWikiOrchestratorTests
                 It.IsAny<List<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<RequirementAssessment>());
 
-        // Mock Cache Hit
-        var existingPage = new WikiPage { Id = "existing-id", Title = moduleName, Content = "Cached Content" };
-        _mockWikiRepo
-            .Setup(r => r.GetPageByTitleAsync(repoPath, moduleName))
-            .ReturnsAsync(existingPage);
+        // Mock Generation returning a page
+        var generatedPage = new WikiPage { Id = "id", Title = moduleName, Content = "Content" };
+        _mockWikiGenerationService
+            .Setup(s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(),
+                It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<List<string>?>()))
+            .ReturnsAsync(generatedPage);
 
         // Act
         await _orchestrator.GenerateAdvancedWikiAsync(repoPath, repoInfo);
 
         // Assert
-        // Verify GetPageByTitleAsync was called
-        _mockWikiRepo.Verify(r => r.GetPageByTitleAsync(repoPath, moduleName), Times.Once);
-
-        // Verify GeneratePageAsync was NOT called
+        // Verify GenerateEnhancedPageAsync WAS called (orchestrator delegates to it regardless of its internal caching)
         _mockWikiGenerationService.Verify(
             s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(),
                 It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(),
                 It.IsAny<string>(), It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<List<string>?>()),
-            Times.Never);
+            Times.Once);
 
-        // Verify Synthesis was NOT called
-        _mockSynthesisService.Verify(
-            s => s.SynthesizeParentPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>>(), It.IsAny<string>(),
-                It.IsAny<AudienceType>(), It.IsAny<bool>(), It.IsAny<SynthesisStrategy?>(),
-                It.IsAny<CancellationToken>()),
-            Times.Never);
+        // Verify SavePageAsync was called with the result from the service
+        _mockWikiRepo.Verify(r => r.SavePageAsync(repoPath, generatedPage), Times.Once);
     }
 
     [Test]
-    public async Task GenerateAdvancedWikiAsync_ShouldGeneratePage_WhenPageDoesNotExist()
+    public async Task GenerateAdvancedWikiAsync_ShouldPassForceFlagToInvocationContext()
     {
         // Arrange
         var repoPath = "/test/repo";
         var repoInfo = new RepositoryInfo { Name = "TestRepo", Language = "C#" };
-        var moduleName = "TestModule";
-
-        var moduleTree = new ModuleTree
-        {
-            Root = new ModuleNode
-            {
-                Id = "root",
-                Name = moduleName,
-                IsLeaf = true,
-                Components = new HashSet<string> { "comp1" }
-            }
-        };
-
+        
         _mockDecompositionService
             .Setup(s => s.DecomposeHierarchicallyAsync(repoPath, It.IsAny<EnhancedDependencyGraph>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(moduleTree);
+            .ReturnsAsync(new ModuleTree { Root = new ModuleNode { Id = "root", Name = "Root", IsLeaf = true } });
 
         _mockRubricService
             .Setup(s => s.GenerateRubricAsync(It.IsAny<WikiStructure>(), repoInfo, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EvaluationRubric());
 
-        _mockJudgeService
-            .Setup(s => s.EvaluateRequirementsAsync(It.IsAny<List<RubricRequirement>>(), It.IsAny<WikiStructure>(),
-                It.IsAny<List<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<RequirementAssessment>());
-
-        // Mock Cache Miss
-        _mockWikiRepo
-            .Setup(r => r.GetPageByTitleAsync(repoPath, moduleName))
-            .ReturnsAsync((WikiPage?)null);
-
-        // Mock Generation
-        _mockWikiGenerationService
-            .Setup(s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(),
-                It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(),
-                It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<string>?>()))
-            .ReturnsAsync(new WikiPage { Id = "new-id", Title = moduleName, Content = "Generated Content" });
-
         // Act
-        await _orchestrator.GenerateAdvancedWikiAsync(repoPath, repoInfo);
+        await _orchestrator.GenerateAdvancedWikiAsync(repoPath, repoInfo, force: true);
 
         // Assert
-        // Verify GetPageByTitleAsync was called
-        _mockWikiRepo.Verify(r => r.GetPageByTitleAsync(repoPath, moduleName), Times.Once);
-
-        // Verify GeneratePageAsync WAS called
-        _mockWikiGenerationService.Verify(
-            s => s.GenerateEnhancedPageAsync(It.IsAny<ModuleNode>(), It.IsAny<List<WikiPage>?>(),
-                It.IsAny<ModulePageContext>(), It.IsAny<Dictionary<string, string>>(), "English", It.IsAny<string?>(),
-                It.IsAny<AudienceType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<string>?>()),
-            Times.Once);
-
-        // Verify SavePageAsync was called
-        _mockWikiRepo.Verify(r => r.SavePageAsync(repoPath, It.Is<WikiPage>(p => p.Title == moduleName)), Times.Once);
+        _mockInvocationContext.VerifySet(c => c.Force = true, Times.Once);
     }
 
     [Test]

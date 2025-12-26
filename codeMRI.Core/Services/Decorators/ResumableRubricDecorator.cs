@@ -13,16 +13,19 @@ public class ResumableRubricDecorator : IRubricGenerationService
 {
     private readonly IRubricGenerationService _inner;
     private readonly IWikiRepository _wikiRepo;
+    private readonly ILLMInvocationContext _invocationContext;
     private readonly ILogger<ResumableRubricDecorator> _logger;
     private readonly JsonSerializerOptions _jsonOptions;
 
     public ResumableRubricDecorator(
         IRubricGenerationService inner,
         IWikiRepository wikiRepo,
+        ILLMInvocationContext invocationContext,
         ILogger<ResumableRubricDecorator> logger)
     {
         _inner = inner;
         _wikiRepo = wikiRepo;
+        _invocationContext = invocationContext;
         _logger = logger;
         _jsonOptions = new JsonSerializerOptions
         {
@@ -36,7 +39,7 @@ public class ResumableRubricDecorator : IRubricGenerationService
     {
         var state = await _wikiRepo.GetIngestionProcessingStateAsync(repositoryInfo.RepoPath);
         
-        if (!string.IsNullOrEmpty(state?.SerializedRubric))
+        if (!string.IsNullOrEmpty(state?.SerializedRubric) && !_invocationContext.Force)
         {
             try
             {
