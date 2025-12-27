@@ -3,6 +3,7 @@ using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
 using NUnit.Framework;
 using FluentAssertions;
 
@@ -18,15 +19,21 @@ public class IngestionServerTests
     public void OneTimeSetup()
     {
         var projectRoot = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "../../../.."));
+        var serverProjectPath = Path.Combine(projectRoot, "codeMRI.Server");
         var dbPath = Path.Combine(projectRoot, "data/sqlite/codemri.db");
         var connectionString = $"Data Source={dbPath}";
 
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
+            builder.UseContentRoot(serverProjectPath);
+            
             builder.ConfigureAppConfiguration((_, config) =>
             {
                 var logPath = Path.Combine(projectRoot, "codeMRI.Server/logs/ingestion-test-.log");
                 
+                // Explicitly load appsettings.json from the server project
+                config.AddJsonFile(Path.Combine(serverProjectPath, "appsettings.json"), optional: true, reloadOnChange: false);
+
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:WikiDb"] = connectionString,
@@ -50,8 +57,8 @@ public class IngestionServerTests
     }
 
     [Explicit("This test is for manual debugging/replay of ingesting a repo.")]
-    [TestCase("https://github.com/WeAreBorgResistanceIsFutile/codeMRI.git")]
-    [TestCase("https://github.com/WilliamNT/tunesynctool.git")]
+    // [TestCase("https://github.com/WeAreBorgResistanceIsFutile/codeMRI.git")]
+    // [TestCase("https://github.com/WilliamNT/tunesynctool.git")]
     [TestCase("https://github.com/WilliamNT/Elva.git")]
     public async Task IngestElvaRepo_CompletesSuccessfully(string repoUrl)
     {
