@@ -456,6 +456,10 @@ public class WikiController : ControllerBase
                 request.Name,
                 request.ModelConfiguration);
             
+            // Also start an ingestion job for this repository to trigger the actual work 
+            // We force regeneration to ensure the benchmark measures a full run
+            await _ingestionManager.StartJobAsync(request.RepositoryUrl, true, AudienceType.Developer);
+            
             return Ok(run);
         }
         catch (Exception ex)

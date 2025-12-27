@@ -1,3 +1,4 @@
+using System.Text.Json;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
@@ -195,6 +196,38 @@ llmFacade.SetMetricsCallback(metrics =>
             Console.WriteLine($"Error recording benchmark metrics: {ex.Message}");
         }
     });
+});
+
+// Wire up Ingestion Completion to Benchmark Finalization
+var messageBus = app.Services.GetRequiredService<AgentMessageBus>();
+messageBus.Subscribe("IngestionProgress", async msg =>
+{
+    try
+    {
+        var content = msg.Content?.ToString() ?? "{}";
+        var data = JsonSerializer.Deserialize<JsonElement>(content);
+        var status = (IngestionStatus)data.GetProperty("Status").GetInt32();
+
+        if (status == IngestionStatus.Completed || status == IngestionStatus.Failed || status == IngestionStatus.Cancelled)
+        {
+            var activeRun = await benchmarkingService.GetActiveRunAsync();
+            if (activeRun != null)
+            {
+                if (status == IngestionStatus.Completed)
+                {
+                    await benchmarkingService.CompleteBenchmarkRunAsync(activeRun.Id);
+                }
+                else
+                {
+                    await benchmarkingService.CancelBenchmarkRunAsync(activeRun.Id);
+                }
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error processing IngestionProgress for benchmark: {ex.Message}");
+    }
 });
 
 app.MapControllers();
