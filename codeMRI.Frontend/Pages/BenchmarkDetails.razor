@@ -1,0 +1,306 @@
+@page "/benchmarks/{RunId}"
+@using codeMRI.Core.Models
+@using codeMRI.Frontend.Services
+@inject WikiApiClient WikiApi
+@inject NavigationManager Navigation
+
+<div class="benchmark-details-container fade-in">
+    <div class="header-section">
+        <div class="back-link" @onclick='() => Navigation.NavigateTo("/management")'>
+            <span>←</span> Back to Management
+        </div>
+        @if (run != null)
+        {
+            <h1>@run.Name</h1>
+            <div class="meta-info">
+                <span class="badge @run.Status">@run.Status</span>
+                <span class="meta-item">📂 @run.RepositoryName</span>
+                <span class="meta-item">🤖 @run.ModelConfiguration</span>
+                <span class="meta-item">📅 @run.StartTime.ToLocalTime().ToString("g")</span>
+            </div>
+        }
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <span>Loading benchmark results...</span>
+        </div>
+    }
+    else if (run != null)
+    {
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Overall Quality</div>
+                <div class="stat-value">@run.MeanQualityScore.ToString("F2")</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Pages</div>
+                <div class="stat-value">@run.TotalPages</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Success Rate</div>
+                <div class="stat-value">@((run.TotalPages > 0 ? (double)run.SuccessfulPages / run.TotalPages * 100 : 0).ToString("F0"))%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Tokens</div>
+                <div class="stat-value">@run.TotalTokens.ToString("N0")</div>
+            </div>
+        </div>
+
+        <div class="details-section">
+            <h3>Page Assessments</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Page Title</th>
+                            <th>Quality Score</th>
+                            <th>Word Count</th>
+                            <th>Tokens</th>
+                            <th>Latency</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in run.PageBenchmarks)
+                        {
+                            <tr>
+                                <td><strong>@p.ModuleName</strong></td>
+                                <td>
+                                    <div class="quality-bar-bg">
+                                        <div class="quality-bar-fill" style="width: @(p.OverallQualityScore * 10)%; background: @GetQualityColor(p.OverallQualityScore)"></div>
+                                    </div>
+                                    <small>@p.OverallQualityScore.ToString("F1")/10</small>
+                                </td>
+                                <td>@p.WordCount</td>
+                                <td>@p.GenerationMetrics.TotalTokens</td>
+                                <td>@p.GenerationMetrics.Latency.TotalSeconds.ToString("F1")s</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        @if (!string.IsNullOrEmpty(report))
+        {
+            <div class="details-section">
+                <h3>Benchmark Report</h3>
+                <div class="report-box">
+                    <pre>@report</pre>
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <div class="error-state">
+            <p>Benchmark run not found.</p>
+        </div>
+    }
+</div>
+
+<style>
+    .benchmark-details-container {
+        padding: 2rem;
+        max-width: 1200px;
+        margin: 0 auto;
+        color: var(--text-primary);
+    }
+
+    .back-link {
+        color: var(--accent-color);
+        cursor: pointer;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .meta-info {
+        display: flex;
+        gap: 1.5rem;
+        margin-top: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .meta-item {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin: 2rem 0;
+    }
+
+    .stat-card {
+        background: var(--bg-panel);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        text-align: center;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+        font-size: 1.75rem;
+        font-weight: 600;
+        color: var(--accent-color);
+    }
+
+    .details-section {
+        margin-top: 3rem;
+    }
+
+    .details-section h3 {
+        margin-bottom: 1.5rem;
+        font-weight: 500;
+    }
+
+    .table-container {
+        background: var(--bg-panel);
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        overflow: hidden;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th {
+        text-align: left;
+        padding: 1rem;
+        background: rgba(0,0,0,0.02);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+    }
+
+    td {
+        padding: 1rem;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .quality-bar-bg {
+        width: 100px;
+        height: 6px;
+        background: rgba(0,0,0,0.05);
+        border-radius: 3px;
+        overflow: hidden;
+        margin-bottom: 4px;
+    }
+
+    .quality-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+    }
+
+    .report-box {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 1.5rem;
+        border-radius: 8px;
+        overflow-x: auto;
+    }
+
+    .report-box pre {
+        margin: 0;
+        font-family: 'Fira Code', monospace;
+        font-size: 0.9rem;
+        white-space: pre-wrap;
+    }
+
+    .badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 99px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .Running { background: #e8f0fe; color: var(--accent-color); }
+    .Completed { background: #e6f4ea; color: #137333; }
+    .Failed { background: #fce8e6; color: #c5221f; }
+
+    .loading-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 400px;
+        color: var(--text-secondary);
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(0,0,0,0.1);
+        border-top-color: var(--accent-color);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 1rem;
+    }
+
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    
+    .fade-in {
+        animation: fadeIn 0.4s ease-out;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
+@code {
+    [Parameter] public string RunId { get; set; } = string.Empty;
+
+    private BenchmarkRun? run;
+    private string? report;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBenchmark();
+    }
+
+    private async Task LoadBenchmark()
+    {
+        isLoading = true;
+        try
+        {
+            run = await WikiApi.GetBenchmarkAsync(RunId);
+            report = await WikiApi.GetBenchmarkReportAsync(RunId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading benchmark: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetQualityColor(double score)
+    {
+        if (score >= 8) return "#137333"; // Green
+        if (score >= 6) return "#f9ab00"; // Yellow/Orange
+        return "#d93025"; // Red
+    }
+}

@@ -208,7 +208,7 @@
         errorMessage = "";
         try
         {
-            currentJob = await WikiApi.StartIngestionAsync(repoInput, selectedAudience);
+            currentJob = await WikiApi.StartIngestionAsync(repoInput, true, selectedAudience);
         }
         catch (Exception ex)
         {

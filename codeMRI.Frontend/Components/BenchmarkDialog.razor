@@ -1,0 +1,232 @@
+@using codeMRI.Core.Models
+@using codeMRI.Frontend.Services
+@inject WikiApiClient WikiApi
+
+@if (Show)
+{
+    <div class="modal-backdrop">
+        <div class="modal-content fade-in">
+            <div class="modal-header">
+                <h2>New Benchmark Run</h2>
+                <button class="close-btn" @onclick="Close">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Benchmark Name</label>
+                    <input type="text" @bind="request.Name" placeholder="e.g., GPT-4o Baseline" class="form-control" />
+                </div>
+
+                <div class="form-group">
+                    <label>Repository URL</label>
+                    <select @bind="request.RepositoryUrl" class="form-control">
+                        <option value="">Select a repository...</option>
+                        @foreach (var repo in Repositories)
+                        {
+                            <option value="@(string.IsNullOrEmpty(repo.RemoteUrl) ? repo.Path : repo.RemoteUrl)">@repo.Name</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Model Configuration</label>
+                    <input type="text" @bind="request.ModelConfiguration" placeholder="e.g., gpt-4o" class="form-control" />
+                </div>
+
+                @if (!string.IsNullOrEmpty(error))
+                {
+                    <div class="error-message">@error</div>
+                }
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="Close">Cancel</button>
+                <button class="btn btn-primary" @onclick="StartBenchmark" disabled="@isSubmitting">
+                    @if (isSubmitting)
+                    {
+                        <span class="spinner-mini"></span> <span>Starting...</span>
+                    }
+                    else
+                    {
+                        <span>Start Benchmark</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+    }
+
+    .modal-content {
+        background: var(--bg-panel);
+        border-radius: 12px;
+        width: 100%;
+        max-width: 500px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        border: 1px solid var(--border-color);
+    }
+
+    .modal-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-header h2 {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: var(--text-secondary);
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--bg-app);
+        color: var(--text-primary);
+        font-size: 0.95rem;
+        box-sizing: border-box;
+    }
+
+    .modal-footer {
+        padding: 1.25rem 1.5rem;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        justify-content: flex-end;
+        gap: 1rem;
+    }
+
+    .btn {
+        padding: 0.75rem 1.25rem;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-secondary {
+        background: none;
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+    }
+
+    .btn-primary {
+        background: var(--accent-color);
+        border: 1px solid var(--accent-color);
+        color: white;
+    }
+
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .error-message {
+        color: #d93025;
+        background: #fdf2f2;
+        padding: 0.75rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        margin-top: 1rem;
+    }
+
+    .spinner-mini {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 8px;
+    }
+
+    @@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnBenchmarkStarted { get; set; }
+    [Parameter] public List<RepositorySummary> Repositories { get; set; } = new();
+
+    private StartBenchmarkRequest request = new();
+    private bool isSubmitting;
+    private string? error;
+
+    private async Task Close()
+    {
+        error = null;
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task StartBenchmark()
+    {
+        if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.RepositoryUrl))
+        {
+            error = "Name and Repository are required.";
+            return;
+        }
+
+        isSubmitting = true;
+        error = null;
+
+        try
+        {
+            await WikiApi.StartBenchmarkAsync(request);
+            await OnBenchmarkStarted.InvokeAsync();
+            await Close();
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to start benchmark: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

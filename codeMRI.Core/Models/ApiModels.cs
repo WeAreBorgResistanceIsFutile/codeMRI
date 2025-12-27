@@ -17,6 +17,7 @@ public class IngestionRequest
 {
     public string Url { get; set; } = string.Empty;
     public AudienceType Audience { get; set; }
+    public bool ForceIngest { get; set; }
 }
 
 public class StructureRequest

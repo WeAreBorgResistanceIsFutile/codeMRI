@@ -51,4 +51,9 @@ public interface IWikiRepository
     ///     Updates the remote URL for a repository
     /// </summary>
     Task SetRepositoryRemoteUrlAsync(string repoPath, string remoteUrl);
+
+    /// <summary>
+    ///     Deletes all data related to a repository.
+    /// </summary>
+    Task DeleteRepositoryAsync(string repoPath);
 }

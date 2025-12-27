@@ -229,6 +229,25 @@ public class SqliteWikiRepository : IWikiRepository
             new { RemoteUrl = remoteUrl, Id = repoId });
     }
 
+    public async Task DeleteRepositoryAsync(string repoPath)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        await connection.ExecuteAsync("DELETE FROM Repositories WHERE RepoPath = @RepoPath", new { RepoPath = repoPath });
+
+        // Also delete the directory on disk if it exists
+        if (Directory.Exists(repoPath))
+        {
+            try
+            {
+                Directory.Delete(repoPath, true);
+            }
+            catch (Exception)
+            {
+                // Best effort
+            }
+        }
+    }
+
     private void InitializeDatabase()
     {
         var builder = new SqliteConnectionStringBuilder(_connectionString);

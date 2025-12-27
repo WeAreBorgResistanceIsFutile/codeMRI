@@ -83,6 +83,14 @@ public class DbGenerationJobManager : IGenerationJobManager
         return jobs.AsList();
     }
 
+    public async Task<List<GenerationJob>> ListAllJobsAsync()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var jobs = await connection.QueryAsync<GenerationJob>(
+            "SELECT * FROM GenerationJobs ORDER BY CreatedAt DESC");
+        return jobs.AsList();
+    }
+
     public async Task CancelJobAsync(string jobId)
     {
         using var connection = new SqliteConnection(_connectionString);
@@ -96,6 +104,12 @@ public class DbGenerationJobManager : IGenerationJobManager
                 GenerationStatus.Queued,
                 GenerationStatus.Processing
             });
+    }
+
+    public async Task DeleteJobAsync(string jobId)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        await connection.ExecuteAsync("DELETE FROM GenerationJobs WHERE Id = @Id", new { Id = jobId });
     }
 
     private void InitializeDb()

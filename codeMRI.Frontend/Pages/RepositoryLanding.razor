@@ -177,10 +177,9 @@
     private string ingestionDefaultValue = "";
 
     private List<RepositorySummary> FilteredRepositories =>
-        string.IsNullOrWhiteSpace(searchTerm)
-            ? repositories
-            : repositories.Where(r => r.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-                                      r.Path.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+        repositories.Where(r => r.IsIngested && (string.IsNullOrWhiteSpace(searchTerm) || 
+                                r.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                                r.Path.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))).ToList();
 
     protected override async Task OnInitializedAsync()
     {

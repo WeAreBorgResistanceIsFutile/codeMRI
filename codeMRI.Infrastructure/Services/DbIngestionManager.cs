@@ -85,6 +85,31 @@ public class DbIngestionManager : IIngestionJobManager
         return job;
     }
 
+    public async Task<IngestionJob> RestartJobAsync(string jobId, bool forceRegenerate, string? connectionId = null)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var job = await connection.QueryFirstOrDefaultAsync<IngestionJob>("SELECT * FROM IngestionJobs WHERE Id = @Id", new { Id = jobId });
+        if (job == null) throw new Exception($"Job {jobId} not found");
+
+        // Update status to Queued
+        job.Status = IngestionStatus.Queued;
+        job.Error = null;
+        job.LastUpdated = DateTime.UtcNow;
+        job.Message = forceRegenerate ? "Restarting (Full)..." : "Resuming...";
+        job.ProgressPercentage = forceRegenerate ? 0 : job.ProgressPercentage;
+
+        await connection.ExecuteAsync(@"
+            UPDATE IngestionJobs 
+            SET Status = @Status, Error = @Error, LastUpdated = @LastUpdated, Message = @Message, ProgressPercentage = @ProgressPercentage
+            WHERE Id = @Id", 
+            job);
+
+        // Spawn background execution
+        _ = Task.Run(() => RunJobAsync(job.Id, job.RepoUrl, forceRegenerate, job.Audience, connectionId));
+
+        return job;
+    }
+
     public async Task<IngestionJob?> GetJobAsync(string jobId)
     {
         using var connection = new SqliteConnection(_connectionString);
@@ -106,6 +131,14 @@ public class DbIngestionManager : IIngestionJobManager
         return jobs.AsList();
     }
 
+    public async Task<List<IngestionJob>> ListAllJobsAsync()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        var jobs = await connection.QueryAsync<IngestionJob>(
+            "SELECT * FROM IngestionJobs ORDER BY CreatedAt DESC");
+        return jobs.AsList();
+    }
+
     public async Task CancelJobAsync(string jobId)
     {
         using var connection = new SqliteConnection(_connectionString);
@@ -123,6 +156,12 @@ public class DbIngestionManager : IIngestionJobManager
             MessageType = "IngestionCancellation",
             Content = jobId
         });
+    }
+
+    public async Task DeleteJobAsync(string jobId)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        await connection.ExecuteAsync("DELETE FROM IngestionJobs WHERE Id = @Id", new { Id = jobId });
     }
 
     private void InitializeDb()

@@ -125,6 +125,14 @@ public class WikiController : ControllerBase
         return Ok(apiSummaries);
     }
 
+    [HttpDelete("repository")]
+    public async Task<IActionResult> DeleteRepository([FromQuery] string repoPath)
+    {
+        if (string.IsNullOrWhiteSpace(repoPath)) return BadRequest("RepoPath is required");
+        await _wikiRepo.DeleteRepositoryAsync(repoPath);
+        return Ok();
+    }
+
     [HttpPost("ingest")]
     public async Task<IActionResult> IngestRepository([FromBody] IngestionRequest request)
     {
@@ -138,15 +146,16 @@ public class WikiController : ControllerBase
         {
             // Cast API AudienceType to Core AudienceType
             var coreAudience = (AudienceType)(int)request.Audience;
-            var job = await _ingestionManager.StartJobAsync(request.Url, true,
+            var job = await _ingestionManager.StartJobAsync(request.Url, request.ForceIngest,
                 coreAudience); // We might want ConnectionId here if we update the request model
 
-            _telemetryService.TrackAgentActivity("System", $"Started ingestion job {job.Id} for {request.Url}",
+            _telemetryService.TrackAgentActivity("System", $"Started ingestion job {job.Id} for {request.Url} (Force={request.ForceIngest})",
                 new Dictionary<string, object>
                 {
                     ["JobId"] = job.Id,
                     ["Url"] = request.Url,
-                    ["Audience"] = request.Audience.ToString()
+                    ["Audience"] = request.Audience.ToString(),
+                    ["Force"] = request.ForceIngest
                 });
 
             return Ok(new { JobId = job.Id, Status = job.Status.ToString() });
@@ -178,6 +187,35 @@ public class WikiController : ControllerBase
     {
         var jobs = await _ingestionManager.ListActiveJobsAsync();
         return Ok(jobs);
+    }
+
+    [HttpGet("ingestions/all")]
+    public async Task<IActionResult> ListAllIngestions()
+    {
+        var jobs = await _ingestionManager.ListAllJobsAsync();
+        return Ok(jobs);
+    }
+
+    [HttpDelete("ingestion-job/{jobId}")]
+    public async Task<IActionResult> DeleteIngestionJob(string jobId)
+    {
+        await _ingestionManager.DeleteJobAsync(jobId);
+        return Ok();
+    }
+
+    [HttpPost("ingestion/{jobId}/restart")]
+    public async Task<IActionResult> RestartIngestion(string jobId, [FromQuery] bool forceRegenerate)
+    {
+        try
+        {
+            var job = await _ingestionManager.RestartJobAsync(jobId, forceRegenerate);
+            return Ok(job);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to restart ingestion job {JobId}", jobId);
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpGet("repository-status")]
@@ -361,6 +399,20 @@ public class WikiController : ControllerBase
     {
         var jobs = await _generationManager.ListActiveJobsAsync();
         return Ok(jobs);
+    }
+
+    [HttpGet("generations/all")]
+    public async Task<IActionResult> GetAllGenerations()
+    {
+        var jobs = await _generationManager.ListAllJobsAsync();
+        return Ok(jobs);
+    }
+
+    [HttpDelete("generation-job/{jobId}")]
+    public async Task<IActionResult> DeleteGenerationJob(string jobId)
+    {
+        await _generationManager.DeleteJobAsync(jobId);
+        return Ok();
     }
 
     [HttpGet("generation/{jobId}")]
