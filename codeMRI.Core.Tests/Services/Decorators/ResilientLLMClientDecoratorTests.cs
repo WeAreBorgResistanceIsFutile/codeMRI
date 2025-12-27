@@ -114,4 +114,27 @@ public class ResilientLLMClientDecoratorTests
         // Should call only once
         _mockInner.Verify(x => x.ChatAsync(It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
+    [Test]
+    public async Task ChatAsync_WhenRecoveringFromTransientError_ShouldLogSuccess()
+    {
+        // Arrange
+        var transientEx = new HttpRequestException("Transient", null, HttpStatusCode.InternalServerError);
+        
+        _mockInner.SetupSequence(x => x.ChatAsync(It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(transientEx)
+            .ReturnsAsync("Success");
+
+        // Act
+        await _decorator.ChatAsync(new List<ChatMessage> { new() { Role = "user", Content = "test" } });
+
+        // Assert
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Successfully recovered from previous failures")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
 }

@@ -35,7 +35,14 @@ public class ResilientLLMClientDecorator : ILLMClient
         {
             try
             {
-                return await _inner.ChatAsync(messages, model, cancellationToken);
+                var result = await _inner.ChatAsync(messages, model, cancellationToken);
+                
+                if (attempt > 1)
+                {
+                    _logger.LogInformation("Successfully recovered from previous failures after {Attempt} attempts.", attempt);
+                }
+
+                return result;
             }
             catch (Exception ex) when (IsTransientError(ex) && attempt <= _settings.MaxRetries)
             {
