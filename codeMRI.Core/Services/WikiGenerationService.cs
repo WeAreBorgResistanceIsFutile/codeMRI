@@ -427,7 +427,7 @@ public class WikiGenerationService : IWikiGenerationService
             systemPrompt: "",
             textToProcess: prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent,
             history: null,
-            options: new MessageCompositionOptions { ModelName = selectedModel },
+            options: new MessageCompositionOptions { ModelName = selectedModel, ModuleId = module.Id },
             cancellationToken: default);
         
         content = llmResponse.Content;

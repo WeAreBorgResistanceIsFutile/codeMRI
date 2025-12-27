@@ -291,6 +291,21 @@ public class BenchmarkingService : IBenchmarkingService
         await _repository.UpdateAsync(run, cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<BenchmarkMetrics?> GetMetricsForModuleAsync(string runId, string moduleId, CancellationToken cancellationToken = default)
+    {
+        if (_metricsBuffer.TryGetValue(runId, out var metrics))
+        {
+            lock (metrics)
+            {
+                // Find most recent for this module
+                return metrics.LastOrDefault(m => m.ModuleId == moduleId);
+            }
+        }
+
+        return null;
+    }
+
     #region Helper Methods
 
     private static string ExtractRepositoryName(string url)

@@ -69,4 +69,9 @@ public interface IBenchmarkingService
     ///     Updates the current phase of a benchmark run.
     /// </summary>
     Task UpdatePhaseAsync(string runId, string phase, int progressPercentage, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    ///     Gets recently recorded metrics for a specific module.
+    /// </summary>
+    Task<BenchmarkMetrics?> GetMetricsForModuleAsync(string runId, string moduleId, CancellationToken cancellationToken = default);
 }

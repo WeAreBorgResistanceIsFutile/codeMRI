@@ -63,7 +63,7 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                 systemPrompt: "You are a technical documentation expert.",
                 textToProcess: simplePrompt,
                 history: null,
-                options: null,
+                options: new MessageCompositionOptions { ModuleId = module.Id },
                 cancellationToken: cancellationToken);
             
             simpleContent = response1.Content;
@@ -96,7 +96,7 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                 systemPrompt: "You are a technical documentation expert specializing in content synthesis and organization.",
                 textToProcess: mergePrompt,
                 history: null,
-                options: null,
+                options: new MessageCompositionOptions { ModuleId = module.Id },
                 cancellationToken: cancellationToken);
             
             mergedContent = response2.Content;
@@ -190,7 +190,7 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
             systemPrompt: "You are a master software architect generating high-quality documentation.",
             textToProcess: prompt,
             history: null,
-            options: null,
+            options: new MessageCompositionOptions { ModuleId = module.Id },
             cancellationToken: cancellationToken);
         
         string overviewContent = response3.Content;

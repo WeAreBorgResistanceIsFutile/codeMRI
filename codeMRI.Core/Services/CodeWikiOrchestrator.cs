@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -26,6 +27,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
     private readonly IWikiGenerationService _wikiGenerationService;
     private readonly IWikiRepository _wikiRepo;
     private readonly ILLMInvocationContext _invocationContext;
+    private readonly IBenchmarkingService? _benchmarkingService;
 
     public CodeWikiOrchestrator(
         IHierarchicalDecompositionService decompositionService,
@@ -44,7 +46,8 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         IOptions<CodeWikiOptions> options,
         ILLMInvocationContext invocationContext,
         ILogger<CodeWikiOrchestrator> logger,
-        string judgeModel = "default")
+        string judgeModel = "default",
+        IBenchmarkingService? benchmarkingService = null)
     {
         _decompositionService = decompositionService;
         _graphService = graphService;
@@ -63,6 +66,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         _invocationContext = invocationContext;
         _logger = logger;
         _judgeModel = judgeModel;
+        _benchmarkingService = benchmarkingService;
         _semaphore = new SemaphoreSlim(_options.MaxDegreeOfParallelism);
     }
 
@@ -462,11 +466,42 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                     {
                         if (page != null && !section.PageRefs.Contains(page.Id)) section.PageRefs.Add(page.Id);
                     }
+
+                    // Record benchmark if active and only if the page is part of the navigation structure
+                    if (_benchmarkingService != null)
+                    {
+                        var activeRun = await _benchmarkingService.GetActiveRunAsync(cancellationToken);
+                        if (activeRun != null)
+                        {
+                            var wordCount = CountWords(page.Content);
+                            var qualityScore = CalculateBasicQualityScore(page.Content);
+                            
+                            // Try to get actual generation metrics from the service (recently recorded via LLM callback)
+                            var metrics = await _benchmarkingService.GetMetricsForModuleAsync(activeRun.Id, module.Id, cancellationToken);
+
+                            var pageBenchmark = new PageBenchmark
+                            {
+                                PageId = page.Id,
+                                ModuleId = module.Id,
+                                ModuleName = !string.IsNullOrWhiteSpace(page.Title) ? page.Title : module.Name,
+                                WordCount = wordCount,
+                                OverallQualityScore = qualityScore,
+                                GenerationMetrics = metrics ?? new BenchmarkMetrics
+                                {
+                                    TaskType = module.IsLeaf ? "Generation" : "Synthesis",
+                                    Success = true,
+                                    Timestamp = DateTime.UtcNow
+                                }
+                            };
+
+                            await _benchmarkingService.RecordPageBenchmarkAsync(activeRun.Id, pageBenchmark, cancellationToken);
+                        }
+                    }
                 }
                 else
                 {
-                    _logger.LogWarning("Section {SectionId} not found in structure during content generation",
-                        sectionId);
+                    _logger.LogWarning("Section {SectionId} not found in structure during content generation. Page {PageId} will be generated but not in navigation.",
+                        sectionId, page.Id);
                 }
             }
 
@@ -541,6 +576,35 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         }
 
         return depth;
+    }
+
+    private int CountWords(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return 0;
+        return Regex.Matches(content, @"\b\w+\b").Count;
+    }
+
+    private double CalculateBasicQualityScore(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return 0.0;
+
+        var score = 10.0;
+        var wordCount = CountWords(content);
+        
+        // Penalize very short or very long content (simplified from EvaluationMetricsSystem)
+        if (wordCount < 50) score -= 2.0;
+        if (wordCount > 2000) score -= 1.0;
+
+        // Penalize lack of sections
+        var sectionCount = Regex.Matches(content, @"^#+\s", RegexOptions.Multiline).Count;
+        if (sectionCount < 2) score -= 1.5;
+
+        // Penalize lack of code blocks in technical documentation
+        var codeBlockCount = Regex.Matches(content, @"```").Count / 2;
+        if (codeBlockCount == 0 && (content.Contains("class") || content.Contains("function") || content.Contains("public")))
+            score -= 1.0;
+
+        return Math.Max(0.0, score);
     }
 
     private class ProgressState

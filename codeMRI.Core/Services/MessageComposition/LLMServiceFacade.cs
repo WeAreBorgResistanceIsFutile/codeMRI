@@ -123,6 +123,7 @@ public class LLMServiceFacade : ILLMServiceFacade
                     InputTokens = inputTokens,
                     OutputTokens = outputTokens,
                     ContextWindowSize = 0, // Unknown
+                    ModuleId = options?.ModuleId ?? string.Empty,
                     Success = true
                 });
                 

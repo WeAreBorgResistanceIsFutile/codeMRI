@@ -179,6 +179,8 @@ public class WireUp
         services.AddScoped<RagEvaluationPromptBuilder>();
         services.AddScoped<DocumentationJudgeService>();
         services.AddScoped<IDocumentationJudgeService>(sp => sp.GetRequiredService<DocumentationJudgeService>());
+        services.AddScoped<IJudgeAgent, JudgeAgentService>();
+        services.AddScoped<IEvaluationMetricsSystem, EvaluationMetricsSystem>();
 
         services.AddScoped<RubricGenerationService>();
         services.AddScoped<IRubricGenerationService>(sp => 
@@ -253,7 +255,8 @@ public class WireUp
                 sp.GetRequiredService<ILLMInvocationContext>(),
                 sp.GetRequiredService<ILogger<CodeWikiOrchestrator>>(),
                 // Use configured Judge model from ModelRoutingSettings
-                (routingSettings.JudgeModels.Any() ? routingSettings.JudgeModels.First() : routingSettings.DocumentationModel) ?? "llama3");
+                (routingSettings.JudgeModels.Any() ? routingSettings.JudgeModels.First() : routingSettings.DocumentationModel) ?? "llama3",
+                sp.GetService<IBenchmarkingService>());
         });
     }
 }

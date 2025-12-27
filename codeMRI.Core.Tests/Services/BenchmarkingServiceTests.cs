@@ -69,7 +69,7 @@ public class BenchmarkingServiceTests
     #region RecordMetrics Tests
 
     [Test]
-    public void RecordMetrics_ShouldAccumulateTokenCounts()
+    public async Task RecordMetrics_ShouldAccumulateTokenCounts()
     {
         // Arrange
         var runId = "test-run-id";
@@ -79,6 +79,9 @@ public class BenchmarkingServiceTests
         // Act
         _service.RecordMetrics(runId, metrics1);
         _service.RecordMetrics(runId, metrics2);
+
+        // Give background tasks a moment to fire
+        await Task.Delay(200);
 
         // Assert - Verify metrics are being stored
         _mockRepository.Verify(r => r.AddMetricsAsync(runId, metrics1, It.IsAny<CancellationToken>()), Times.Once);

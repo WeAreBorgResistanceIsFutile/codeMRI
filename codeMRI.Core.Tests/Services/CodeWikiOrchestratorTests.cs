@@ -29,6 +29,7 @@ public class CodeWikiOrchestratorTests
         _mockDocumentIndexer = new Mock<IDocumentIndexer>();
         _mockNavigationService = new Mock<INavigationStructureService>();
         _mockInvocationContext = new Mock<ILLMInvocationContext>();
+        _mockBenchmarkingService = new Mock<IBenchmarkingService>();
 
         // Setup delegation to always return no delegation needed
         _mockDelegationService
@@ -111,7 +112,9 @@ public class CodeWikiOrchestratorTests
             _mockNavigationService.Object,
             mockOptions.Object,
             _mockInvocationContext.Object,
-            _mockLogger.Object
+            _mockLogger.Object,
+            "default",
+            _mockBenchmarkingService.Object
         );
     }
     
@@ -150,7 +153,29 @@ public class CodeWikiOrchestratorTests
     private Mock<IDocumentIndexer> _mockDocumentIndexer;
     private Mock<INavigationStructureService> _mockNavigationService;
     private Mock<ILLMInvocationContext> _mockInvocationContext;
+    private Mock<IBenchmarkingService> _mockBenchmarkingService;
     private CodeWikiOrchestrator _orchestrator;
+
+    [Test]
+    public async Task GenerateAdvancedWikiAsync_WhenBenchmarkIsActive_ShouldRecordPageBenchmarks()
+    {
+        // Arrange
+        var repoPath = "/test/repo";
+        var repoInfo = new RepositoryInfo { Name = "TestRepo" };
+        var activeRun = new BenchmarkRun { Id = "active-run-id", Status = BenchmarkStatus.Running };
+
+        _mockBenchmarkingService
+            .Setup(b => b.GetActiveRunAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(activeRun);
+
+        // Act
+        await _orchestrator.GenerateAdvancedWikiAsync(repoPath, repoInfo);
+
+        // Assert
+        _mockBenchmarkingService.Verify(
+            b => b.RecordPageBenchmarkAsync(activeRun.Id, It.IsAny<PageBenchmark>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce());
+    }
 
     [Test]
     public async Task GenerateAdvancedWikiAsync_ShouldAlwaysCallGenerationService_DelegatingCachingToService()

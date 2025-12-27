@@ -49,6 +49,11 @@ public class MessageCompositionOptions
     public bool UseRag { get; init; }
 
     /// <summary>
+    /// Optional Module ID for metrics tracking.
+    /// </summary>
+    public string? ModuleId { get; init; }
+
+    /// <summary>
     /// Custom metadata or options for strategies.
     /// </summary>
     public Dictionary<string, object> Metadata { get; init; } = new();
