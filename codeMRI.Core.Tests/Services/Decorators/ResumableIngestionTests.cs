@@ -77,15 +77,25 @@ public class ResumableIngestionTests
         var mockInnerLLM = new Mock<ILLMClient>();
         var mockSnapshotService = new Mock<IDebugSnapshotService>();
         var mockInvocationContext = new Mock<ILLMInvocationContext>();
+        var mockValidator = new Mock<codeMRI.Core.Services.MessageComposition.ILLMValidator>();
         var mockLogger = new Mock<ILogger<DebugSnapshotLLMClientDecorator>>();
 
         mockInvocationContext.Setup(c => c.RepoPath).Returns("/test/repo");
         mockInvocationContext.Setup(c => c.ComponentId).Returns("test-component");
+        
+        mockValidator.Setup(v => v.ValidateMessages(It.IsAny<List<ChatMessage>>()))
+            .Returns(new codeMRI.Core.Services.MessageComposition.MessageValidationResult 
+            { 
+                IsValid = true, 
+                EstimatedTokens = 10, 
+                AvailableTokens = 100 
+            });
 
         var decorator = new DebugSnapshotLLMClientDecorator(
             mockInnerLLM.Object,
             mockSnapshotService.Object,
             mockInvocationContext.Object,
+            mockValidator.Object,
             mockLogger.Object);
 
         mockInnerLLM.Setup(l => l.ChatAsync(It.IsAny<List<ChatMessage>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))

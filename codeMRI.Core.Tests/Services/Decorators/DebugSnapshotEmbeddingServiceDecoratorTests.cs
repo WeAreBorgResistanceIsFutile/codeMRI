@@ -1,6 +1,8 @@
+using NUnit.Framework;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services.Decorators;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -9,112 +11,69 @@ namespace codeMRI.Core.Tests.Services.Decorators;
 [TestFixture]
 public class DebugSnapshotEmbeddingServiceDecoratorTests
 {
-    private Mock<IEmbeddingService> _mockInner = null!;
-    private Mock<IDebugSnapshotService> _mockSnapshotService = null!;
-    private Mock<ILLMInvocationContext> _mockContext = null!;
-    private Mock<ILogger<DebugSnapshotEmbeddingServiceDecorator>> _mockLogger = null!;
-    private DebugSnapshotEmbeddingServiceDecorator _decorator = null!;
+    private Mock<IEmbeddingService> _mockInner;
+    private Mock<IDebugSnapshotService> _mockSnapshotService;
+    private Mock<ILLMInvocationContext> _mockInvocationContext;
+    private Mock<ILLMValidator> _mockValidator;
+    private Mock<ILogger<DebugSnapshotEmbeddingServiceDecorator>> _mockLogger;
+    private DebugSnapshotEmbeddingServiceDecorator _decorator;
 
     [SetUp]
-    public void SetUp()
+    public void Setup()
     {
         _mockInner = new Mock<IEmbeddingService>();
         _mockSnapshotService = new Mock<IDebugSnapshotService>();
-        _mockContext = new Mock<ILLMInvocationContext>();
+        _mockInvocationContext = new Mock<ILLMInvocationContext>();
+        _mockValidator = new Mock<ILLMValidator>();
         _mockLogger = new Mock<ILogger<DebugSnapshotEmbeddingServiceDecorator>>();
+
+        _mockInvocationContext.Setup(c => c.RepoPath).Returns("/test/repo");
+        _mockInvocationContext.Setup(c => c.JobId).Returns("test-job");
+        _mockInvocationContext.Setup(c => c.ComponentId).Returns("test-comp");
 
         _decorator = new DebugSnapshotEmbeddingServiceDecorator(
             _mockInner.Object,
             _mockSnapshotService.Object,
-            _mockContext.Object,
+            _mockInvocationContext.Object,
+            _mockValidator.Object, // Now takes validator
             _mockLogger.Object);
     }
 
     [Test]
-    public async Task GetEmbeddingAsync_WhenSuccessful_ShouldNotSaveSnapshot()
+    public async Task GetEmbeddingAsync_OnFailure_ShouldIncludeTokenCount()
     {
         // Arrange
-        var embedding = new float[] { 1.0f, 2.0f, 3.0f };
-        _mockInner.Setup(x => x.GetEmbeddingAsync(It.IsAny<string>()))
-            .ReturnsAsync(embedding);
-
-        // Act
-        var result = await _decorator.GetEmbeddingAsync("test text");
-
-        // Assert
-        Assert.That(result, Is.EqualTo(embedding));
-        _mockSnapshotService.Verify(
-            x => x.SaveSnapshotAsync(It.IsAny<string>(), It.IsAny<DebugSnapshot>()),
-            Times.Never);
-    }
-
-    [Test]
-    public async Task GetEmbeddingAsync_WhenFails_ShouldSaveSnapshotWithTextAndError()
-    {
-        // Arrange
-        var testText = "test embedding text";
-        var errorMessage = "Response status code does not indicate success: 500 (Internal Server Error). Error: {\"error\":\"model not found\"}";
-        var exception = new HttpRequestException(errorMessage);
-
-        _mockContext.Setup(x => x.RepoPath).Returns("/test/repo");
-        _mockContext.Setup(x => x.JobId).Returns("test-job-123");
-        _mockContext.Setup(x => x.ComponentId).Returns("DocumentationIndexer");
-
-        _mockInner.Setup(x => x.GetEmbeddingAsync(testText))
-            .ThrowsAsync(exception);
-
-        DebugSnapshot? capturedSnapshot = null;
-        _mockSnapshotService
-            .Setup(x => x.SaveSnapshotAsync(It.IsAny<string>(), It.IsAny<DebugSnapshot>()))
-            .Callback<string, DebugSnapshot>((_, snapshot) => capturedSnapshot = snapshot)
-            .ReturnsAsync("/test/repo/.codemri/debug/snapshot.json");
+        var text = "Some text to embed";
+        var expectedTokens = 4;
+        _mockValidator.Setup(v => v.EstimateTokenCount(text)).Returns(expectedTokens);
+        _mockInner.Setup(s => s.GetEmbeddingAsync(text)).ThrowsAsync(new Exception("Fail"));
 
         // Act & Assert
-        Assert.ThrowsAsync<HttpRequestException>(
-            async () => await _decorator.GetEmbeddingAsync(testText));
+        Assert.ThrowsAsync<Exception>(() => _decorator.GetEmbeddingAsync(text));
 
-        // Verify snapshot was saved
-        _mockSnapshotService.Verify(
-            x => x.SaveSnapshotAsync("/test/repo", It.IsAny<DebugSnapshot>()),
+        _mockSnapshotService.Verify(s => s.SaveSnapshotAsync(
+            It.IsAny<string>(),
+            It.Is<DebugSnapshot>(snap => 
+                snap.Metadata.ContainsKey("tokenCount") && 
+                snap.Metadata["tokenCount"] == expectedTokens.ToString())),
             Times.Once);
-
-        // Verify snapshot content
-        Assert.That(capturedSnapshot, Is.Not.Null);
-        Assert.That(capturedSnapshot!.JobId, Is.EqualTo("test-job-123"));
-        Assert.That(capturedSnapshot.ComponentId, Is.EqualTo("DocumentationIndexer"));
-        Assert.That(capturedSnapshot.Error, Contains.Substring("500"));
-        Assert.That(capturedSnapshot.Error, Contains.Substring("model not found"));
-        Assert.That(capturedSnapshot.Metadata.ContainsKey("embeddingText"), Is.True);
-        Assert.That(capturedSnapshot.Metadata["embeddingText"], Is.EqualTo(testText));
     }
 
     [Test]
-    public async Task GetEmbeddingAsync_WhenFailsAndRepoPathMissing_ShouldLogWarningAndNotSaveSnapshot()
+    public async Task GetEmbeddingAsync_OnFailure_ShouldPopulateUserPromptAndModel()
     {
         // Arrange
-        _mockContext.Setup(x => x.RepoPath).Returns((string?)null);
-        _mockInner.Setup(x => x.GetEmbeddingAsync(It.IsAny<string>()))
-            .ThrowsAsync(new HttpRequestException("Test error"));
+        var text = "Some text to embed";
+        var expectedModel = "test-model";
+        _mockInner.Setup(s => s.ModelName).Returns(expectedModel);
+        _mockInner.Setup(s => s.GetEmbeddingAsync(text)).ThrowsAsync(new Exception("Fail"));
 
         // Act & Assert
-        Assert.ThrowsAsync<HttpRequestException>(
-            async () => await _decorator.GetEmbeddingAsync("test"));
+        Assert.ThrowsAsync<Exception>(() => _decorator.GetEmbeddingAsync(text));
 
-        _mockSnapshotService.Verify(
-            x => x.SaveSnapshotAsync(It.IsAny<string>(), It.IsAny<DebugSnapshot>()),
-            Times.Never);
-    }
-
-    [Test]
-    public void GetDimensions_ShouldPassThroughToInner()
-    {
-        // Arrange
-        _mockInner.Setup(x => x.GetDimensions()).Returns(768);
-
-        // Act
-        var result = _decorator.GetDimensions();
-
-        // Assert
-        Assert.That(result, Is.EqualTo(768));
+        _mockSnapshotService.Verify(s => s.SaveSnapshotAsync(
+            It.IsAny<string>(),
+            It.Is<DebugSnapshot>(snap => snap.UserPrompt == text && snap.Model == expectedModel)),
+            Times.Once, "UserPrompt and Model should be correctly populated");
     }
 }

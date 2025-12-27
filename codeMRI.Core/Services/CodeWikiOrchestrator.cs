@@ -339,6 +339,14 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                 }
             }
 
+            // Check if we should skip generation based on navigation visibility
+            if (!_options.GenerateAllPages && !IsModuleVisible(structure, module))
+            {
+                _logger.LogDebug("Skipping page generation for {ModuleName} ({ModuleId}) as it is not in the navigation structure", module.Name, module.Id);
+                UpdateProgress(progressState, module.Name);
+                return;
+            }
+
             // Generate content for this module
             WikiPage page;
             if (module.IsLeaf)
@@ -529,6 +537,12 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
 
         sectionId = null!;
         return false;
+    }
+
+    private bool IsModuleVisible(WikiStructure structure, ModuleNode module)
+    {
+        return TryFindMappedSectionId(structure, module, out var sectionId) &&
+               FindSectionById(structure.Sections, sectionId) != null;
     }
 
     private void UpdateProgress(ProgressState state, string moduleName)

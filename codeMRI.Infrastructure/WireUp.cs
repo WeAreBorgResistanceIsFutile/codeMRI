@@ -47,6 +47,7 @@ public class WireUp
                 resilient,
                 sp.GetRequiredService<IDebugSnapshotService>(),
                 sp.GetRequiredService<ILLMInvocationContext>(),
+                sp.GetRequiredService<ILLMValidator>(),
                 sp.GetRequiredService<ILogger<DebugSnapshotLLMClientDecorator>>());
         });
         services.AddSingleton<ILLMValidator>(sp => sp.GetRequiredService<OllamaLLMService>());
@@ -98,6 +99,7 @@ public class WireUp
                 inner,
                 sp.GetRequiredService<IDebugSnapshotService>(),
                 sp.GetRequiredService<ILLMInvocationContext>(),
+                sp.GetRequiredService<ILLMValidator>(),
                 sp.GetRequiredService<ILogger<DebugSnapshotEmbeddingServiceDecorator>>());
         });
         services.AddSingleton<IVectorStoreService, QdrantVectorStoreService>();

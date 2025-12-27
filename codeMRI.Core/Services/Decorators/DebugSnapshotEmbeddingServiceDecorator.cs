@@ -1,5 +1,6 @@
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services.Decorators;
@@ -12,17 +13,20 @@ public class DebugSnapshotEmbeddingServiceDecorator : IEmbeddingService
     private readonly IEmbeddingService _inner;
     private readonly IDebugSnapshotService _snapshotService;
     private readonly ILLMInvocationContext _invocationContext;
+    private readonly ILLMValidator _validator;
     private readonly ILogger<DebugSnapshotEmbeddingServiceDecorator> _logger;
 
     public DebugSnapshotEmbeddingServiceDecorator(
         IEmbeddingService inner,
         IDebugSnapshotService snapshotService,
         ILLMInvocationContext invocationContext,
+        ILLMValidator validator,
         ILogger<DebugSnapshotEmbeddingServiceDecorator> logger)
     {
         _inner = inner;
         _snapshotService = snapshotService;
         _invocationContext = invocationContext;
+        _validator = validator;
         _logger = logger;
     }
 
@@ -57,6 +61,8 @@ public class DebugSnapshotEmbeddingServiceDecorator : IEmbeddingService
         return _inner.GetDimensions();
     }
 
+    public string ModelName => _inner.ModelName;
+
     private async Task HandleFailureAsync(string text, Exception ex)
     {
         try
@@ -72,15 +78,16 @@ public class DebugSnapshotEmbeddingServiceDecorator : IEmbeddingService
             {
                 JobId = _invocationContext.JobId ?? "unknown",
                 ComponentId = _invocationContext.ComponentId ?? "unknown",
-                SystemPrompt = string.Empty, // Embeddings don't have prompts
-                UserPrompt = string.Empty,
-                Model = "embedding", // Could be extracted from the service if needed
+                SystemPrompt = "Embedding Request",
+                UserPrompt = text,
+                Model = ModelName,
                 Error = ex.Message,
                 StackTrace = ex.StackTrace,
                 Timestamp = DateTime.UtcNow,
                 Metadata = new Dictionary<string, string>
                 {
-                    ["embeddingText"] = text  // Full text, no truncation
+                    ["embeddingText"] = text,  // Full text, no truncation
+                    ["tokenCount"] = _validator.EstimateTokenCount(text).ToString()
                 }
             };
 

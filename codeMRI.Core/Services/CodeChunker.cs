@@ -8,7 +8,8 @@ public class CodeChunker
 
     public CodeChunker(int maxTokens = 512)
     {
-        _maxTokens = maxTokens;
+        // Use 90% of the set token count for the context window safety margin
+        _maxTokens = (int)(maxTokens * 0.9);
     }
 
     public List<CodeChunk> ChunkCode(GraphNode node)

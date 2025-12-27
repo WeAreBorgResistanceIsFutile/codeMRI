@@ -75,6 +75,8 @@ public class OllamaEmbeddingService : IEmbeddingService
         return 768; 
     }
 
+    public string ModelName => _model;
+
     private class OllamaEmbeddingResponse
     {
         public float[] Embedding { get; set; } = Array.Empty<float>();

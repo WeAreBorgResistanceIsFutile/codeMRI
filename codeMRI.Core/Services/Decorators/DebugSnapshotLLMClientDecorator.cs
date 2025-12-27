@@ -1,5 +1,6 @@
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 
 namespace codeMRI.Core.Services.Decorators;
@@ -12,17 +13,20 @@ public class DebugSnapshotLLMClientDecorator : ILLMClient
     private readonly ILLMClient _inner;
     private readonly IDebugSnapshotService _snapshotService;
     private readonly ILLMInvocationContext _invocationContext;
+    private readonly ILLMValidator _validator;
     private readonly ILogger<DebugSnapshotLLMClientDecorator> _logger;
 
     public DebugSnapshotLLMClientDecorator(
         ILLMClient inner,
         IDebugSnapshotService snapshotService,
         ILLMInvocationContext invocationContext,
+        ILLMValidator validator,
         ILogger<DebugSnapshotLLMClientDecorator> logger)
     {
         _inner = inner;
         _snapshotService = snapshotService;
         _invocationContext = invocationContext;
+        _validator = validator;
         _logger = logger;
     }
 
@@ -53,6 +57,8 @@ public class DebugSnapshotLLMClientDecorator : ILLMClient
             var systemPrompt = messages.FirstOrDefault(m => m.Role == "system")?.Content ?? string.Empty;
             var userPrompt = messages.LastOrDefault(m => m.Role == "user")?.Content ?? string.Empty;
 
+            var validation = _validator.ValidateMessages(messages);
+
             var snapshot = new DebugSnapshot
             {
                 JobId = _invocationContext.JobId ?? "unknown",
@@ -62,7 +68,11 @@ public class DebugSnapshotLLMClientDecorator : ILLMClient
                 Model = model ?? "default",
                 Error = ex.Message,
                 StackTrace = ex.StackTrace,
-                Timestamp = DateTime.UtcNow
+                Timestamp = DateTime.UtcNow,
+                Metadata = new Dictionary<string, string>
+                {
+                    ["tokenCount"] = validation.EstimatedTokens.ToString()
+                }
             };
 
             var path = await _snapshotService.SaveSnapshotAsync(repoPath, snapshot);

@@ -11,6 +11,7 @@ namespace codeMRI.Server.Tests;
 public class DebugSnapshotReplayTests
 {
     private ILLMClient? _llmClient;
+    private IEmbeddingService? _embeddingService;
 
     private WebApplicationFactory<Program> _factory = default!;
     private IServiceProvider _services = default!;
@@ -44,6 +45,7 @@ public class DebugSnapshotReplayTests
         _services = _factory.Services;
 
         _llmClient = (ILLMClient)_services.GetService(typeof(ILLMClient))!;
+        _embeddingService = (IEmbeddingService)_services.GetService(typeof(IEmbeddingService))!;
     }
 
     [OneTimeTearDown]
@@ -55,6 +57,7 @@ public class DebugSnapshotReplayTests
     [Test]
     [Explicit("This test is for manual debugging/replay of captured snapshots. It depends on local files and a running Ollama instance.")]
     [TestCase("/Users/levente/AI/codeMRI/codeMRI.Server.Tests/bin/Debug/data/repos/codeMRI/.codemri/debug/")]
+    [TestCase("/Users/levente/AI/codeMRI/data/repos/Elva/.codemri/debug/")]
     public async Task ReplaySnapshot_ShouldSendToLLM_WhenSnapshotExists(string debugDir)
     {
         // 1. Find the most recent snapshot file in the directory
@@ -71,6 +74,12 @@ public class DebugSnapshotReplayTests
             // 2. Load and Deserialize
             var json = await File.ReadAllTextAsync(snapshotFile);
             var snapshot = JsonSerializer.Deserialize<DebugSnapshot>(json);
+            
+            if (!string.IsNullOrWhiteSpace(snapshot.Metadata["embeddingText"]))
+            {
+                await TestContext.Out.WriteLineAsync($"Not a normal llm snapshot JobId: {snapshot!.JobId}");
+                continue;
+            }
 
             Assert.That(snapshot, Is.Not.Null, "Failed to deserialize snapshot");
             await TestContext.Out.WriteLineAsync($"Snapshot JobId: {snapshot!.JobId}");
@@ -89,7 +98,7 @@ public class DebugSnapshotReplayTests
             {
                 messages.Add(new ChatMessage("user", snapshot.UserPrompt));
             }
-
+            
             Assert.That(messages, Is.Not.Empty, "No prompts found in snapshot");
             
             // Use model from snapshot, or fallback to default if empty
@@ -105,6 +114,59 @@ public class DebugSnapshotReplayTests
                 Assert.That(response, Is.Not.Null.And.Not.Empty);
                 await TestContext.Out.WriteLineAsync("LLM Response received successfully:");
                 await TestContext.Out.WriteLineAsync(response.Substring(0, Math.Min(500, response.Length)) + "...");
+            }
+            catch (Exception ex)
+            {
+                await TestContext.Out.WriteLineAsync($"Replay failed with error: {ex.Message}");
+                throw;
+            }
+        }
+    }
+    
+    [Test]
+    [Explicit("This test is for manual debugging/replay of captured snapshots. It depends on local files and a running Ollama instance.")]
+    [TestCase("/Users/levente/AI/codeMRI/codeMRI.Server.Tests/bin/Debug/data/repos/codeMRI/.codemri/debug/")]
+    [TestCase("/Users/levente/AI/codeMRI/data/repos/Elva/.codemri/debug/")]
+    public async Task ReplayEmbeddingSnapshot_ShouldSendToLLM_WhenSnapshotExists(string debugDir)
+    {
+        // 1. Find the most recent snapshot file in the directory
+        if (!Directory.Exists(debugDir))
+        {
+            Assert.Ignore($"Debug directory not found: {debugDir}");
+            return;
+        }
+
+        foreach (var snapshotFile in Directory.GetFiles(debugDir, "*.json"))
+        {
+            
+            await TestContext.Out.WriteLineAsync($"Replaying snapshot: {snapshotFile}");
+            // 2. Load and Deserialize
+            var json = await File.ReadAllTextAsync(snapshotFile);
+            var snapshot = JsonSerializer.Deserialize<DebugSnapshot>(json);
+            
+            if (string.IsNullOrWhiteSpace(snapshot.Metadata["embeddingText"]))
+            {
+                await TestContext.Out.WriteLineAsync($"Not an embedding snapshot JobId: {snapshot!.JobId}");
+                continue;
+            }
+            
+            Assert.That(snapshot, Is.Not.Null, "Failed to deserialize snapshot");
+            await TestContext.Out.WriteLineAsync($"Snapshot JobId: {snapshot!.JobId}");
+            await TestContext.Out.WriteLineAsync($"Snapshot Component: {snapshot.ComponentId}");
+            await TestContext.Out.WriteLineAsync($"Snapshot Error: {snapshot.Error}");
+            
+            // Use model from snapshot, or fallback to default if empty
+            var modelToUse = !string.IsNullOrWhiteSpace(snapshot.Model) ? snapshot.Model : "llama3";
+            await TestContext.Out.WriteLineAsync($"Sending to LLM Model: {modelToUse}...");
+
+            try 
+            {
+                // 4. Send to REAL LLM
+                var response = await _embeddingService!.GetEmbeddingAsync(snapshot.Metadata["embeddingText"]);
+
+                // 5. Verify
+                Assert.That(response, Is.Not.Null.And.Not.Empty);
+                await TestContext.Out.WriteLineAsync("LLM Response received successfully:");
             }
             catch (Exception ex)
             {

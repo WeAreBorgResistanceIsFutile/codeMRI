@@ -31,4 +31,10 @@ public class CodeWikiOptions
     ///     Can be overridden per generation request.
     /// </summary>
     public AudienceType DefaultAudience { get; set; } = AudienceType.Developer;
+
+    /// <summary>
+    ///     When true, all modules in the repository will have documentation generated.
+    ///     When false, only modules mapped to the navigation structure (or their ancestors) will be generated.
+    /// </summary>
+    public bool GenerateAllPages { get; set; } = true;
 }

@@ -12,7 +12,8 @@ public class SemanticDocumentChunker
 
     public SemanticDocumentChunker(int maxTokens = 512, int overlapTokens = 50)
     {
-        _maxTokens = maxTokens;
+        // Use 90% of the set token count for the context window safety margin
+        _maxTokens = (int)(maxTokens * 0.9);
         _overlapTokens = overlapTokens;
     }
 
