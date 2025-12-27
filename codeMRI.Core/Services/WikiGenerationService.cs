@@ -480,13 +480,21 @@ public class WikiGenerationService : IWikiGenerationService
         content = _referenceManagementService.EnrichContentWithLinks(content, module.Name);
         content = CleanLLMPageContent(content, module.Name, filePaths, repoPath, remoteUrl, branch);
 
-        return new WikiPage
-        {
-            Id = module.Id,
-            Title = module.Name,
-            Content = content,
-            RelevantFiles = filePaths
-        };
+        return module is ClusterModuleNode
+            ? new ClusterWikiPage
+            {
+                Id = module.Id,
+                Title = module.Name,
+                Content = content,
+                RelevantFiles = filePaths
+            }
+            : new WikiPage
+            {
+                Id = module.Id,
+                Title = module.Name,
+                Content = content,
+                RelevantFiles = filePaths
+            };
     }
 
     public async Task<WikiPage> GenerateParentPageAsync(ModuleNode module, List<WikiPage> childPages,

@@ -333,7 +333,7 @@ public class DynamicDelegationService : IDelegationService
 
         foreach (var (clusterName, componentIds) in clusters)
         {
-            var subModule = new ModuleNode
+            var subModule = new ClusterModuleNode
             {
                 Id = $"{parent.Id}_{SanitizeId(clusterName)}",
                 Name = $"{parent.Name} - {clusterName}",

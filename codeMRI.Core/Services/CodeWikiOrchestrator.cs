@@ -331,6 +331,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
 
                     // Module is no longer a leaf - mark it for parent page synthesis with merge
                     module.Metadata["HasClusterChildren"] = "true";
+                    module.IsLeaf = false;
                 }
             }
 
@@ -398,7 +399,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                 lock (structure.Pages)
                 {
                     childPages = structure.Pages
-                        .Where(p => module.Children.Any(c => c.Id == p.Id)) // Robust matching by ID
+                        .Where(p => p != null && module.Children != null && module.Children.Any(c => c != null && c.Id == p.Id)) // Robust matching by ID
                         .ToList();
                 }
 
@@ -439,28 +440,34 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                 structure.Pages.Add(page);
             }
 
-            await _wikiRepo.SavePageAsync(repoPath, page);
-
-            // Update the section for this module using the mapping from navigation service
-            if (!TryFindMappedSectionId(structure, module, out var sectionId))
+            if (page is not ClusterWikiPage)
             {
-                // Fallback: try the old pattern
-                sectionId = $"section_{module.Id}";
-                _logger.LogWarning("Module {ModuleId} and its ancestors not found in ModuleToSectionMap, using fallback section ID", module.Id);
-            }
-            
-            var section = FindSectionById(structure.Sections, sectionId);
+                await _wikiRepo.SavePageAsync(repoPath, page);
 
-            if (section != null)
-            {
-                lock (section)
+                // Update the section for this module using the mapping from navigation service
+                if (!TryFindMappedSectionId(structure, module, out var sectionId))
                 {
-                    if (page != null && !section.PageRefs.Contains(page.Id)) section.PageRefs.Add(page.Id);
+                    // Fallback: try the old pattern
+                    sectionId = $"section_{module.Id}";
+                    _logger.LogWarning(
+                        "Module {ModuleId} and its ancestors not found in ModuleToSectionMap, using fallback section ID",
+                        module.Id);
                 }
-            }
-            else
-            {
-                _logger.LogWarning("Section {SectionId} not found in structure during content generation", sectionId);
+
+                var section = FindSectionById(structure.Sections, sectionId);
+
+                if (section != null)
+                {
+                    lock (section)
+                    {
+                        if (page != null && !section.PageRefs.Contains(page.Id)) section.PageRefs.Add(page.Id);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("Section {SectionId} not found in structure during content generation",
+                        sectionId);
+                }
             }
 
             UpdateProgress(progressState, module.Name);
