@@ -85,18 +85,25 @@
     protected override void OnInitialized()
     {
         AppState.OnChange += StateHasChanged;
+        AppState.OnCurrentPageChanged += ResetScroll;
         Navigation.LocationChanged += HandleLocationChanged;
+    }
+
+    private void ResetScroll()
+    {
+        // Reset scroll position of the content pane
+        _ = JS.InvokeVoidAsync("scrollToTop", ".content-pane");
     }
 
     private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        // Reset scroll position of the content pane on navigation
-        _ = JS.InvokeVoidAsync("scrollToTop", ".content-pane");
+        ResetScroll();
     }
 
     public void Dispose()
     {
         AppState.OnChange -= StateHasChanged;
+        AppState.OnCurrentPageChanged -= ResetScroll;
         Navigation.LocationChanged -= HandleLocationChanged;
     }
 

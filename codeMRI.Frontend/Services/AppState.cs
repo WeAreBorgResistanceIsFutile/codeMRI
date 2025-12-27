@@ -39,6 +39,7 @@ public class AppState
     public RepositoryStatusResponse? RepositoryStatus { get; private set; }
 
     public event Action? OnChange;
+    public event Action? OnCurrentPageChanged;
 
     public void SetRepoPath(string path)
     {
@@ -55,6 +56,7 @@ public class AppState
     public void SetCurrentPage(WikiPage page)
     {
         CurrentPage = page;
+        OnCurrentPageChanged?.Invoke();
         NotifyStateChanged();
     }
 
