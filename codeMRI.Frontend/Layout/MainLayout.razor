@@ -77,16 +77,27 @@
     </main>
 </div>
 
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
 @code {
 
     protected override void OnInitialized()
     {
         AppState.OnChange += StateHasChanged;
+        Navigation.LocationChanged += HandleLocationChanged;
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // Reset scroll position of the content pane on navigation
+        _ = JS.InvokeVoidAsync("scrollToTop", ".content-pane");
     }
 
     public void Dispose()
     {
         AppState.OnChange -= StateHasChanged;
+        Navigation.LocationChanged -= HandleLocationChanged;
     }
 
 }
