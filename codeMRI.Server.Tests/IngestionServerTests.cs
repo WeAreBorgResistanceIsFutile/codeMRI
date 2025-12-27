@@ -57,8 +57,8 @@ public class IngestionServerTests
     }
 
     [Explicit("This test is for manual debugging/replay of ingesting a repo.")]
-    // [TestCase("https://github.com/WeAreBorgResistanceIsFutile/codeMRI.git")]
-    // [TestCase("https://github.com/WilliamNT/tunesynctool.git")]
+    [TestCase("https://github.com/WeAreBorgResistanceIsFutile/codeMRI.git")]
+    [TestCase("https://github.com/WilliamNT/tunesynctool.git")]
     [TestCase("https://github.com/WilliamNT/Elva.git")]
     public async Task IngestElvaRepo_CompletesSuccessfully(string repoUrl)
     {
