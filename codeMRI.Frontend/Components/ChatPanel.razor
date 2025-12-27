@@ -62,6 +62,7 @@
     {
         // Render mermaid diagrams in chat messages if any
         await JSRuntime.InvokeVoidAsync("renderMermaidDiagrams");
+        await JSRuntime.InvokeVoidAsync("adjustPopovers");
     }
 
     public void Dispose()
@@ -185,12 +186,14 @@
                     var title = System.Web.HttpUtility.HtmlEncode(source.Title);
                     
                     // Truncate snippet - allow more text for the large popover look
-                    var snippet = source.Snippet;
-                    if (snippet.Length > 600) snippet = snippet.Substring(0, 600) + "...";
-                    snippet = System.Web.HttpUtility.HtmlEncode(snippet);
+                    var rawSnippet = source.Snippet;
+                    if (rawSnippet.Length > 800) rawSnippet = rawSnippet.Substring(0, 800) + "...";
+                    
+                    // Render snippet as markdown
+                    var snippetHtml = Markdown.ToHtml(rawSnippet, Pipeline);
                     
                     Console.WriteLine($"[RenderMessage] Injecting citation badge for index {index}");
-                    return $@"<span class=""citation-marker"">{index}<span class=""citation-popover""><span class=""popover-header"">{title}</span><span class=""popover-body"">{snippet}</span></span></span>";
+                    return $@"<span class=""citation-marker"">{index}<span class=""citation-popover""><span class=""popover-header"">{title}</span><span class=""popover-body"">{snippetHtml}</span></span></span>";
                  }
                  return match.Value;
             });

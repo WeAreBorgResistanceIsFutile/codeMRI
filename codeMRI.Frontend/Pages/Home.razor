@@ -33,6 +33,7 @@ else
 }
 
 @code {
+    private WikiPage? lastPage;
 
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
@@ -45,11 +46,20 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Check if page changed effectively tracking state changes for scroll reset
+        if (AppState.CurrentPage != lastPage)
+        {
+            lastPage = AppState.CurrentPage;
+            // Reset scroll of the content pane when page changes
+            await JSRuntime.InvokeVoidAsync("scrollToTop", ".content-pane");
+        }
+
         if (AppState.CurrentPage != null)
         {
             // Small delay to ensure markdown content is fully in DOM
             await Task.Delay(100);
             await JSRuntime.InvokeVoidAsync("renderMermaidDiagrams");
+            await JSRuntime.InvokeVoidAsync("adjustPopovers");
         }
     }
 

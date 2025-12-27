@@ -19,7 +19,8 @@
 
 ::deep .citation-marker:hover {
     background-color: #4361ee;
-    z-index: 1060;
+    z-index: 9999;
+    /* Super high to clear any other sidebar content */
 }
 
 ::deep .citation-popover {
@@ -28,7 +29,7 @@
     color: #bfc9d4;
     text-align: left;
     border-radius: 8px;
-    padding: 0; 
+    padding: 0;
     position: absolute;
     z-index: 1050;
     bottom: 140%;
@@ -36,20 +37,28 @@
     transform: translateX(-50%);
     opacity: 0;
     transition: opacity 0.2s, transform 0.2s;
-    width: 400px;
-    max-width: 90vw;
-    font-size: 0.9rem;
-    line-height: 1.5;
+    width: 600px;
+    max-width: 80vw;
+    /* Avoid viewport overflow */
+    font-size: 0.85rem;
+    line-height: 1.4;
     white-space: normal;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-    pointer-events: none;
-    border: 1px solid #3b3f5c;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+    /* Deeper shadow */
+    pointer-events: auto;
+    /* Allow scrolling/clicking inside popover */
+    border: 1px solid #4a5568;
+    /* Slightly lighter border for dark theme */
+
+    /* Center but try to stay in view */
+    margin-left: 0;
 }
 
 ::deep .citation-marker:hover .citation-popover {
     visibility: visible;
     opacity: 1;
     transform: translateX(-50%) translateY(-5px);
+    z-index: 10000;
 }
 
 ::deep .popover-header {
@@ -60,22 +69,125 @@
     font-weight: bold;
     color: #fff;
     border-bottom: 1px solid #3b3f5c;
-    display: block; /* Ensure it behaves like a div */
+    display: block;
+    /* Ensure it behaves like a div */
 }
 
 ::deep .popover-body {
     padding: 16px;
     color: #e0e6ed;
-    display: block; /* Ensure it behaves like a div */
-    max-height: 300px;
+    display: block;
+    max-height: 450px;
+    /* Increased height */
     overflow-y: auto;
+    background-color: #1b1e2e;
+}
+
+::deep .popover-body pre {
+    background-color: #0e1726;
+    border: 1px solid #3b3f5c;
+    padding: 10px;
+    border-radius: 4px;
+    margin: 10px 0;
+    overflow-x: auto;
+}
+
+::deep .popover-body code {
+    font-family: 'Roboto Mono', monospace;
+    color: #ff79c6;
+    /* Draculish pink for inline code */
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+::deep .popover-body h1,
+::deep .popover-body h2,
+::deep .popover-body h3 {
+    font-size: 1.1rem;
+    margin-top: 15px;
+    margin-bottom: 5px;
+    color: #fff;
+    border: none;
+}
+
+.markdown-content tr:last-child td {
+    border-bottom: none;
+}
+
+/* Overrides for tables inside dark popovers */
+::deep .popover-body table {
+    background-color: #0e1726;
+    border: 1px solid #3b3f5c;
+    color: #e0e6ed;
+    margin: 10px 0;
+}
+
+::deep .popover-body th {
+    background-color: #1b1e2e;
+    color: #fff;
+    border-bottom: 2px solid #3b3f5c;
+}
+
+::deep .popover-body td {
+    border-bottom: 1px solid #3b3f5c;
+    color: #bfc9d4;
+}
+
+::deep .popover-body tr:nth-child(even) {
+    background-color: #161d2b;
+}
+
+::deep .popover-body tr:hover {
+    background-color: #2d3748;
+    /* Lighter hover for dark theme */
+}
+
+/* Explicitly override global markdown table styles for popovers */
+::deep .popover-body table,
+::deep .popover-body table * {
+    border-color: #3b3f5c !important;
+}
+
+::deep .popover-body th {
+    background-color: #111827 !important;
+    color: #ffffff !important;
+    border-bottom: 2px solid #3b3f5c !important;
+}
+
+::deep .citation-popover.flipped::after {
+    top: auto;
+    bottom: 100%;
+    border-color: transparent transparent #0e1726 transparent;
+    /* Match header color */
+}
+
+::deep .popover-body td {
+    color: #e2e8f0 !important;
+}
+
+::deep .popover-body tr:nth-child(even) {
+    background-color: #1f2937 !important;
+}
+
+::deep .popover-body tr:hover {
+    background-color: #374151 !important;
+}
+
+::deep .popover-body code {
+    background: #2d3748 !important;
+    color: #f687b3 !important;
+}
+
+::deep .popover-body p {
+    margin-bottom: 10px;
 }
 
 ::deep .citation-popover::after {
     content: "";
     position: absolute;
     top: 100%;
-    left: 50%;
+    left: var(--arrow-left, 50%);
     margin-left: -8px;
     border-width: 8px;
     border-style: solid;
