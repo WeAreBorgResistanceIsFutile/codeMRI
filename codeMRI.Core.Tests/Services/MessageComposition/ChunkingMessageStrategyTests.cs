@@ -111,18 +111,18 @@ public class ChunkingMessageStrategyTests
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Rolling findings context too large")),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Rolling findings context too large")),
                 null,
-                It.IsAny<Func<It.IsAnyType, Exception, string>>()),
+                It.IsAny<Func<It.IsAnyType, Exception, string>>()!),
             Times.AtLeastOnce, "Should log information about compaction");
 
         _mockLogger.Verify(
             x => x.Log(
                 LogLevel.Warning,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Accumulated findings too large")),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Accumulated findings too large")),
                 null,
-                It.IsAny<Func<It.IsAnyType, Exception, string>>()),
+                It.IsAny<Func<It.IsAnyType, Exception, string>>()!),
             Times.Never, "Should NOT log warning about truncation");
             
         // Verify that the LLM was used for compaction
@@ -183,9 +183,9 @@ public class ChunkingMessageStrategyTests
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Performing hierarchical synthesis")),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Performing hierarchical synthesis")),
                 null,
-                It.IsAny<Func<It.IsAnyType, Exception, string>>()),
+                It.IsAny<Func<It.IsAnyType, Exception, string>>()!),
             Times.AtLeastOnce, "Should log information about hierarchical synthesis");
     }
 }

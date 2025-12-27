@@ -76,4 +76,10 @@ public interface ILLMServiceFacade
         List<ChatMessage>? history = null,
         MessageCompositionOptions? options = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Set a callback to receive performance metrics for LLM calls.
+    /// Used by the benchmarking system.
+    /// </summary>
+    void SetMetricsCallback(Action<codeMRI.Core.Models.BenchmarkMetrics> callback);
 }

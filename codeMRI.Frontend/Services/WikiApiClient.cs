@@ -156,4 +156,62 @@ public class WikiApiClient
         return await response.Content.ReadFromJsonAsync<WikiStructure>()
                ?? throw new Exception("Failed to ingest repository");
     }
+
+    #region Benchmark API Methods
+
+    public async Task<List<BenchmarkRun>> ListBenchmarksAsync()
+    {
+        return await _http.GetFromJsonAsync<List<BenchmarkRun>>("api/Wiki/benchmarks") 
+               ?? new List<BenchmarkRun>();
+    }
+
+    public async Task<BenchmarkRun> GetBenchmarkAsync(string runId)
+    {
+        return await _http.GetFromJsonAsync<BenchmarkRun>($"api/Wiki/benchmarks/{runId}")
+               ?? throw new Exception("Benchmark run not found");
+    }
+
+    public async Task<BenchmarkRun> StartBenchmarkAsync(StartBenchmarkRequest request)
+    {
+        var response = await _http.PostAsJsonAsync("api/Wiki/benchmarks", request);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BenchmarkRun>()
+               ?? throw new Exception("Failed to start benchmark");
+    }
+
+    public async Task DeleteBenchmarkAsync(string runId)
+    {
+        var response = await _http.DeleteAsync($"api/Wiki/benchmarks/{runId}");
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task PauseBenchmarkAsync(string runId)
+    {
+        var response = await _http.PostAsync($"api/Wiki/benchmarks/{runId}/pause", null);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<BenchmarkRun> ResumeBenchmarkAsync(string runId)
+    {
+        var response = await _http.PostAsync($"api/Wiki/benchmarks/{runId}/resume", null);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BenchmarkRun>()
+               ?? throw new Exception("Failed to resume benchmark");
+    }
+
+    public async Task<ModelBenchmarkComparison> CompareBenchmarksAsync(List<string> runIds)
+    {
+        var response = await _http.PostAsJsonAsync("api/Wiki/benchmarks/compare", runIds);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ModelBenchmarkComparison>()
+               ?? throw new Exception("Failed to compare benchmarks");
+    }
+
+    public async Task<string> GetBenchmarkReportAsync(string runId)
+    {
+        var result = await _http.GetFromJsonAsync<Dictionary<string, string>>($"api/Wiki/benchmarks/{runId}/report");
+        return result != null && result.TryGetValue("report", out var report) ? report : string.Empty;
+    }
+
+    #endregion
 }

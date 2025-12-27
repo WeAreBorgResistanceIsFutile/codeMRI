@@ -98,15 +98,37 @@ public class LLMServiceFacade : ILLMServiceFacade
                     "Messages composed using {Strategy} strategy ({MessageCount} messages)",
                     compositionResult.StrategyUsed,
                     compositionResult.Messages.Count);
-                
+
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 var response = await _llmClient.ChatAsync(
                     compositionResult.Messages,
                     context.Model,
                     cancellationToken);
+                sw.Stop();
+
+                // Estimate tokens if not available (rough approximation: 4 chars/token)
+                var inputLen = compositionResult.Messages.Sum(m => m.Content.Length);
+                var outputLen = response?.Length ?? 0;
+                var inputTokens = inputLen / 4;
+                var outputTokens = outputLen / 4;
+
+                _metricsCallback?.Invoke(new codeMRI.Core.Models.BenchmarkMetrics
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    ModelName = context.Model ?? "default",
+                    TaskType = compositionResult.StrategyUsed,
+                    Phase = "Execution", // Context specific, might need enrichment
+                    Timestamp = DateTime.UtcNow,
+                    Duration = sw.Elapsed,
+                    InputTokens = inputTokens,
+                    OutputTokens = outputTokens,
+                    ContextWindowSize = 0, // Unknown
+                    Success = true
+                });
                 
                 _logger.LogInformation(
-                    "LLM responded successfully (response length: {ResponseLength} chars)",
-                    response?.Length ?? 0);
+                    "LLM responded successfully (response length: {ResponseLength} chars, {Duration}ms)",
+                    response?.Length ?? 0, sw.ElapsedMilliseconds);
                 
                 return new LLMResponse
                 {
@@ -122,6 +144,13 @@ public class LLMServiceFacade : ILLMServiceFacade
             _logger.LogError(ex, "LLMServiceFacade execution failed");
             throw;
         }
+    }
+
+    private Action<codeMRI.Core.Models.BenchmarkMetrics>? _metricsCallback;
+
+    public void SetMetricsCallback(Action<codeMRI.Core.Models.BenchmarkMetrics> callback)
+    {
+        _metricsCallback = callback;
     }
 }
 

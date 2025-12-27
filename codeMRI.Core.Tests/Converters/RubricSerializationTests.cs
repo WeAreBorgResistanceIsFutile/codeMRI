@@ -70,6 +70,6 @@ public class RubricSerializationTests
         var result = JsonSerializer.Deserialize<RubricNode>(json, _options);
 
         // Assert
-        Assert.That(result.IsLeaf, Is.True);
+        Assert.That(result!.IsLeaf, Is.True);
     }
 }

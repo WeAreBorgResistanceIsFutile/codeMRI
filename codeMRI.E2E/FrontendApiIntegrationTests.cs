@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Json;
 using codeMRI.Core.Models;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -23,8 +24,8 @@ public class FrontendApiIntegrationTests
         _factory?.Dispose();
     }
 
-    private WebApplicationFactory<Program> _factory;
-    private HttpClient _client;
+    private WebApplicationFactory<Program> _factory = new();
+    private HttpClient _client = new();
     private const string TestRepoPath = "/Users/levente/AI/OllamaRAG5";
 
     [Test]
@@ -59,6 +60,7 @@ public class FrontendApiIntegrationTests
 
         var page = await response.Content.ReadFromJsonAsync<WikiPage>();
         Assert.That(page, Is.Not.Null);
+        Debug.Assert(page != null, nameof(page) + " != null");
         Assert.That(page.Title, Is.EqualTo("Test Page"));
     }
 }

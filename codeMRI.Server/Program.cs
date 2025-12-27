@@ -4,6 +4,7 @@ using codeMRI.Core.Models;
 using codeMRI.Infrastructure;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
+using codeMRI.Core.Services;
 using codeMRI.Core.Services.MessageComposition;
 using codeMRI.Server.Hubs;
 using Microsoft.Data.Sqlite;
@@ -122,6 +123,17 @@ builder.Services.AddSingleton<IGenerationJobManager, DbGenerationJobManager>(sp 
     return new DbGenerationJobManager(logger, messageBus, scopeFactory, dbPath);
 });
 
+// Benchmark Services
+builder.Services.AddSingleton<IBenchmarkRepository>(sp =>
+{
+    var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
+    if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
+    var dbPath = Path.Combine(appDataPath, "benchmarks.db");
+    return new BenchmarkRepository($"Data Source={dbPath}");
+});
+
+builder.Services.AddSingleton<IBenchmarkingService, BenchmarkingService>();
+
 
 // CORS
 builder.Services.AddCors(options =>
@@ -159,6 +171,32 @@ if (app.Environment.IsDevelopment())
 app.UseCors("AllowAll");
 app.UseHttpsRedirection();
 app.UseAuthorization();
+
+// Wire up Benchmarking Metrics Callback
+var llmFacade = app.Services.GetRequiredService<ILLMServiceFacade>();
+var benchmarkingService = app.Services.GetRequiredService<IBenchmarkingService>();
+
+llmFacade.SetMetricsCallback(metrics =>
+{
+    // Fire and forget to avoid blocking LLM execution
+    Task.Run(async () =>
+    {
+        try
+        {
+            var activeRun = await benchmarkingService.GetActiveRunAsync();
+            if (activeRun != null)
+            {
+                benchmarkingService.RecordMetrics(activeRun.Id, metrics);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Suppress errors to avoid crashing background threads
+            Console.WriteLine($"Error recording benchmark metrics: {ex.Message}");
+        }
+    });
+});
+
 app.MapControllers();
 app.MapHub<WikiHub>("/wikiHub");
 

@@ -76,7 +76,7 @@ public class ASTServiceClientConversionTests
         {
             FilePath = "TestFile.cs",
             Language = "CSharp",
-            HierarchicalStructure = structure
+            HierarchicalStructure = structure!
         };
 
         // Act
@@ -122,7 +122,7 @@ public class ASTServiceClientConversionTests
         {
             FilePath = "script.py",
             Language = "Python",
-            HierarchicalStructure = structure,
+            HierarchicalStructure = structure!,
             Metrics = metricsElement
         };
 

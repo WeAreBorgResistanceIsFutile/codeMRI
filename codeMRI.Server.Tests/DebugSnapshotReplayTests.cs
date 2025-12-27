@@ -99,7 +99,7 @@ public class DebugSnapshotReplayTests
             try 
             {
                 // 4. Send to REAL LLM
-                var response = await _llmClient.ChatAsync(messages, modelToUse);
+                var response = await _llmClient!.ChatAsync(messages, modelToUse);
 
                 // 5. Verify
                 Assert.That(response, Is.Not.Null.And.Not.Empty);

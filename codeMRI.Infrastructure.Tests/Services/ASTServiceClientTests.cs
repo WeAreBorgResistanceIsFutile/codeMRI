@@ -71,7 +71,7 @@ public class ASTServiceClientTests
                 "SendAsync",
                 ItExpr.Is<HttpRequestMessage>(req =>
                     req.Method == HttpMethod.Post &&
-                    req.RequestUri.ToString().EndsWith("/api/ast/parse")),
+                    req.RequestUri!.ToString().EndsWith("/api/ast/parse")),
                 ItExpr.IsAny<CancellationToken>()
             )
             .ReturnsAsync(new HttpResponseMessage
@@ -117,7 +117,7 @@ public class ASTServiceClientTests
         var filePath = "src/Foo.java";
 
         // We capture the request to inspect it later
-        HttpRequestMessage capturedRequest = null;
+        HttpRequestMessage? capturedRequest = null;
 
         _httpMessageHandlerMock.Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -217,7 +217,7 @@ if not logger.hasHandlers():
         _httpMessageHandlerMock.Protected()
             .Setup<Task<HttpResponseMessage>>(
                 "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.ToString().EndsWith("/health")),
+                ItExpr.Is<HttpRequestMessage>(req => req.RequestUri!.ToString().EndsWith("/health")),
                 ItExpr.IsAny<CancellationToken>()
             )
             .ReturnsAsync(new HttpResponseMessage
@@ -237,7 +237,7 @@ if not logger.hasHandlers():
         _httpMessageHandlerMock.Protected().Verify(
             "SendAsync",
             Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.ToString().EndsWith("/health")),
+            ItExpr.Is<HttpRequestMessage>(req => req.RequestUri!.ToString().EndsWith("/health")),
             ItExpr.IsAny<CancellationToken>()
         );
     }
@@ -249,7 +249,7 @@ if not logger.hasHandlers():
         _httpMessageHandlerMock.Protected()
             .Setup<Task<HttpResponseMessage>>(
                 "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.ToString().EndsWith("/health")),
+                ItExpr.Is<HttpRequestMessage>(req => req.RequestUri!.ToString().EndsWith("/health")),
                 ItExpr.IsAny<CancellationToken>()
             )
             .ReturnsAsync(new HttpResponseMessage
@@ -269,7 +269,7 @@ if not logger.hasHandlers():
         _httpMessageHandlerMock.Protected().Verify(
             "SendAsync",
             Times.Exactly(2),
-            ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.ToString().EndsWith("/health")),
+            ItExpr.Is<HttpRequestMessage>(req => req.RequestUri!.ToString().EndsWith("/health")),
             ItExpr.IsAny<CancellationToken>()
         );
     }

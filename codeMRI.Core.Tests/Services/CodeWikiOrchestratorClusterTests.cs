@@ -79,7 +79,7 @@ public class CodeWikiOrchestratorClusterTests
                 };
                 
                 // Helper to build sections recursively
-                void BuildSections(ModuleNode node, WikiSection parentSection)
+                void BuildSections(ModuleNode node, WikiSection? parentSection)
                 {
                     var sectionId = $"section_{node.Id}";
                     var section = new WikiSection 

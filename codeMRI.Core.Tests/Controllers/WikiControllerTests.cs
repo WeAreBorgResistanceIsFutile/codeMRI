@@ -28,6 +28,8 @@ public class WikiControllerTests
         _mockTelemetryService = new Mock<IAgentTelemetryService>();
         _mockIngestionManager = new Mock<IIngestionJobManager>();
         _mockGenerationManager = new Mock<IGenerationJobManager>();
+        _mockBenchmarkingService = new Mock<IBenchmarkingService>();
+        _mockBenchmarkRepository = new Mock<IBenchmarkRepository>();
         _controller = new WikiController(
             _mockWikiService.Object,
             _mockWikiRepo.Object,
@@ -37,7 +39,9 @@ public class WikiControllerTests
             _mockMessageBus.Object,
             _mockTelemetryService.Object,
             _mockIngestionManager.Object,
-            _mockGenerationManager.Object);
+            _mockGenerationManager.Object,
+            _mockBenchmarkingService.Object,
+            _mockBenchmarkRepository.Object);
     }
 
     private Mock<IWikiGenerationService> _mockWikiService;
@@ -49,6 +53,8 @@ public class WikiControllerTests
     private Mock<IAgentTelemetryService> _mockTelemetryService;
     private Mock<IIngestionJobManager> _mockIngestionManager;
     private Mock<IGenerationJobManager> _mockGenerationManager;
+    private Mock<IBenchmarkingService> _mockBenchmarkingService;
+    private Mock<IBenchmarkRepository> _mockBenchmarkRepository;
     private WikiController _controller;
 
     [Test]

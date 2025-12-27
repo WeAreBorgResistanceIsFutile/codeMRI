@@ -26,6 +26,8 @@ public class WikiController : ControllerBase
     private readonly IAgentTelemetryService _telemetryService;
     private readonly IWikiRepository _wikiRepo;
     private readonly IWikiGenerationService _wikiService;
+    private readonly IBenchmarkingService _benchmarkingService;
+    private readonly IBenchmarkRepository _benchmarkRepository;
 
     public WikiController(
         IWikiGenerationService wikiService,
@@ -36,7 +38,9 @@ public class WikiController : ControllerBase
         AgentMessageBus messageBus,
         IAgentTelemetryService telemetryService,
         IIngestionJobManager ingestionManager,
-        IGenerationJobManager generationManager)
+        IGenerationJobManager generationManager,
+        IBenchmarkingService benchmarkingService,
+        IBenchmarkRepository benchmarkRepository)
     {
         _wikiService = wikiService;
         _wikiRepo = wikiRepo;
@@ -47,6 +51,8 @@ public class WikiController : ControllerBase
         _telemetryService = telemetryService;
         _ingestionManager = ingestionManager;
         _generationManager = generationManager;
+        _benchmarkingService = benchmarkingService;
+        _benchmarkRepository = benchmarkRepository;
     }
 
 
@@ -379,6 +385,141 @@ public class WikiController : ControllerBase
 
         return Content(job.ResultJson, "application/json");
     }
+
+    #region Benchmarking Endpoints
+
+    /// <summary>
+    ///     Starts a new benchmark run.
+    /// </summary>
+    [HttpPost("benchmarks")]
+    public async Task<IActionResult> StartBenchmark([FromBody] StartBenchmarkRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.RepositoryUrl))
+            return BadRequest("Repository URL is required");
+
+        try
+        {
+            var run = await _benchmarkingService.StartBenchmarkRunAsync(
+                request.RepositoryUrl,
+                request.Name,
+                request.ModelConfiguration);
+            
+            return Ok(run);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start benchmark run");
+            return StatusCode(500, ex.Message);
+        }
+    }
+
+    /// <summary>
+    ///     Lists all benchmark runs.
+    /// </summary>
+    [HttpGet("benchmarks")]
+    public async Task<IActionResult> ListBenchmarks()
+    {
+        var runs = await _benchmarkRepository.GetAllAsync();
+        return Ok(runs);
+    }
+
+    /// <summary>
+    ///     Gets a specific benchmark run by ID.
+    /// </summary>
+    [HttpGet("benchmarks/{runId}")]
+    public async Task<IActionResult> GetBenchmark(string runId)
+    {
+        var run = await _benchmarkRepository.GetByIdAsync(runId);
+        if (run == null) return NotFound();
+        
+        // Also load page benchmarks for details
+        run.PageBenchmarks = await _benchmarkRepository.GetPageBenchmarksAsync(runId);
+        
+        return Ok(run);
+    }
+
+    /// <summary>
+    ///     Deletes a benchmark run.
+    /// </summary>
+    [HttpDelete("benchmarks/{runId}")]
+    public async Task<IActionResult> DeleteBenchmark(string runId)
+    {
+        await _benchmarkRepository.DeleteAsync(runId);
+        return Ok();
+    }
+
+    /// <summary>
+    ///     Pauses a running benchmark.
+    /// </summary>
+    [HttpPost("benchmarks/{runId}/pause")]
+    public async Task<IActionResult> PauseBenchmark(string runId)
+    {
+        try
+        {
+            await _benchmarkingService.PauseBenchmarkRunAsync(runId);
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    ///     Resumes a paused benchmark.
+    /// </summary>
+    [HttpPost("benchmarks/{runId}/resume")]
+    public async Task<IActionResult> ResumeBenchmark(string runId)
+    {
+        try
+        {
+            var run = await _benchmarkingService.ResumeBenchmarkRunAsync(runId);
+            return Ok(run);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    ///     Compares multiple benchmark runs.
+    /// </summary>
+    [HttpPost("benchmarks/compare")]
+    public async Task<IActionResult> CompareBenchmarks([FromBody] List<string> runIds)
+    {
+        if (runIds == null || runIds.Count < 2)
+            return BadRequest("At least 2 run IDs are required for comparison");
+
+        try
+        {
+            var comparison = await _benchmarkingService.CompareRunsAsync(runIds);
+            return Ok(comparison);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    ///     Generates a markdown report for a benchmark run.
+    /// </summary>
+    [HttpGet("benchmarks/{runId}/report")]
+    public async Task<IActionResult> GetBenchmarkReport(string runId)
+    {
+        try
+        {
+            var report = await _benchmarkingService.GenerateReportAsync(runId);
+            return Ok(new { Report = report });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    #endregion
 
     // Helper Method
     private List<string> GetRepoFiles(string repoPath)
