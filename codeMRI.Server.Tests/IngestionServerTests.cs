@@ -49,7 +49,7 @@ public class IngestionServerTests
         _factory.Dispose();
     }
 
-    [Ignore("It takes long time to complete")]
+    [Explicit("This test is for manual debugging/replay of ingesting a repo.")]
     [TestCase("https://github.com/WeAreBorgResistanceIsFutile/codeMRI.git")]
     [TestCase("https://github.com/WilliamNT/tunesynctool.git")]
     [TestCase("https://github.com/WilliamNT/Elva.git")]

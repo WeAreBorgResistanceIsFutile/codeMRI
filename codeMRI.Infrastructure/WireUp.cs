@@ -4,6 +4,7 @@ using codeMRI.Agents.Interfaces;
 using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
+using codeMRI.Core.Models.Configuration;
 using codeMRI.Core.Services;
 using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
@@ -29,10 +30,21 @@ public class WireUp
         services.AddSingleton<ILLMInvocationContext, LLMInvocationContext>();
         services.AddSingleton<IDebugSnapshotService, DebugSnapshotService>();
 
+        // Configuration
+        services.Configure<RetrySettings>(configuration.GetSection("Retry"));
+
         services.AddSingleton<ILLMClient>(sp => {
             var inner = sp.GetRequiredService<OllamaLLMService>();
-            return new DebugSnapshotLLMClientDecorator(
+            
+            // 1. Wrap with Retry Logic
+            var resilient = new ResilientLLMClientDecorator(
                 inner,
+                sp.GetRequiredService<ILogger<ResilientLLMClientDecorator>>(),
+                sp.GetRequiredService<IOptions<RetrySettings>>());
+
+            // 2. Wrap with Debug Snapshot (captures final failure after retries)
+            return new DebugSnapshotLLMClientDecorator(
+                resilient,
                 sp.GetRequiredService<IDebugSnapshotService>(),
                 sp.GetRequiredService<ILLMInvocationContext>(),
                 sp.GetRequiredService<ILogger<DebugSnapshotLLMClientDecorator>>());

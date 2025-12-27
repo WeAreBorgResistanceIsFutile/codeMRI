@@ -134,116 +134,38 @@ public class OllamaLLMService : ILLMClient, ILLMValidator
             validation.EstimatedTokens,
             displayJson);
 
-        // Retry logic with exponential backoff
-        const int maxRetries = 3;
-        const int baseDelayMs = 1000;
-        const int maxDelayMs = 5000;
-        var random = new Random();
+        var response = await _httpClient.PostAsJsonAsync("/api/chat", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
 
-        for (var attempt = 1; attempt <= maxRetries; attempt++)
+        var contentString = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(contentString))
         {
-            try
-            {
-                var response = await _httpClient.PostAsJsonAsync("/api/chat", request, cancellationToken);
-
-                if (IsTransientError(response.StatusCode) && attempt < maxRetries)
-                {
-                    var exponentialDelay = baseDelayMs * (1 << (attempt - 1));
-                    var jitter = random.Next(0, exponentialDelay / 2);
-                    var delay = Math.Min(exponentialDelay + jitter, maxDelayMs);
-
-                    _logger.LogWarning(
-                        "Transient error {StatusCode} on attempt {Attempt}/{MaxRetries}. Retrying in {Delay}ms...",
-                        response.StatusCode, attempt, maxRetries, delay);
-                    
-                    await Task.Delay(delay, cancellationToken);
-                    continue;
-                }
-
-                response.EnsureSuccessStatusCode();
-
-                var contentString = await response.Content.ReadAsStringAsync(cancellationToken);
-                
-                if (string.IsNullOrWhiteSpace(contentString))
-                {
-                    if (attempt < maxRetries)
-                    {
-                        var exponentialDelay = baseDelayMs * (1 << (attempt - 1));
-                        var jitter = random.Next(0, exponentialDelay / 2);
-                        var delay = Math.Min(exponentialDelay + jitter, maxDelayMs);
-
-                        _logger.LogWarning(
-                            "Ollama returned empty response on attempt {Attempt}/{MaxRetries}. Retrying in {Delay}ms...",
-                            attempt, maxRetries, delay);
-                        
-                        await Task.Delay(delay, cancellationToken);
-                        continue;
-                    }
-
-                    _logger.LogError(
-                        "Ollama returned empty response after {MaxRetries} attempts. Status Code: {StatusCode}",
-                        maxRetries, response.StatusCode);
-                    
-                    throw new HttpRequestException(
-                        $"Ollama returned an empty response after {maxRetries} attempts (Status: {response.StatusCode})");
-                }
-
-                var ollamaResponse = JsonSerializer.Deserialize<OllamaResponse>(contentString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                
-                if (ollamaResponse?.Message?.Content == null)
-                {
-                    _logger.LogError(
-                        "Failed to parse Ollama response or message content is null. Raw response: {Response}",
-                        contentString.Length > 500 ? contentString.Substring(0, 500) + "..." : contentString);
-                    
-                    throw new InvalidOperationException("Failed to parse Ollama response or message content is null");
-                }
-
-                _logger.LogInformation(
-                    "Received response from Ollama ({ResponseLength} chars)",
-                    ollamaResponse.Message.Content.Length);
-
-                return ollamaResponse.Message.Content;
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogWarning("ChatAsync operation canceled or timed out after {MaxRetries} attempts.", maxRetries);
-                throw;
-            }
-            catch (HttpRequestException) when (attempt < maxRetries)
-            {
-                var exponentialDelay = baseDelayMs * (1 << (attempt - 1));
-                var jitter = random.Next(0, exponentialDelay / 2);
-                var delay = Math.Min(exponentialDelay + jitter, maxDelayMs);
-
-                _logger.LogWarning(
-                    "HTTP request failed on attempt {Attempt}/{MaxRetries}. Retrying in {Delay}ms...",
-                    attempt, maxRetries, delay);
-                
-                await Task.Delay(delay, cancellationToken);
-            }
+            _logger.LogError("Ollama returned empty response. Status Code: {StatusCode}", response.StatusCode);
+            throw new HttpRequestException($"Ollama returned an empty response (Status: {response.StatusCode})");
         }
 
-        _logger.LogError("Max retries ({MaxRetries}) exceeded for Ollama API.", maxRetries);
-        throw new HttpRequestException(
-            $"Max retries ({maxRetries}) exceeded for Ollama API. The service may be experiencing issues.");
+        var ollamaResponse = JsonSerializer.Deserialize<OllamaResponse>(contentString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (ollamaResponse?.Message?.Content == null)
+        {
+            _logger.LogError(
+                "Failed to parse Ollama response or message content is null. Raw response: {Response}",
+                contentString.Length > 500 ? contentString.Substring(0, 500) + "..." : contentString);
+
+            throw new InvalidOperationException("Failed to parse Ollama response or message content is null");
+        }
+
+        _logger.LogInformation(
+            "Received response from Ollama ({ResponseLength} chars)",
+            ollamaResponse.Message.Content.Length);
+
+        return ollamaResponse.Message.Content;
     }
 
     #endregion
 
-    #region Helper Methods
 
-    private static bool IsTransientError(HttpStatusCode statusCode)
-    {
-        return statusCode == HttpStatusCode.RequestTimeout ||
-               statusCode == HttpStatusCode.TooManyRequests ||
-               statusCode == HttpStatusCode.InternalServerError ||
-               statusCode == HttpStatusCode.BadGateway ||
-               statusCode == HttpStatusCode.ServiceUnavailable ||
-               statusCode == HttpStatusCode.GatewayTimeout;
-    }
-
-    #endregion
 
     #region Response DTOs
 
