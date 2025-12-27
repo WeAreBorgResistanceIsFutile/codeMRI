@@ -33,13 +33,14 @@ public class DbIngestionManager : IIngestionJobManager
 
         // Ensure directory exists
         var builder = new SqliteConnectionStringBuilder($"Data Source={dbPath}");
+        builder["Default Timeout"] = 30;
+
         if (!string.IsNullOrEmpty(builder.DataSource) && builder.DataSource != ":memory:")
         {
             var dir = Path.GetDirectoryName(builder.DataSource);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
         }
-
-        _connectionString = $"Data Source={dbPath}";
+        _connectionString = builder.ToString();
 
         InitializeDb();
     }
@@ -144,6 +145,9 @@ public class DbIngestionManager : IIngestionJobManager
                 Error TEXT,
                 Audience INTEGER DEFAULT 0
             )");
+
+        connection.Execute("PRAGMA journal_mode=WAL;");
+        connection.Execute("PRAGMA synchronous=NORMAL;");
 
         // Migration: Check if Audience column exists, if not add it
         var audienceExists =

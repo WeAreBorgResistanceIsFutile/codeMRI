@@ -13,7 +13,10 @@ public class SqliteWikiRepository : IWikiRepository
 
     public SqliteWikiRepository(string connectionString)
     {
-        _connectionString = connectionString;
+        var builder = new SqliteConnectionStringBuilder(connectionString);
+        // Default Timeout is in seconds for Microsoft.Data.Sqlite
+        builder["Default Timeout"] = 30; 
+        _connectionString = builder.ToString();
         InitializeDatabase();
     }
 
@@ -274,6 +277,10 @@ public class SqliteWikiRepository : IWikiRepository
             );
         ");
 
+        // Enable WAL mode for better concurrency
+        connection.Execute("PRAGMA journal_mode=WAL;");
+        connection.Execute("PRAGMA synchronous=NORMAL;");
+
         // Enable foreign keys
         connection.Execute("PRAGMA foreign_keys = ON;");
 
@@ -295,13 +302,9 @@ public class SqliteWikiRepository : IWikiRepository
 
     private async Task<int> GetOrCreateRepoIdAsync(IDbConnection connection, string repoPath)
     {
-        var id = await connection.QuerySingleOrDefaultAsync<int?>(
-            "SELECT Id FROM Repositories WHERE RepoPath = @RepoPath", new { RepoPath = repoPath });
-
-        if (id.HasValue) return id.Value;
-
+        // Use INSERT OR IGNORE to handle concurrency
         await connection.ExecuteAsync(
-            "INSERT INTO Repositories (RepoPath) VALUES (@RepoPath)", new { RepoPath = repoPath });
+            "INSERT OR IGNORE INTO Repositories (RepoPath) VALUES (@RepoPath)", new { RepoPath = repoPath });
 
         return await connection.QuerySingleAsync<int>(
             "SELECT Id FROM Repositories WHERE RepoPath = @RepoPath", new { RepoPath = repoPath });
