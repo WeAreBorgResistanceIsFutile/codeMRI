@@ -263,6 +263,12 @@
         border-bottom: 1px solid var(--border-color);
         padding-bottom: 0.25rem;
         overflow-x: auto;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .tabs-container::-webkit-scrollbar {
+        display: none;
     }
 
     .tab-btn {
