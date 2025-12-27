@@ -19,13 +19,8 @@
 
                 <div class="form-group">
                     <label>Repository URL</label>
-                    <select @bind="request.RepositoryUrl" class="form-control">
-                        <option value="">Select a repository...</option>
-                        @foreach (var repo in Repositories)
-                        {
-                            <option value="@(string.IsNullOrEmpty(repo.RemoteUrl) ? repo.Path : repo.RemoteUrl)">@repo.Name</option>
-                        }
-                    </select>
+                    <input type="text" @bind="request.RepositoryUrl" placeholder="https://github.com/user/repo" class="form-control" />
+                    <small class="form-help">Enter the Git URL of the repository to benchmark.</small>
                 </div>
 
                 <div class="form-group">
@@ -171,6 +166,14 @@
         border-radius: 6px;
         font-size: 0.85rem;
         margin-top: 1rem;
+    }
+
+    .form-help {
+        display: block;
+        margin-top: 0.35rem;
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        opacity: 0.8;
     }
 
     .spinner-mini {
