@@ -95,8 +95,9 @@
 
     private void ResetScroll()
     {
-        // Reset scroll position of the content pane
+        // Reset scroll position of the content containers
         _ = JS.InvokeVoidAsync("scrollToTop", ".content-pane");
+        _ = JS.InvokeVoidAsync("scrollToTop", ".document-view");
     }
 
     private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
