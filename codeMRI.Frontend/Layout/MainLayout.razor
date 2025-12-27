@@ -38,7 +38,7 @@
     </header>
 
     <!-- Workspace -->
-    <main class="workspace-grid">
+    <main class="workspace-grid @(IsFullWidthPage ? "full-width" : "")">
         <!-- Left: Explorer -->
         <aside class="sidebar-pane left-pane">
             <div class="pane-header">EXPLORER</div>
@@ -81,6 +81,10 @@
 @inject IJSRuntime JS
 
 @code {
+    private bool IsFullWidthPage => 
+        Navigation.Uri.Contains("/management", StringComparison.OrdinalIgnoreCase) || 
+        Navigation.Uri.Contains("/benchmarks", StringComparison.OrdinalIgnoreCase) ||
+        Navigation.Uri.Contains("/repositories", StringComparison.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
     {
@@ -98,6 +102,7 @@
     private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         ResetScroll();
+        StateHasChanged();
     }
 
     public void Dispose()
