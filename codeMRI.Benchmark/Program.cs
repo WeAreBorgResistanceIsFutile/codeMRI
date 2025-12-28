@@ -103,7 +103,8 @@ class Program
         });
 
         // App Settings
-        builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+        var appSettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        builder.Configuration.AddJsonFile(appSettingsPath, optional: false, reloadOnChange: true);
 
         // Force overrides specific to Benchmark tool behavior
         var overrides = new Dictionary<string, string?>
