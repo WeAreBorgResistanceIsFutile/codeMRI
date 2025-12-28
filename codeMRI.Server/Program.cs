@@ -7,10 +7,11 @@ using codeMRI.Infrastructure.Configuration;
 using codeMRI.Infrastructure.Services;
 using codeMRI.Core.Services;
 using codeMRI.Core.Services.MessageComposition;
+using codeMRI.Server;
 using codeMRI.Server.Hubs;
+using codeMRI.Server.Infrastructure.Logging;
 using Microsoft.Data.Sqlite;
 using Serilog;
-using codeMRI.Server.Infrastructure.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,108 +34,8 @@ builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Configuration
-builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
-builder.Services.Configure<ModelRoutingSettings>(builder.Configuration.GetSection("ModelRouting"));
-builder.Services.Configure<ASTServiceSettings>(builder.Configuration.GetSection("ASTService"));
-builder.Services.Configure<CodeWikiOptions>(builder.Configuration.GetSection("CodeWiki"));
-
-// Infrastructure - LLM Services
-builder.Services.AddHttpClient();
-
-builder.Services.AddSingleton<IASTServiceClient, ASTServiceClient>();
-
-// Wire up core application services
-WireUp.Registered(builder.Services, builder.Configuration);
-
-builder.Services.AddSingleton<IWikiRepository>(sp =>
-{
-    var appDataPath =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
-    if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
-
-    var connectionString = builder.Configuration.GetConnectionString("WikiDb");
-    if (string.IsNullOrEmpty(connectionString))
-    {
-        var dbPath = Path.Combine(appDataPath, "codemri.db");
-        connectionString = $"Data Source={dbPath}";
-    }
-
-    return new SqliteWikiRepository(connectionString);
-});
-
-builder.Services.AddSingleton<IIngestionJobManager, DbIngestionManager>(sp =>
-{
-    var logger = sp.GetRequiredService<ILogger<DbIngestionManager>>();
-    var messageBus = sp.GetRequiredService<AgentMessageBus>();
-    var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
-    var snapshotService = sp.GetRequiredService<IDebugSnapshotService>();
-
-    var connectionString = builder.Configuration.GetConnectionString("IngestionDb");
-    string dbPath;
-
-    if (!string.IsNullOrEmpty(connectionString) && connectionString.Contains("Data Source="))
-    {
-        // Extract if it's a connection string
-        var connStringBuilder = new SqliteConnectionStringBuilder(connectionString);
-        dbPath = connStringBuilder.DataSource;
-    }
-    else if (!string.IsNullOrEmpty(connectionString))
-    {
-        // Treat as path
-        dbPath = connectionString;
-    }
-    else
-    {
-        // Default
-        var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "codeMRI");
-        if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
-        dbPath = Path.Combine(appDataPath, "ingestion.db");
-    }
-
-    return new DbIngestionManager(logger, messageBus, scopeFactory, snapshotService, dbPath);
-});
-
-builder.Services.AddSingleton<IGenerationJobManager, DbGenerationJobManager>(sp =>
-{
-    var logger = sp.GetRequiredService<ILogger<DbGenerationJobManager>>();
-    var messageBus = sp.GetRequiredService<AgentMessageBus>();
-    var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
-
-    var connectionString = builder.Configuration.GetConnectionString("GenerationDb");
-    string dbPath;
-
-    if (!string.IsNullOrEmpty(connectionString) && connectionString.Contains("Data Source="))
-    {
-        var connStringBuilder = new SqliteConnectionStringBuilder(connectionString);
-        dbPath = connStringBuilder.DataSource;
-    }
-    else if (!string.IsNullOrEmpty(connectionString))
-    {
-        dbPath = connectionString;
-    }
-    else
-    {
-        var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
-        if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
-        dbPath = Path.Combine(appDataPath, "generation.db");
-    }
-
-    return new DbGenerationJobManager(logger, messageBus, scopeFactory, dbPath);
-});
-
-// Benchmark Services
-builder.Services.AddSingleton<IBenchmarkRepository>(sp =>
-{
-    var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
-    if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
-    var dbPath = Path.Combine(appDataPath, "benchmarks.db");
-    return new BenchmarkRepository($"Data Source={dbPath}");
-});
-
-builder.Services.AddSingleton<IBenchmarkingService, BenchmarkingService>();
-
+// Use centralized service registration
+ServiceRegistration.ConfigureServices(builder.Services, builder.Configuration);
 
 // CORS
 builder.Services.AddCors(options =>

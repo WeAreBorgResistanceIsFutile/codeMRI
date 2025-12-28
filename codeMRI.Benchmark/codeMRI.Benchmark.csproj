@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj" />
     <ProjectReference Include="..\codeMRI.Infrastructure\codeMRI.Infrastructure.csproj" />
+    <ProjectReference Include="..\codeMRI.Server\codeMRI.Server.csproj" />
   </ItemGroup>
 
   <ItemGroup>

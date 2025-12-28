@@ -1,22 +1,13 @@
 ﻿using System.CommandLine;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using codeMRI.Agents.Services;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
-using codeMRI.Core.Services;
-using codeMRI.Core.Services.MessageComposition;
 using codeMRI.Infrastructure.Configuration;
-using codeMRI.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
-using Microsoft.Data.Sqlite;
-using Dapper;
-
-using codeMRI.Infrastructure;
 
 namespace codeMRI.Benchmark;
 
@@ -24,7 +15,7 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
-        var rootCommand = new RootCommand("codeMRI Benchmark CLI - Run benchmarks directly in-process");
+        var rootCommand = new RootCommand("codeMRI Benchmark CLI - Run benchmarks using the server's infrastructure");
 
         var inputOption = new Option<string>(
             new[] { "--input", "-i" },
@@ -85,7 +76,7 @@ class Program
             return;
         }
 
-        // 2. Setup Host
+        // 2. Build a minimal host that uses the Server's configuration
         var builder = Host.CreateApplicationBuilder();
 
         // Logging
@@ -103,32 +94,28 @@ class Program
             logging.AddSerilog(loggerConfig.CreateLogger());
         });
 
-        // App Settings
-        var appSettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
-        builder.Configuration.AddJsonFile(appSettingsPath, optional: false, reloadOnChange: true);
+        // Load the Server's appsettings.Development.json
+        var serverAppSettings = Path.Combine(AppContext.BaseDirectory, "../../../../codeMRI.Server/appsettings.Development.json");
+        if (File.Exists(serverAppSettings))
+        {
+            builder.Configuration.AddJsonFile(serverAppSettings, optional: false, reloadOnChange: false);
+        }
+        else
+        {
+            Console.WriteLine($"Warning: Could not find server appsettings at {serverAppSettings}");
+        }
 
         // Force overrides specific to Benchmark tool behavior
         var overrides = new Dictionary<string, string?>
         {
-            // FORCE GenerateAllPages to true to ensure full benchmark coverage regardless of appsettings
             {"CodeWiki:GenerateAllPages", "true"} 
         };
         builder.Configuration.AddInMemoryCollection(overrides);
 
-        // 3. Register Services
-        
-        // Core WireUp
-        WireUp.Registered(builder.Services, builder.Configuration);
-        
-        // Additional Configuration (Missing in WireUp)
-        builder.Services.Configure<CodeWikiOptions>(builder.Configuration.GetSection("CodeWiki"));
-        builder.Services.Configure<ASTServiceSettings>(builder.Configuration.GetSection("ASTService"));
+        // Use the Server's service registration (this is the key part!)
+        codeMRI.Server.ServiceRegistration.ConfigureServices(builder.Services, builder.Configuration);
 
-        // Infrastructure Managers (Manually registered like in Server/Program.cs)
-        RegisterInfrastructure(builder.Services, builder.Configuration);
-
-        // Manual Configuration of ModelRoutingSettings - Overrides appsettings
-        // Must be registered AFTER WireUp to ensure it takes precedence if WireUp also configures options
+        // Override ModelRoutingSettings from CLI config
         builder.Services.Configure<ModelRoutingSettings>(settings =>
         {
             settings.EnableModelRouting = routingSettings.EnableModelRouting;
@@ -143,183 +130,79 @@ class Program
             settings.MinimumAgreementThreshold = routingSettings.MinimumAgreementThreshold;
         });
 
-        // 4. Build Host
         using var host = builder.Build();
-
-        // 5. Initialize & Wire-up Callbacks
         var services = host.Services;
-        InitializeCallbacks(services);
 
-        // Initialize Vector Store (Critical for RAG/Indexing)
+        // Initialize Vector Store
         try
         {
             var vectorStoreInit = services.GetRequiredService<IVectorStoreInitializationService>();
             await vectorStoreInit.InitializeAsync();
-             Console.WriteLine("Vector Store initialized successfully.");
+            Console.WriteLine("Vector Store initialized successfully.");
         }
         catch (Exception ex)
         {
-             Console.WriteLine($"Warning: Failed to initialize vector store: {ex.Message}");
+            Console.WriteLine($"Warning: Failed to initialize vector store: {ex.Message}");
         }
 
-        // 6. Start Benchmark
+        // 3. Start Benchmark using the IngestionJobManager (just like the UI does)
+        var ingestionManager = services.GetRequiredService<IIngestionJobManager>();
         var benchmarkingService = services.GetRequiredService<IBenchmarkingService>();
-        var orchestrator = services.GetRequiredService<ICodeWikiOrchestrator>();
-        var telemetry = services.GetRequiredService<IAgentTelemetryService>();
         
-        string repoUrl = input;
-        string repoPath = input;
-        string originalUrl = input;
-        bool isTemp = false;
-
-        // Handle Git URL
-        if (codeMRI.Infrastructure.Services.GitHelper.IsGitUrl(input))
-        {
-             Console.WriteLine($"Cloning {input}...");
-             try 
-             {
-                 repoPath = await codeMRI.Infrastructure.Services.GitHelper.CloneRepositoryAsync(input);
-                 isTemp = true;
-                 Console.WriteLine($"Cloned to: {repoPath}");
-             }
-             catch (Exception ex)
-             {
-                 Console.WriteLine($"Error cloning: {ex.Message}");
-                 return;
-             }
-        }
-        else
-        {
-            if (!Directory.Exists(input))
-            {
-                Console.WriteLine($"Error: Directory not found: {input}");
-                return;
-            }
-            repoPath = Path.GetFullPath(input);
-        }
-
         string runName = name ?? $"Benchmark-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
-        Console.WriteLine($"Starting benchmark '{runName}' for {originalUrl}...");
+        Console.WriteLine($"Starting benchmark '{runName}' for {input}...");
 
         BenchmarkRun? run = null;
         try
         {
             // Start Benchmark Run
             run = await benchmarkingService.StartBenchmarkRunAsync(
-                originalUrl, 
+                input, 
                 runName, 
                 configJson);
 
             Console.WriteLine($"Benchmark Run ID: {run.Id}");
 
-            // Prepare RepositoryInfo
-            var repoInfo = new RepositoryInfo 
-            {
-                RepoPath = repoPath,
-                Url = originalUrl,
-                Name = Path.GetFileName(repoPath),
-                Branch = await codeMRI.Infrastructure.Services.GitHelper.GetCurrentBranch(repoPath)
-            };
+            // Start the ingestion job (this will run in the background just like the UI)
+            var job = await ingestionManager.StartJobAsync(input, forceRegenerate: true, AudienceType.Developer);
+            Console.WriteLine($"Created Ingestion Job ID: {job.Id}");
+            Console.WriteLine("Job is running in the background...");
 
-            // 5a. Create Ingestion Job Record (for UI visibility)
-            // We create the record manually instead of using StartJobAsync because that would spawn
-            // a background worker that conflicts with our direct orchestrator call
-            var jobId = Guid.NewGuid().ToString();
-            var ingestionDbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI", "ingestion.db");
-            
-            using (var connection = new SqliteConnection($"Data Source={ingestionDbPath}"))
+            // Poll for completion
+            while (true)
             {
-                await connection.ExecuteAsync(@"
-                    INSERT INTO IngestionJobs (Id, RepoUrl, RepoPath, RepoName, Status, ProgressPercentage, CurrentPhase, Message, WorkerId, CreatedAt, LastUpdated, Error, Audience)
-                    VALUES (@Id, @RepoUrl, @RepoPath, @RepoName, @Status, @ProgressPercentage, @CurrentPhase, @Message, @WorkerId, @CreatedAt, @LastUpdated, @Error, @Audience)",
-                    new
-                    {
-                        Id = jobId,
-                        RepoUrl = originalUrl,
-                        RepoPath = repoPath,
-                        RepoName = Path.GetFileName(repoPath),
-                        Status = IngestionStatus.Analyzing,
-                        ProgressPercentage = 0,
-                        CurrentPhase = "Starting",
-                        Message = "Starting benchmark ingestion...",
-                        WorkerId = Environment.MachineName,
-                        CreatedAt = DateTime.UtcNow,
-                        LastUpdated = DateTime.UtcNow,
-                        Error = (string?)null,
-                        Audience = (int)AudienceType.Developer
-                    });
-            }
-            
-            Console.WriteLine($"Created Ingestion Job ID: {jobId}");
-            
-            // Progress reporting linked to Ingestion Job
-            var progress = new Progress<ProgressInfo>(info => {
-                 Console.Write($"\rPHASE: {info.Phase} - {info.Message} ({info.Percentage}%)" + new string(' ', 20));
-                 
-                 // Update the ingestion job status directly for UI
-                 var status = info.Phase switch
-                 {
-                     "Decomposition" => IngestionStatus.Analyzing,
-                     "Rubric Generation" => IngestionStatus.Analyzing,
-                     "Content Generation" => IngestionStatus.Generating,
-                     "Evaluation" => IngestionStatus.Generating,
-                     "Indexing" => IngestionStatus.Generating,
-                     "Complete" => IngestionStatus.Completed,
-                     _ => IngestionStatus.Analyzing
-                 };
+                await Task.Delay(2000);
+                var currentJob = await ingestionManager.GetJobAsync(job.Id);
                 
-                 // Fire and forget update to avoid blocking
-                 _ = Task.Run(async () => {
-                     try {
-                         using var conn = new SqliteConnection($"Data Source={ingestionDbPath}");
-                         await conn.ExecuteAsync(
-                            "UPDATE IngestionJobs SET Status = @Status, ProgressPercentage = @Pct, CurrentPhase = @Phase, Message = @Msg, LastUpdated = @Now WHERE Id = @Id",
-                            new
-                            {
-                                Status = status, 
-                                Pct = info.Percentage, 
-                                Phase = status.ToString(), 
-                                Msg = info.Message, 
-                                Now = DateTime.UtcNow,
-                                Id = jobId
-                            });
-                     } catch {}
-                 });
-            });
+                if (currentJob == null)
+                {
+                    Console.WriteLine("Job not found!");
+                    break;
+                }
 
-            // Execute Orchestrator Directly
-            Console.WriteLine("\nExecuting CodeWiki Orchestrator (Full Workflow)...");
-            
-            var structure = await orchestrator.GenerateAdvancedWikiAsync(
-                repoPath,
-                repoInfo,
-                progress,
-                force: true);
+                Console.Write($"\r[{currentJob.Status}] {currentJob.CurrentPhase} - {currentJob.ProgressPercentage}%: {currentJob.Message}".PadRight(100));
 
-            // POST-PROCESSING: Save result to repository like the Ingestion Worker does
-            Console.WriteLine("\nSaving generated structure and repository metadata...");
-            var wikiRepo = services.GetRequiredService<IWikiRepository>();
-            await wikiRepo.SaveStructureAsync(repoPath, structure);
-            
-            // If it was a temp clone from a remote URL, save the remote URL association
-            if (isTemp && !string.IsNullOrEmpty(originalUrl)) 
-            {
-                await wikiRepo.SetRepositoryRemoteUrlAsync(repoPath, originalUrl);
-                Console.WriteLine($"Mapped {repoPath} to {originalUrl}");
+                if (currentJob.Status == IngestionStatus.Completed)
+                {
+                    Console.WriteLine("\n\nIngestion completed successfully!");
+                    break;
+                }
+                else if (currentJob.Status == IngestionStatus.Failed)
+                {
+                    Console.WriteLine($"\n\nIngestion failed: {currentJob.Error}");
+                    break;
+                }
+                else if (currentJob.Status == IngestionStatus.Cancelled)
+                {
+                    Console.WriteLine("\n\nIngestion was cancelled.");
+                    break;
+                }
             }
-            
-            // Mark Job as Completed
-             using var completionConn = new SqliteConnection($"Data Source={ingestionDbPath}");
-             await completionConn.ExecuteAsync(
-                "UPDATE IngestionJobs SET Status = @Status, ProgressPercentage = 100, Message = 'Ingestion complete', LastUpdated = @Now WHERE Id = @Id",
-                new { Status = IngestionStatus.Completed, Now = DateTime.UtcNow, Id = jobId });
 
-            Console.WriteLine("\n\nWorkflow completed successfully.");
-            
             // Complete Benchmark
             await benchmarkingService.CompleteBenchmarkRunAsync(run.Id);
             
-            // Allow time for async metrics to be processed and persisted
+            // Allow time for async metrics to be processed
             await Task.Delay(2000);
 
             // Generate Report
@@ -333,139 +216,6 @@ class Program
             
             if (run != null)
                 await benchmarkingService.CancelBenchmarkRunAsync(run.Id);
-                
-             // Fail the ingestion job too if created
-             // (Logic omitted for brevity, but would involve similar SQL update)
         }
-        finally
-        {
-             // Cleanup is tricky: If we delete the repo, the "Repository" entry in UI will point to nowhere.
-             // When running "in-process" ingestion that is meant to persist for the UI, we should PROBABLY NOT delete the repo
-             // if we want it to be viewable.
-             // However, the user asked for a "benchmark tool". Benchmarks largely imply ephemeral runs.
-             // BUT, the user's latest complaint is "no repository either".
-             // So we should KEEP the repo if it was successful.
-             
-             if (isTemp && Directory.Exists(repoPath))
-             {
-                 // We will NOT delete if successful so the UI can show it. 
-                 // But strictly speaking, if we want to clean up, we should. 
-                 // Let's assume for now we keep it because the user complained about "no repository".
-                 Console.WriteLine($"\nRepository preserved at: {repoPath}");
-             }
-        }
-    }
-
-    private static void RegisterInfrastructure(IServiceCollection services, IConfiguration configuration)
-    {
-        // Persistence - mimic Server setup but standalone
-        services.AddSingleton<IWikiRepository>(sp =>
-        {
-            var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
-            if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
-            var dbPath = Path.Combine(appDataPath, "codemri.db");
-            return new SqliteWikiRepository($"Data Source={dbPath}");
-        });
-
-        services.AddSingleton<IIngestionJobManager, DbIngestionManager>(sp =>
-        {
-            var logger = sp.GetRequiredService<ILogger<DbIngestionManager>>();
-            var messageBus = sp.GetRequiredService<AgentMessageBus>();
-            var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
-            
-             // Create a dummy snapshot service if not needed or reuse
-             // Assuming WireUp registers IDebugSnapshotService? 
-             // If not, we might need to mock it or register it.
-             // Checking WireUp is hard, so let's try to get it. If missing, we fix.
-             var snapshotService = sp.GetService<IDebugSnapshotService>(); 
-             if (snapshotService == null) {
-                 // Simple mock or implementation
-                 // Actually Infrastructure probably has it.
-                 // Let's assume it's registered by WireUp for now.
-             }
-
-            var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
-            var dbPath = Path.Combine(appDataPath, "ingestion.db");
-            return new DbIngestionManager(logger, messageBus, scopeFactory, snapshotService!, dbPath);
-        });
-
-        services.AddSingleton<IGenerationJobManager, DbGenerationJobManager>(sp =>
-        {
-            var logger = sp.GetRequiredService<ILogger<DbGenerationJobManager>>();
-            var messageBus = sp.GetRequiredService<AgentMessageBus>();
-            var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>(); // Fixed typo
-
-            var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
-            var dbPath = Path.Combine(appDataPath, "generation.db");
-            return new DbGenerationJobManager(logger, messageBus, scopeFactory, dbPath);
-        });
-
-        services.AddSingleton<IBenchmarkRepository>(sp =>
-        {
-            var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
-            var dbPath = Path.Combine(appDataPath, "benchmarks.db");
-            return new BenchmarkRepository($"Data Source={dbPath}");
-        });
-
-        services.AddSingleton<IBenchmarkingService, BenchmarkingService>();
-        
-        // AST Service
-        services.AddSingleton<IASTServiceClient, ASTServiceClient>();
-        services.AddHttpClient();
-    }
-
-    private static void InitializeCallbacks(IServiceProvider services)
-    {
-        var llmFacade = services.GetRequiredService<ILLMServiceFacade>();
-        var benchmarkingService = services.GetRequiredService<IBenchmarkingService>();
-        var messageBus = services.GetRequiredService<AgentMessageBus>();
-
-        // 1. LLM Metrics -> Benchmark
-        llmFacade.SetMetricsCallback(metrics =>
-        {
-            Task.Run(async () =>
-            {
-                try
-                {
-                    var activeRun = await benchmarkingService.GetActiveRunAsync();
-                    if (activeRun != null)
-                    {
-                        benchmarkingService.RecordMetrics(activeRun.Id, metrics);
-                    }
-                }
-                catch { /* Ignore */ }
-            });
-        });
-
-        // 2. Ingestion Progress -> Benchmark Lifecycle
-        messageBus.Subscribe("IngestionProgress", async msg =>
-        {
-            try
-            {
-                var content = msg.Content?.ToString() ?? "{}";
-                using var doc = JsonDocument.Parse(content);
-                var root = doc.RootElement;
-                
-                if (root.TryGetProperty("Status", out var statusProp))
-                {
-                     var status = (IngestionStatus)statusProp.GetInt32();
-                     if (status == IngestionStatus.Completed || status == IngestionStatus.Failed || status == IngestionStatus.Cancelled)
-                    {
-                        var activeRun = await benchmarkingService.GetActiveRunAsync();
-                        if (activeRun != null)
-                        {
-                            if (status == IngestionStatus.Completed)
-                                await benchmarkingService.CompleteBenchmarkRunAsync(activeRun.Id);
-                            else
-                                await benchmarkingService.CancelBenchmarkRunAsync(activeRun.Id);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                 Console.WriteLine($"Callback Error: {ex.Message}");
-            }
-        });
     }
 }
