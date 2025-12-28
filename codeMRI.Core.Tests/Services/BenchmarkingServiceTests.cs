@@ -162,6 +162,9 @@ public class BenchmarkingServiceTests
             .Setup(r => r.GetPageBenchmarksAsync(runId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(pageMetrics);
         _mockRepository
+            .Setup(r => r.GetMetricsAsync(runId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<BenchmarkMetrics>()); // Added mock for GetMetricsAsync
+        _mockRepository
             .Setup(r => r.UpdateAsync(It.IsAny<BenchmarkRun>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -257,7 +260,7 @@ public class BenchmarkingServiceTests
         // Assert
         Assert.That(report, Does.Contain("# Benchmark Report"));
         Assert.That(report, Does.Contain("test-repo"));
-        Assert.That(report, Does.Contain("0,85"));
+        Assert.That(report, Does.Contain(0.85.ToString("F2")));
     }
 
     #endregion

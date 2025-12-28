@@ -142,14 +142,31 @@ public class BenchmarkingService : IBenchmarkingService
         }
 
         // Aggregate token counts from in-memory buffer
-        if (_metricsBuffer.TryGetValue(runId, out var metrics))
+        // Aggregate token counts - merge from repository and in-memory buffer to ensure accuracy
+        // even if the service was restarted (buffer lost) or if DB writes are pending (buffer has latest)
+        var allMetrics = new Dictionary<string, BenchmarkMetrics>();
+
+        // 1. Load from repository first (source of truth for persisted data)
+        var dbMetrics = await _repository.GetMetricsAsync(runId, cancellationToken);
+        foreach (var m in dbMetrics)
         {
-            lock (metrics)
+            allMetrics[m.Id] = m;
+        }
+
+        // 2. Overlay from memory buffer (captures latest non-persisted metrics)
+        if (_metricsBuffer.TryGetValue(runId, out var memMetrics))
+        {
+            lock (memMetrics)
             {
-                run.TotalInputTokens = metrics.Sum(m => m.InputTokens);
-                run.TotalOutputTokens = metrics.Sum(m => m.OutputTokens);
+                foreach (var m in memMetrics)
+                {
+                    allMetrics[m.Id] = m;
+                }
             }
         }
+
+        run.TotalInputTokens = allMetrics.Values.Sum(m => m.InputTokens);
+        run.TotalOutputTokens = allMetrics.Values.Sum(m => m.OutputTokens);
 
         await _repository.UpdateAsync(run, cancellationToken);
 
