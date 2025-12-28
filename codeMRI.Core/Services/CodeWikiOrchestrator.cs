@@ -157,11 +157,18 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                     audience);
             });
 
-        // 4. Evaluation (The Judge)
+        // 4. Indexing for RAG (Moved before Evaluation to support RAG-based judging)
+        _progressService.Report(new ProgressInfo { Phase = "Indexing", Message = "Indexing documentation for RAG...", Percentage = 85 });
+        _logger.LogInformation("Phase 4: Indexing Documentation");
+        _telemetryService.TrackAgentActivity("Orchestrator", "Phase 4: Indexing Documentation");
+        await _documentIndexer.IndexDocumentationAsync(repositoryPath, structure, cancellationToken);
+        await _documentIndexer.IndexCodebaseAsync(repositoryPath, dependencyGraph, cancellationToken);
+
+        // 5. Evaluation (The Judge)
         _progressService.Report(new ProgressInfo
             { Phase = "Evaluation", Message = "Evaluating documentation quality...", Percentage = 90 });
-        _logger.LogInformation("Phase 4: Evaluation");
-        _telemetryService.TrackAgentActivity("Orchestrator", "Phase 4: Evaluation");
+        _logger.LogInformation("Phase 5: Evaluation");
+        _telemetryService.TrackAgentActivity("Orchestrator", "Phase 5: Evaluation");
         var requirements = ExtractRequirements(rubric);
         // Use configured judge models
         var judgeModelsList = new List<string> { _judgeModel };
@@ -189,12 +196,6 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
 
         // TODO: Implement Refinement Loop based on low scores
         // For now, we return the judged structure (results could be appended to metadata)
-
-        // 5. Indexing for RAG
-        _progressService.Report(new ProgressInfo { Phase = "Indexing", Message = "Indexing documentation for RAG...", Percentage = 98 });
-        _logger.LogInformation("Phase 5: Indexing Documentation");
-        await _documentIndexer.IndexDocumentationAsync(repositoryPath, structure, cancellationToken);
-        await _documentIndexer.IndexCodebaseAsync(repositoryPath, dependencyGraph, cancellationToken);
 
         _progressService.Report(new ProgressInfo { Phase = "Complete", Message = "Advanced Wiki Generation Complete", Percentage = 100 });
         _telemetryService.TrackAgentActivity("Orchestrator", "CodeWiki Advanced Workflow completed");
