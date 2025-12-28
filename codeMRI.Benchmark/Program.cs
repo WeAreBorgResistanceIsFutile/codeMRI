@@ -223,6 +223,9 @@ class Program
             // Complete Benchmark
             await benchmarkingService.CompleteBenchmarkRunAsync(run.Id);
             
+            // Allow time for async metrics to be processed and persisted
+            await Task.Delay(2000);
+
             // Generate Report
             var report = await benchmarkingService.GenerateReportAsync(run.Id);
             Console.WriteLine("\n" + report);
