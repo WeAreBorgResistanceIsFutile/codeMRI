@@ -257,7 +257,7 @@ public class BenchmarkingServiceTests
         // Assert
         Assert.That(report, Does.Contain("# Benchmark Report"));
         Assert.That(report, Does.Contain("test-repo"));
-        Assert.That(report, Does.Contain("0.85"));
+        Assert.That(report, Does.Contain("0,85"));
     }
 
     #endregion

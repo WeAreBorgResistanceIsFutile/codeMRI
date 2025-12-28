@@ -30,6 +30,7 @@ public class WikiControllerTests
         _mockGenerationManager = new Mock<IGenerationJobManager>();
         _mockBenchmarkingService = new Mock<IBenchmarkingService>();
         _mockBenchmarkRepository = new Mock<IBenchmarkRepository>();
+        _mockDocumentIndexer = new Mock<IDocumentIndexer>();
         _controller = new WikiController(
             _mockWikiService.Object,
             _mockWikiRepo.Object,
@@ -41,7 +42,8 @@ public class WikiControllerTests
             _mockIngestionManager.Object,
             _mockGenerationManager.Object,
             _mockBenchmarkingService.Object,
-            _mockBenchmarkRepository.Object);
+            _mockBenchmarkRepository.Object,
+            _mockDocumentIndexer.Object);
     }
 
     private Mock<IWikiGenerationService> _mockWikiService;
@@ -55,6 +57,7 @@ public class WikiControllerTests
     private Mock<IGenerationJobManager> _mockGenerationManager;
     private Mock<IBenchmarkingService> _mockBenchmarkingService;
     private Mock<IBenchmarkRepository> _mockBenchmarkRepository;
+    private Mock<IDocumentIndexer> _mockDocumentIndexer;
     private WikiController _controller;
 
     [Test]

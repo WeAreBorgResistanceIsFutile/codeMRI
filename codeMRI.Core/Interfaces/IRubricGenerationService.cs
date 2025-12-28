@@ -39,6 +39,10 @@ public class EvaluationRubric : RubricNode
 [JsonDerivedType(typeof(EvaluationRubric), typeDiscriminator: "rubric")]
 public abstract class RubricNode
 {
+    // Unique identifier for this node
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+
     // Ensure Title etc. are properly mapped if needed, but camelCase policy usually suffices
     [JsonPropertyName("title")]
     public string Title { get; set; } = string.Empty;

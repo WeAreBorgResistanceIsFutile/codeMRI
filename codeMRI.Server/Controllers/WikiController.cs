@@ -28,6 +28,7 @@ public class WikiController : ControllerBase
     private readonly IWikiGenerationService _wikiService;
     private readonly IBenchmarkingService _benchmarkingService;
     private readonly IBenchmarkRepository _benchmarkRepository;
+    private readonly IDocumentIndexer _documentIndexer;
 
     public WikiController(
         IWikiGenerationService wikiService,
@@ -40,7 +41,8 @@ public class WikiController : ControllerBase
         IIngestionJobManager ingestionManager,
         IGenerationJobManager generationManager,
         IBenchmarkingService benchmarkingService,
-        IBenchmarkRepository benchmarkRepository)
+        IBenchmarkRepository benchmarkRepository,
+        IDocumentIndexer documentIndexer)
     {
         _wikiService = wikiService;
         _wikiRepo = wikiRepo;
@@ -53,6 +55,7 @@ public class WikiController : ControllerBase
         _generationManager = generationManager;
         _benchmarkingService = benchmarkingService;
         _benchmarkRepository = benchmarkRepository;
+        _documentIndexer = documentIndexer;
     }
 
 
@@ -130,6 +133,7 @@ public class WikiController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(repoPath)) return BadRequest("RepoPath is required");
         await _wikiRepo.DeleteRepositoryAsync(repoPath);
+        await _documentIndexer.DeleteIndexAsync(repoPath);
         return Ok();
     }
 

@@ -177,6 +177,16 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         var avgScore = assessments.Any() ? assessments.Average(a => a.MeanScore) : 0;
         _logger.LogInformation("Evaluation Complete. Average Score: {Score}", avgScore);
 
+        // Update page benchmarks with Judge-based quality scores
+        if (_benchmarkingService != null)
+        {
+            var activeRun = await _benchmarkingService.GetActiveRunAsync(cancellationToken);
+            if (activeRun != null)
+            {
+                await UpdatePageBenchmarksWithQualityScores(activeRun.Id, assessments, rubric, cancellationToken);
+            }
+        }
+
         // TODO: Implement Refinement Loop based on low scores
         // For now, we return the judged structure (results could be appended to metadata)
 
@@ -482,7 +492,6 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                         if (activeRun != null)
                         {
                             var wordCount = CountWords(page.Content);
-                            var qualityScore = CalculateBasicQualityScore(page.Content);
                             
                             // Try to get actual generation metrics from the service (recently recorded via LLM callback)
                             var metrics = await _benchmarkingService.GetMetricsForModuleAsync(activeRun.Id, module.Id, cancellationToken);
@@ -493,7 +502,7 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
                                 ModuleId = module.Id,
                                 ModuleName = !string.IsNullOrWhiteSpace(page.Title) ? page.Title : module.Name,
                                 WordCount = wordCount,
-                                OverallQualityScore = qualityScore,
+                                OverallQualityScore = -1.0, // Placeholder - will be updated after Judge evaluation
                                 GenerationMetrics = metrics ?? new BenchmarkMetrics
                                 {
                                     TaskType = module.IsLeaf ? "Generation" : "Synthesis",
@@ -598,27 +607,36 @@ public class CodeWikiOrchestrator : ICodeWikiOrchestrator
         return Regex.Matches(content, @"\b\w+\b").Count;
     }
 
-    private double CalculateBasicQualityScore(string content)
+    /// <summary>
+    ///     Updates page benchmarks with quality scores calculated from Judge assessments.
+    ///     Uses hierarchical weighted aggregation with uncertainty propagation.
+    /// </summary>
+    private async Task UpdatePageBenchmarksWithQualityScores(
+        string runId,
+        List<RequirementAssessment> assessments,
+        EvaluationRubric rubric,
+        CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(content)) return 0.0;
+        if (_benchmarkingService == null || assessments == null || assessments.Count == 0)
+            return;
 
-        var score = 10.0;
-        var wordCount = CountWords(content);
-        
-        // Penalize very short or very long content (simplified from EvaluationMetricsSystem)
-        if (wordCount < 50) score -= 2.0;
-        if (wordCount > 2000) score -= 1.0;
+        var calculator = new QualityScoreCalculator();
+        var qualityResult = calculator.CalculatePageQualityScore(assessments, rubric);
 
-        // Penalize lack of sections
-        var sectionCount = Regex.Matches(content, @"^#+\s", RegexOptions.Multiline).Count;
-        if (sectionCount < 2) score -= 1.5;
+        _logger.LogInformation(
+            "Calculated overall quality score: {Score:F3} ± {StdDev:F3} (Coverage: {Coverage:P0})",
+            qualityResult.Score,
+            qualityResult.StandardDeviation,
+            qualityResult.Coverage);
 
-        // Penalize lack of code blocks in technical documentation
-        var codeBlockCount = Regex.Matches(content, @"```").Count / 2;
-        if (codeBlockCount == 0 && (content.Contains("class") || content.Contains("function") || content.Contains("public")))
-            score -= 1.0;
-
-        return Math.Max(0.0, score);
+        // Update all page benchmarks with the calculated quality score
+        // Note: In the current implementation, all pages share the same overall quality score
+        // In a more sophisticated implementation, we could evaluate each page individually
+        await _benchmarkingService.UpdatePageBenchmarksQualityScoreAsync(
+            runId,
+            qualityResult.Score,
+            qualityResult.StandardDeviation,
+            cancellationToken);
     }
 
     private class ProgressState

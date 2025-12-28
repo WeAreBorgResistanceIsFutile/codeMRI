@@ -53,7 +53,7 @@ public interface IWikiRepository
     Task SetRepositoryRemoteUrlAsync(string repoPath, string remoteUrl);
 
     /// <summary>
-    ///     Deletes all data related to a repository.
+    ///     Deletes all data related to a repository, including vector store data if indexer is provided.
     /// </summary>
     Task DeleteRepositoryAsync(string repoPath);
 }

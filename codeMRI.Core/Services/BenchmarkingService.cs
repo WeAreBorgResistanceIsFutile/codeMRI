@@ -199,7 +199,7 @@ public class BenchmarkingService : IBenchmarkingService
         var fastest = runs.OrderBy(r => r.TotalDuration).First();
         comparison.FastestConfiguration = fastest.Name;
 
-        // Determine highest quality
+        // Determine the highest quality
         var highestQuality = runs.OrderByDescending(r => r.MeanQualityScore).First();
         comparison.HighestQualityConfiguration = highestQuality.Name;
 
@@ -292,18 +292,51 @@ public class BenchmarkingService : IBenchmarkingService
     }
 
     /// <inheritdoc />
-    public async Task<BenchmarkMetrics?> GetMetricsForModuleAsync(string runId, string moduleId, CancellationToken cancellationToken = default)
+    public Task<BenchmarkMetrics?> GetMetricsForModuleAsync(string runId, string moduleId, CancellationToken cancellationToken = default)
     {
         if (_metricsBuffer.TryGetValue(runId, out var metrics))
         {
             lock (metrics)
             {
                 // Find most recent for this module
-                return metrics.LastOrDefault(m => m.ModuleId == moduleId);
+                return Task.FromResult(metrics.LastOrDefault(m => m.ModuleId == moduleId));
             }
         }
 
-        return null;
+        return Task.FromResult<BenchmarkMetrics?>(null);
+    }
+
+    /// <inheritdoc />
+    public async Task UpdatePageBenchmarksQualityScoreAsync(
+        string runId,
+        double qualityScore,
+        double standardDeviation,
+        CancellationToken cancellationToken = default)
+    {
+        var pageBenchmarks = await _repository.GetPageBenchmarksAsync(runId, cancellationToken);
+
+        _logger.LogInformation(
+            "Updating {Count} page benchmarks with quality score {Score:F3} ± {StdDev:F3}",
+            pageBenchmarks.Count,
+            qualityScore,
+            standardDeviation);
+
+        // Update each page benchmark with the calculated quality score
+        foreach (var pageBenchmark in pageBenchmarks)
+        {
+            pageBenchmark.OverallQualityScore = qualityScore;
+            // Note: We could store standardDeviation in PageBenchmark if we add that property
+        }
+
+        // The repository should handle updating the page benchmarks
+        // For now, we'll need to add a method to update them in bulk
+        // This is a simplified implementation - in production, you'd want batch updates
+        foreach (var pageBenchmark in pageBenchmarks)
+        {
+            await _repository.AddPageBenchmarkAsync(runId, pageBenchmark, cancellationToken);
+        }
+
+        _logger.LogDebug("Successfully updated {Count} page benchmarks with quality scores", pageBenchmarks.Count);
     }
 
     #region Helper Methods

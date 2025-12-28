@@ -74,4 +74,17 @@ public interface IBenchmarkingService
     ///     Gets recently recorded metrics for a specific module.
     /// </summary>
     Task<BenchmarkMetrics?> GetMetricsForModuleAsync(string runId, string moduleId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    ///     Updates all page benchmarks in a run with the calculated quality score from Judge evaluation.
+    /// </summary>
+    /// <param name="runId">The benchmark run ID.</param>
+    /// <param name="qualityScore">The overall quality score (0-1 range).</param>
+    /// <param name="standardDeviation">The standard deviation representing uncertainty.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task UpdatePageBenchmarksQualityScoreAsync(
+        string runId,
+        double qualityScore,
+        double standardDeviation,
+        CancellationToken cancellationToken = default);
 }

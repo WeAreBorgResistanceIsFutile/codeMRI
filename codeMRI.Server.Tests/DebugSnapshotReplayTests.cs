@@ -75,7 +75,7 @@ public class DebugSnapshotReplayTests
             var json = await File.ReadAllTextAsync(snapshotFile);
             var snapshot = JsonSerializer.Deserialize<DebugSnapshot>(json);
             
-            if (!string.IsNullOrWhiteSpace(snapshot.Metadata["embeddingText"]))
+            if (!string.IsNullOrWhiteSpace(snapshot!.Metadata["embeddingText"]))
             {
                 await TestContext.Out.WriteLineAsync($"Not a normal llm snapshot JobId: {snapshot!.JobId}");
                 continue;
@@ -144,7 +144,7 @@ public class DebugSnapshotReplayTests
             var json = await File.ReadAllTextAsync(snapshotFile);
             var snapshot = JsonSerializer.Deserialize<DebugSnapshot>(json);
             
-            if (string.IsNullOrWhiteSpace(snapshot.Metadata["embeddingText"]))
+            if (string.IsNullOrWhiteSpace(snapshot!.Metadata["embeddingText"]))
             {
                 await TestContext.Out.WriteLineAsync($"Not an embedding snapshot JobId: {snapshot!.JobId}");
                 continue;

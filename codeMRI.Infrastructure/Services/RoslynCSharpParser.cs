@@ -29,7 +29,7 @@ public class RoslynCSharpParser : ICSharpParser
             Metrics = new { Lines = code.Split('\n').Length, Complexity = walker.TotalComplexity },
             DependencyGraph = new DependencyGraphData 
             { 
-                Dependencies = walker.Dependencies,
+                Dependencies = walker.Dependencies!,
                 Nodes = walker.GraphNodes,
                 Edges = walker.GraphEdges
             },
