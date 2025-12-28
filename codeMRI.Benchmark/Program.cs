@@ -115,7 +115,14 @@ class Program
 
         // 3. Register Services
         
-        // Manual Configuration of ModelRoutingSettings
+        // Core WireUp
+        WireUp.Registered(builder.Services, builder.Configuration);
+
+        // Infrastructure Managers (Manually registered like in Server/Program.cs)
+        RegisterInfrastructure(builder.Services, builder.Configuration);
+
+        // Manual Configuration of ModelRoutingSettings - Overrides appsettings
+        // Must be registered AFTER WireUp to ensure it takes precedence if WireUp also configures options
         builder.Services.Configure<ModelRoutingSettings>(settings =>
         {
             settings.EnableModelRouting = routingSettings.EnableModelRouting;
@@ -129,12 +136,6 @@ class Program
             settings.EnsembleModels = routingSettings.EnsembleModels;
             settings.MinimumAgreementThreshold = routingSettings.MinimumAgreementThreshold;
         });
-
-        // Core WireUp
-        WireUp.Registered(builder.Services, builder.Configuration);
-
-        // Infrastructure Managers (Manually registered like in Server/Program.cs)
-        RegisterInfrastructure(builder.Services, builder.Configuration);
 
         // 4. Build Host
         using var host = builder.Build();
