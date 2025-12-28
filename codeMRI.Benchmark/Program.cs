@@ -102,19 +102,16 @@ class Program
             logging.AddSerilog(loggerConfig.CreateLogger());
         });
 
-        // App Settings & Defaults
-        var dict = new Dictionary<string, string?>
+        // App Settings
+        builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+
+        // Force overrides specific to Benchmark tool behavior
+        var overrides = new Dictionary<string, string?>
         {
-            {"Ollama:Url", "http://localhost:11434"},
-            // Add defaults for other required sections to prevent startup errors
-            {"Embedding:Chunking:MaxTokens", "500"},
-            {"Embedding:Chunking:OverlapTokens", "50"},
-            {"VectorStore:Type", "inmemory"}, // Default to in-memory if not configured? actually Qdrant is used
-            {"CodeWiki:EnableDetailedDiagrams", "false"},
-            // FORCE GenerateAllPages to true to ensure full benchmark coverage
+            // FORCE GenerateAllPages to true to ensure full benchmark coverage regardless of appsettings
             {"CodeWiki:GenerateAllPages", "true"} 
         };
-        builder.Configuration.AddInMemoryCollection(dict);
+        builder.Configuration.AddInMemoryCollection(overrides);
 
         // 3. Register Services
         
