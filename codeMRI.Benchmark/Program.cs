@@ -222,51 +222,67 @@ class Program
             };
 
             // 5a. Create Ingestion Job Record (for UI visibility)
-            var ingestionManager = services.GetRequiredService<IIngestionJobManager>();
-            var job = await ingestionManager.StartJobAsync(originalUrl, true, AudienceType.Developer);
-            Console.WriteLine($"Created Ingestion Job ID: {job.Id}");
+            // We create the record manually instead of using StartJobAsync because that would spawn
+            // a background worker that conflicts with our direct orchestrator call
+            var jobId = Guid.NewGuid().ToString();
+            var ingestionDbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI", "ingestion.db");
+            
+            using (var connection = new SqliteConnection($"Data Source={ingestionDbPath}"))
+            {
+                await connection.ExecuteAsync(@"
+                    INSERT INTO IngestionJobs (Id, RepoUrl, RepoPath, RepoName, Status, ProgressPercentage, CurrentPhase, Message, WorkerId, CreatedAt, LastUpdated, Error, Audience)
+                    VALUES (@Id, @RepoUrl, @RepoPath, @RepoName, @Status, @ProgressPercentage, @CurrentPhase, @Message, @WorkerId, @CreatedAt, @LastUpdated, @Error, @Audience)",
+                    new
+                    {
+                        Id = jobId,
+                        RepoUrl = originalUrl,
+                        RepoPath = repoPath,
+                        RepoName = Path.GetFileName(repoPath),
+                        Status = IngestionStatus.Analyzing,
+                        ProgressPercentage = 0,
+                        CurrentPhase = "Starting",
+                        Message = "Starting benchmark ingestion...",
+                        WorkerId = Environment.MachineName,
+                        CreatedAt = DateTime.UtcNow,
+                        LastUpdated = DateTime.UtcNow,
+                        Error = (string?)null,
+                        Audience = (int)AudienceType.Developer
+                    });
+            }
+            
+            Console.WriteLine($"Created Ingestion Job ID: {jobId}");
             
             // Progress reporting linked to Ingestion Job
             var progress = new Progress<ProgressInfo>(info => {
                  Console.Write($"\rPHASE: {info.Phase} - {info.Message} ({info.Percentage}%)" + new string(' ', 20));
                  
-                 // Backward compatibility: Update the ingestion job status directly for UI
-                 // Map Orchestrator phases to Job status
-                var status = info.Phase switch
-                {
-                    "Decomposition" => IngestionStatus.Analyzing,
-                    "Rubric Generation" => IngestionStatus.Analyzing,
-                    "Content Generation" => IngestionStatus.Generating,
-                    "Evaluation" => IngestionStatus.Generating,
-                    "Indexing" => IngestionStatus.Generating, // Indexing is also "Generating" work
-                    "Complete" => IngestionStatus.Completed,
-                    _ => IngestionStatus.Analyzing
-                };
+                 // Update the ingestion job status directly for UI
+                 var status = info.Phase switch
+                 {
+                     "Decomposition" => IngestionStatus.Analyzing,
+                     "Rubric Generation" => IngestionStatus.Analyzing,
+                     "Content Generation" => IngestionStatus.Generating,
+                     "Evaluation" => IngestionStatus.Generating,
+                     "Indexing" => IngestionStatus.Generating,
+                     "Complete" => IngestionStatus.Completed,
+                     _ => IngestionStatus.Analyzing
+                 };
                 
                  // Fire and forget update to avoid blocking
                  _ = Task.Run(async () => {
                      try {
-                         // We need a way to update status without triggering the 'StartJobAsync' flow again.
-                         // Direct SQL update or exposing a public method on IngestionManager would be best.
-                         // But since we are "in-process", we can't easily access the private update method.
-                         // HOWEVER, DbIngestionManager has public methods.
-                         // Since we don't have a public "UpdateStatus", we rely on the fact that ONLY the UI reads the DB.
-                         // We will manually update the DB using a helper or reflection if needed, OR we can add a method to IIngestionJobManager interface.
-                         // BETTER: We can just use the provided message bus to publish updates if the UI listens to them? 
-                         // No, the UI polls the DB usually.
-                         
-                         // Let's use reflection to invoke UpdateJobStatusAsync for now to avoid changing core interfaces
-                         // Or better, let's just accept that we are "simulating" the job runner.
-                         // Actually, we can just execute SQL directly since we are the runner here.
-                         using var connection = new SqliteConnection($"Data Source={Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI", "ingestion.db")}");
-                         await connection.ExecuteAsync(
+                         using var conn = new SqliteConnection($"Data Source={ingestionDbPath}");
+                         await conn.ExecuteAsync(
                             "UPDATE IngestionJobs SET Status = @Status, ProgressPercentage = @Pct, CurrentPhase = @Phase, Message = @Msg, LastUpdated = @Now WHERE Id = @Id",
                             new
                             {
-                                Status = status, Pct = info.Percentage, Phase = status.ToString(), Msg = info.Message, Now = DateTime.UtcNow,
-                                Id = job.Id
+                                Status = status, 
+                                Pct = info.Percentage, 
+                                Phase = status.ToString(), 
+                                Msg = info.Message, 
+                                Now = DateTime.UtcNow,
+                                Id = jobId
                             });
-
                      } catch {}
                  });
             });
@@ -293,10 +309,10 @@ class Program
             }
             
             // Mark Job as Completed
-             using var connection = new SqliteConnection($"Data Source={Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI", "ingestion.db")}");
-             await connection.ExecuteAsync(
+             using var completionConn = new SqliteConnection($"Data Source={ingestionDbPath}");
+             await completionConn.ExecuteAsync(
                 "UPDATE IngestionJobs SET Status = @Status, ProgressPercentage = 100, Message = 'Ingestion complete', LastUpdated = @Now WHERE Id = @Id",
-                new { Status = IngestionStatus.Completed, Now = DateTime.UtcNow, Id = job.Id });
+                new { Status = IngestionStatus.Completed, Now = DateTime.UtcNow, Id = jobId });
 
             Console.WriteLine("\n\nWorkflow completed successfully.");
             
