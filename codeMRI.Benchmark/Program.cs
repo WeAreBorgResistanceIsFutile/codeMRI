@@ -14,6 +14,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Microsoft.Data.Sqlite;
+using Dapper;
 
 using codeMRI.Infrastructure;
 
