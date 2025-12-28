@@ -15,6 +15,8 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
+        Console.WriteLine(Directory.GetCurrentDirectory());
+        
         var rootCommand = new RootCommand("codeMRI Benchmark CLI - Run benchmarks using the server's infrastructure");
 
         var inputOption = new Option<string>(
@@ -93,24 +95,6 @@ class Program
 
             logging.AddSerilog(loggerConfig.CreateLogger());
         });
-
-        // Load the Server's appsettings.Development.json
-        var serverAppSettings = Path.Combine(AppContext.BaseDirectory, "../../../../codeMRI.Server/appsettings.Development.json");
-        if (File.Exists(serverAppSettings))
-        {
-            builder.Configuration.AddJsonFile(serverAppSettings, optional: false, reloadOnChange: false);
-        }
-        else
-        {
-            Console.WriteLine($"Warning: Could not find server appsettings at {serverAppSettings}");
-        }
-
-        // Force overrides specific to Benchmark tool behavior
-        var overrides = new Dictionary<string, string?>
-        {
-            {"CodeWiki:GenerateAllPages", "true"} 
-        };
-        builder.Configuration.AddInMemoryCollection(overrides);
 
         // Use the Server's service registration (this is the key part!)
         codeMRI.Server.ServiceRegistration.ConfigureServices(builder.Services, builder.Configuration);
