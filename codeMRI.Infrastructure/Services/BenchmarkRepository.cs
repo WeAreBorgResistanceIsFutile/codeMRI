@@ -119,17 +119,42 @@ public class BenchmarkRepository : IBenchmarkRepository
         using var connection = new SqliteConnection(_connectionString);
         var json = JsonSerializer.Serialize(pageBenchmark);
 
-        await connection.ExecuteAsync(@"
-            INSERT INTO PageBenchmarks (RunId, PageId, ModuleId, QualityScore, JsonContent)
-            VALUES (@RunId, @PageId, @ModuleId, @QualityScore, @Json)",
-            new
-            {
-                RunId = runId,
-                pageBenchmark.PageId,
-                pageBenchmark.ModuleId,
-                QualityScore = pageBenchmark.OverallQualityScore,
-                Json = json
-            });
+        // Use INSERT OR REPLACE to handle both inserts and updates
+        // First, check if a record exists for this PageId and RunId
+        var existingId = await connection.QuerySingleOrDefaultAsync<int?>(
+            "SELECT Id FROM PageBenchmarks WHERE RunId = @RunId AND PageId = @PageId",
+            new { RunId = runId, PageId = pageBenchmark.PageId });
+
+        if (existingId.HasValue)
+        {
+            // Update existing record
+            await connection.ExecuteAsync(@"
+                UPDATE PageBenchmarks 
+                SET ModuleId = @ModuleId, QualityScore = @QualityScore, JsonContent = @Json
+                WHERE Id = @Id",
+                new
+                {
+                    Id = existingId.Value,
+                    pageBenchmark.ModuleId,
+                    QualityScore = pageBenchmark.OverallQualityScore,
+                    Json = json
+                });
+        }
+        else
+        {
+            // Insert new record
+            await connection.ExecuteAsync(@"
+                INSERT INTO PageBenchmarks (RunId, PageId, ModuleId, QualityScore, JsonContent)
+                VALUES (@RunId, @PageId, @ModuleId, @QualityScore, @Json)",
+                new
+                {
+                    RunId = runId,
+                    pageBenchmark.PageId,
+                    pageBenchmark.ModuleId,
+                    QualityScore = pageBenchmark.OverallQualityScore,
+                    Json = json
+                });
+        }
     }
 
     public async Task<List<PageBenchmark>> GetPageBenchmarksAsync(string runId, CancellationToken cancellationToken = default)
