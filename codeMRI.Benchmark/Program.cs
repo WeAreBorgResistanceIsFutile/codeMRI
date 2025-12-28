@@ -118,6 +118,10 @@ class Program
         
         // Core WireUp
         WireUp.Registered(builder.Services, builder.Configuration);
+        
+        // Additional Configuration (Missing in WireUp)
+        builder.Services.Configure<CodeWikiOptions>(builder.Configuration.GetSection("CodeWiki"));
+        builder.Services.Configure<ASTServiceSettings>(builder.Configuration.GetSection("ASTService"));
 
         // Infrastructure Managers (Manually registered like in Server/Program.cs)
         RegisterInfrastructure(builder.Services, builder.Configuration);
@@ -144,6 +148,18 @@ class Program
         // 5. Initialize & Wire-up Callbacks
         var services = host.Services;
         InitializeCallbacks(services);
+
+        // Initialize Vector Store (Critical for RAG/Indexing)
+        try
+        {
+            var vectorStoreInit = services.GetRequiredService<IVectorStoreInitializationService>();
+            await vectorStoreInit.InitializeAsync();
+             Console.WriteLine("Vector Store initialized successfully.");
+        }
+        catch (Exception ex)
+        {
+             Console.WriteLine($"Warning: Failed to initialize vector store: {ex.Message}");
+        }
 
         // 6. Start Benchmark
         var benchmarkingService = services.GetRequiredService<IBenchmarkingService>();
