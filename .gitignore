@@ -42,6 +42,8 @@
 /codeMRI.MCP/obj/
 /codeMRI.MCP.Tests/bin/
 /codeMRI.MCP.Tests/obj/
+/codeMRI.Benchmark/bin/
+/codeMRI.Benchmark/obj/
 /md/
 /TestResults/
 ./codemri_cli.db

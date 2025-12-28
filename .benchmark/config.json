@@ -1,0 +1,28 @@
+{
+    "DocumentationModel": "mistral-large-3:675b-cloud",
+    "ChatModel": "mistral-large-3:675b-cloud",
+    "JudgeModels": [
+        "mistral-large-3:675b-cloud",
+        "kimi-k2-thinking:cloud",
+        "deepseek-v3.1:671b-cloud",
+        "cogito-2.1:671b-cloud",
+        "minimax-m2.1:cloud"
+    ],
+    "EnableModelRouting": true,
+    "EnableEnsembleGeneration": true,
+    "CodeAnalysisModel": "mistral-large-3:675b-cloud",
+    "NaturalLanguageModel": "mistral-large-3:675b-cloud",
+    "SynthesisJudgeModel": "mistral-large-3:675b-cloud",
+    "EnsembleModels": [
+        "qwen3-coder:480b-cloud",
+        "devstral-2:123b-cloud",
+        "kimi-k2-thinking:cloud",
+        "deepseek-v3.1:671b-cloud",
+        "minimax-m2.1:cloud",
+        "cogito-2.1:671b-cloud",
+        "nemotron-3-nano:30b-cloud",
+        "qwen3-next:80b-cloud",
+        "gemma3:27b-cloud"
+    ],
+    "MinimumAgreementThreshold": 2
+}
