@@ -110,7 +110,9 @@ class Program
             {"Embedding:Chunking:MaxTokens", "500"},
             {"Embedding:Chunking:OverlapTokens", "50"},
             {"VectorStore:Type", "inmemory"}, // Default to in-memory if not configured? actually Qdrant is used
-            {"CodeWiki:EnableDetailedDiagrams", "false"}
+            {"CodeWiki:EnableDetailedDiagrams", "false"},
+            // FORCE GenerateAllPages to true to ensure full benchmark coverage
+            {"CodeWiki:GenerateAllPages", "true"} 
         };
         builder.Configuration.AddInMemoryCollection(dict);
 
@@ -146,75 +148,108 @@ class Program
 
         // 6. Start Benchmark
         var benchmarkingService = services.GetRequiredService<IBenchmarkingService>();
-        var ingestionManager = services.GetRequiredService<IIngestionJobManager>();
+        var orchestrator = services.GetRequiredService<ICodeWikiOrchestrator>();
+        var telemetry = services.GetRequiredService<IAgentTelemetryService>();
         
-        // Handle Git URL vs Local Path
-        string repoUrl = input; // Assuming input is URL for now, logic similar to CLI could be added if needed, but BenchmarkService expects URL mainly
+        string repoUrl = input;
+        string repoPath = input;
+        string originalUrl = input;
+        bool isTemp = false;
+
+        // Handle Git URL
+        if (codeMRI.Infrastructure.Services.GitHelper.IsGitUrl(input))
+        {
+             Console.WriteLine($"Cloning {input}...");
+             try 
+             {
+                 repoPath = await codeMRI.Infrastructure.Services.GitHelper.CloneRepositoryAsync(input);
+                 isTemp = true;
+                 Console.WriteLine($"Cloned to: {repoPath}");
+             }
+             catch (Exception ex)
+             {
+                 Console.WriteLine($"Error cloning: {ex.Message}");
+                 return;
+             }
+        }
+        else
+        {
+            if (!Directory.Exists(input))
+            {
+                Console.WriteLine($"Error: Directory not found: {input}");
+                return;
+            }
+            repoPath = Path.GetFullPath(input);
+        }
 
         string runName = name ?? $"Benchmark-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
-        Console.WriteLine($"Starting benchmark '{runName}' for {repoUrl}...");
+        Console.WriteLine($"Starting benchmark '{runName}' for {originalUrl}...");
 
+        BenchmarkRun? run = null;
         try
         {
             // Start Benchmark Run
-            var run = await benchmarkingService.StartBenchmarkRunAsync(
-                repoUrl, 
+            run = await benchmarkingService.StartBenchmarkRunAsync(
+                originalUrl, 
                 runName, 
-                configJson); // Storing the raw config JSON for reference
+                configJson);
 
             Console.WriteLine($"Benchmark Run ID: {run.Id}");
 
-            // Start Ingestion
-            var job = await ingestionManager.StartJobAsync(repoUrl, true, AudienceType.Developer);
-            Console.WriteLine($"Ingestion Job ID: {job.Id}");
-            Console.WriteLine("Ingestion and Benchmarking in progress. Please wait...");
-
-            // Poll for completion
-            bool isComplete = false;
-            while (!isComplete)
+            // Prepare RepositoryInfo
+            var repoInfo = new RepositoryInfo 
             {
-                await Task.Delay(5000);
+                RepoPath = repoPath,
+                Url = originalUrl,
+                Name = Path.GetFileName(repoPath),
+                Branch = await codeMRI.Infrastructure.Services.GitHelper.GetCurrentBranch(repoPath)
+            };
 
-                var currentJob = await ingestionManager.GetJobAsync(job.Id);
-                if (currentJob == null) 
-                {
-                    Console.WriteLine("Error: Job lost.");
-                    break;
-                }
+            // Progress reporting
+            var progress = new Progress<ProgressInfo>(info => {
+                 Console.Write($"\rPHASE: {info.Phase} - {info.Message} ({info.Percentage}%)" + new string(' ', 20));
+            });
 
-                if (currentJob.Status == IngestionStatus.Completed || 
-                    currentJob.Status == IngestionStatus.Failed || 
-                    currentJob.Status == IngestionStatus.Cancelled)
-                {
-                    isComplete = true;
-                    Console.WriteLine($"Ingestion finished with status: {currentJob.Status}");
-                    
-                    // Give a moment for event callbacks to fire and update benchmark status
-                    await Task.Delay(2000); 
+            // Execute Orchestrator Directly
+            Console.WriteLine("\nExecuting CodeWiki Orchestrator (Full Workflow)...");
+            
+            var structure = await orchestrator.GenerateAdvancedWikiAsync(
+                repoPath,
+                repoInfo,
+                progress,
+                force: true);
 
-                    var finalRun = await benchmarkingService.GetActiveRunAsync();
-                    if (finalRun != null && finalRun.Id == run.Id)
-                    {
-                        var updatedRun = await ((codeMRI.Infrastructure.Services.BenchmarkRepository)services.GetRequiredService<IBenchmarkRepository>()).GetByIdAsync(run.Id);
-                         // Note: Casting to concrete implementation just to be sure we get fresh data if needed, 
-                         // but Interface should be fine. 
-                        
-                        // Actually, IBenchmarkingService.GenerateReportAsync is useful here.
-                        var report = await benchmarkingService.GenerateReportAsync(run.Id);
-                        Console.WriteLine();
-                        Console.WriteLine(report);
-                    }
-                }
-                else
-                {
-                    Console.Write($"\rIngestion: {currentJob.Status} - {currentJob.ProgressPercentage}%   ");
-                }
-            }
+            Console.WriteLine("\n\nWorkflow completed successfully.");
+            
+            // Complete Benchmark
+            await benchmarkingService.CompleteBenchmarkRunAsync(run.Id);
+            
+            // Generate Report
+            var report = await benchmarkingService.GenerateReportAsync(run.Id);
+            Console.WriteLine("\n" + report);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"\nCritical Error: {ex.Message}");
             if (verbose) Console.WriteLine(ex.StackTrace);
+            
+            if (run != null)
+                await benchmarkingService.CancelBenchmarkRunAsync(run.Id);
+        }
+        finally
+        {
+            if (isTemp && Directory.Exists(repoPath))
+            {
+                try
+                {
+                    Console.WriteLine($"\nCleaning up temporary repository: {repoPath}");
+                    Directory.Delete(repoPath, true);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error cleaning up temporary directory: {ex.Message}");
+                }
+            }
         }
     }
 
