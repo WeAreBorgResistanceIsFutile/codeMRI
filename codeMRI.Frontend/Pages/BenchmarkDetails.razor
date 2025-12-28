@@ -15,9 +15,31 @@
             <div class="meta-info">
                 <span class="badge @run.Status">@run.Status</span>
                 <span class="meta-item">📂 @run.RepositoryName</span>
-                <span class="meta-item">🤖 @run.ModelConfiguration</span>
+                <span class="meta-item" title="@run.ModelConfiguration">
+                    🤖 @BenchmarkFormatter.GetDisplayName(run.ModelConfiguration)
+                    @if (IsComplexConfiguration)
+                    {
+                        <button class="icon-btn" @onclick="ToggleConfigDetails" title="View Configuration Details">ℹ️</button>
+                    }
+                </span>
                 <span class="meta-item">📅 @run.StartTime.ToLocalTime().ToString("g")</span>
             </div>
+            
+            @if (showConfigDetails && IsComplexConfiguration)
+            {
+                <div class="config-details-panel fade-in">
+                    <h4>Configuration Details</h4>
+                    <div class="config-grid">
+                        @foreach (var kvp in ParsedConfiguration)
+                        {
+                            <div class="config-item">
+                                <span class="config-key">@kvp.Key:</span>
+                                <span class="config-value" title="@kvp.Value">@kvp.Value</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
         }
     </div>
 
@@ -265,6 +287,67 @@
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
     }
+
+    .icon-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0 4px;
+        font-size: 1rem;
+        transition: transform 0.2s;
+    }
+
+    .icon-btn:hover {
+        transform: scale(1.1);
+    }
+
+    .config-details-panel {
+        margin-top: 1rem;
+        background: var(--bg-panel);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 1rem;
+        width: 100%;
+    }
+
+    .config-details-panel h4 {
+        margin-top: 0;
+        margin-bottom: 0.75rem;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 0.5rem;
+    }
+
+    .config-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .config-item {
+        font-size: 0.85rem;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .config-key {
+        color: var(--text-secondary);
+        font-weight: 500;
+        margin-bottom: 2px;
+    }
+
+    .config-value {
+        color: var(--text-primary);
+        font-family: 'Fira Code', monospace;
+        background: rgba(0,0,0,0.03);
+        padding: 2px 6px;
+        border-radius: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 </style>
 
 @code {
@@ -273,6 +356,16 @@
     private BenchmarkRun? run;
     private string? report;
     private bool isLoading = true;
+    private bool showConfigDetails = false;
+    
+    // Properties to support configuration display
+    private bool IsComplexConfiguration => run != null && BenchmarkFormatter.ParseConfiguration(run.ModelConfiguration).Count > 0;
+    private Dictionary<string, object> ParsedConfiguration => run != null ? BenchmarkFormatter.ParseConfiguration(run.ModelConfiguration) : new();
+
+    private void ToggleConfigDetails()
+    {
+        showConfigDetails = !showConfigDetails;
+    }
 
     protected override async Task OnInitializedAsync()
     {
