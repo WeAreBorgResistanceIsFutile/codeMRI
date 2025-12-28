@@ -31,6 +31,7 @@ public class WireUp
         services.AddSingleton<IDebugSnapshotService, DebugSnapshotService>();
 
         // Configuration
+        services.Configure<OllamaSettings>(configuration.GetSection("Ollama"));
         services.Configure<RetrySettings>(configuration.GetSection("Retry"));
 
         services.AddSingleton<ILLMClient>(sp => {
