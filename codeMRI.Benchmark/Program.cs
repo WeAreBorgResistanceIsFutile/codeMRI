@@ -91,10 +91,15 @@ class Program
         {
             logging.ClearProviders();
             var loggerConfig = new LoggerConfiguration()
-                .WriteTo.Console();
+                .ReadFrom.Configuration(builder.Configuration)
+                .Enrich.FromLogContext();
 
+            // CLI override for verbosity
             if (verbose)
                 loggerConfig.MinimumLevel.Debug();
+            else if (builder.Configuration.GetSection("Serilog:MinimumLevel:Default").Exists())
+                // Keep config level if present
+                { }
             else
                 loggerConfig.MinimumLevel.Information();
 
