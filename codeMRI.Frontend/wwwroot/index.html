@@ -6,7 +6,6 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
     <title>codeMRI.Frontend</title>
     <base href="/" />
-    <link id="webassembly" rel="preload" />
     <link href="lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
     <link href="css/app.css" rel="stylesheet" />
     <link href="favicon.png" rel="icon" type="image/png" />
@@ -314,8 +313,14 @@
                 }
 
                 try {
+                    // Pre-render sanitization for common AI hallucinations
+                    let sanitizedContent = content
+                        .replace(/\[\[/g, '[') // Fix nested/double brackets
+                        .replace(/\]\]/g, ']')
+                        .replace(/([^\\])\$/g, '$1\\$'); // Escape unescaped dollar signs
+
                     // Render
-                    const { svg } = await mermaid.render(id, content);
+                    const { svg } = await mermaid.render(id, sanitizedContent);
                     container.innerHTML = svg;
                     console.log(`Successfully rendered diagram ${id}`);
 
