@@ -61,6 +61,15 @@ public class WikiApiClient
                ?? throw new Exception("Failed to deserialize page");
     }
 
+    public async Task<WikiPage> SavePageAsync(string repoPath, WikiPage page)
+    {
+        var encoded = Uri.EscapeDataString(repoPath);
+        var response = await _http.PostAsJsonAsync($"api/Wiki/page/save?repoPath={encoded}", page, _jsonOptions);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<WikiPage>(_jsonOptions)
+               ?? throw new Exception("Failed to deserialize saved page");
+    }
+
     public async Task<List<string>> GetRepositoriesAsync()
     {
         return await _http.GetFromJsonAsync<List<string>>("api/Wiki/repositories", _jsonOptions)

@@ -100,7 +100,16 @@ public class WikiController : ControllerBase
             request.Language, request.RepoPath);
 
         await _wikiRepo.SavePageAsync(request.RepoPath, page);
+        return Ok(page);
+    }
 
+    [HttpPost("page/save")]
+    public async Task<IActionResult> SavePage([FromQuery] string repoPath, [FromBody] WikiPage page)
+    {
+        if (string.IsNullOrWhiteSpace(repoPath)) return BadRequest("RepoPath is required");
+        if (page == null) return BadRequest("Page data is required");
+
+        await _wikiRepo.SavePageAsync(repoPath, page);
         return Ok(page);
     }
 
