@@ -13,7 +13,11 @@ using codeMRI.Server.Infrastructure.Logging;
 using Microsoft.Data.Sqlite;
 using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory
+});
 
 // Configure Serilog
 builder.Host.UseSerilog((context, services, configuration) => configuration

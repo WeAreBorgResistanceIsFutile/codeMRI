@@ -18,8 +18,4 @@
         <ProjectReference Include="..\codeMRI.Core\codeMRI.Core.csproj"/>
     </ItemGroup>
 
-    <ItemGroup>
-        <Folder Include="logs\"/>
-    </ItemGroup>
-
 </Project>
