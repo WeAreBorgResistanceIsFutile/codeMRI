@@ -43,6 +43,16 @@ public static class ServiceRegistration
                 if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
                 connectionString = $"Data Source={Path.Combine(appDataPath, "codemri.db")}";
             }
+            else
+            {
+                // Resolve relative paths in connection string
+                var builder = new SqliteConnectionStringBuilder(connectionString);
+                if (!string.IsNullOrEmpty(builder.DataSource) && !Path.IsPathRooted(builder.DataSource))
+                {
+                    builder.DataSource = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, builder.DataSource));
+                    connectionString = builder.ToString();
+                }
+            }
 
             return new SqliteWikiRepository(connectionString);
         });
@@ -73,6 +83,12 @@ public static class ServiceRegistration
                 dbPath = Path.Combine(appDataPath, "ingestion.db");
             }
 
+            // Resolve relative paths to absolute paths based on the application's base directory
+            if (!Path.IsPathRooted(dbPath))
+            {
+                dbPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, dbPath));
+            }
+
             return new DbIngestionManager(logger, messageBus, scopeFactory, snapshotService, dbPath);
         });
 
@@ -101,15 +117,43 @@ public static class ServiceRegistration
                 dbPath = Path.Combine(appDataPath, "generation.db");
             }
 
+            // Resolve relative paths to absolute paths based on the application's base directory
+            if (!Path.IsPathRooted(dbPath))
+            {
+                dbPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, dbPath));
+            }
+
             return new DbGenerationJobManager(logger, messageBus, scopeFactory, dbPath);
         });
 
         // Benchmark Services
         services.AddSingleton<IBenchmarkRepository>(sp =>
         {
-            var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
-            if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
-            var dbPath = Path.Combine(appDataPath, "benchmarks.db");
+            var connectionString = configuration.GetConnectionString("BenchmarkDb");
+            string dbPath;
+
+            if (!string.IsNullOrEmpty(connectionString) && connectionString.Contains("Data Source="))
+            {
+                var connStringBuilder = new SqliteConnectionStringBuilder(connectionString);
+                dbPath = connStringBuilder.DataSource;
+            }
+            else if (!string.IsNullOrEmpty(connectionString))
+            {
+                dbPath = connectionString;
+            }
+            else
+            {
+                var appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "codeMRI");
+                if (!Directory.Exists(appDataPath)) Directory.CreateDirectory(appDataPath);
+                dbPath = Path.Combine(appDataPath, "benchmarks.db");
+            }
+
+            // Resolve relative paths to absolute paths based on the application's base directory
+            if (!Path.IsPathRooted(dbPath))
+            {
+                dbPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, dbPath));
+            }
+
             return new BenchmarkRepository($"Data Source={dbPath}");
         });
 

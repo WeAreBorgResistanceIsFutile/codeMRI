@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 namespace codeMRI.Benchmark;
@@ -15,8 +16,6 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
-        Console.WriteLine(Directory.GetCurrentDirectory());
-        
         var rootCommand = new RootCommand("codeMRI Benchmark CLI - Run benchmarks using the server's infrastructure");
 
         var inputOption = new Option<string>(
@@ -30,20 +29,19 @@ class Program
         var nameOption = new Option<string?>(
             new[] { "--name", "-n" },
             "Name of the benchmark run (default: auto-generated)");
-            
+
         var verboseOption = new Option<bool>(
-             new[] { "--verbose", "-v" },
-             "Enable verbose logging");
+            new[] { "--verbose", "-v" },
+            "Enable verbose logging");
 
         rootCommand.AddOption(inputOption);
         rootCommand.AddOption(configOption);
         rootCommand.AddOption(nameOption);
         rootCommand.AddOption(verboseOption);
 
-        rootCommand.SetHandler(async (input, configPath, name, verbose) =>
-        {
-            await RunBenchmarkAsync(input, configPath, name, verbose);
-        }, inputOption, configOption, nameOption, verboseOption);
+        rootCommand.SetHandler(
+            async (input, configPath, name, verbose) => { await RunBenchmarkAsync(input, configPath, name, verbose); },
+            inputOption, configOption, nameOption, verboseOption);
 
         return await rootCommand.InvokeAsync(args);
     }
@@ -59,17 +57,17 @@ class Program
 
         string configJson;
         ModelRoutingSettings? routingSettings;
-        try 
+        try
         {
             configJson = await File.ReadAllTextAsync(configPath);
-            var options = new JsonSerializerOptions 
-            { 
+            var options = new JsonSerializerOptions
+            {
                 PropertyNameCaseInsensitive = true,
                 ReadCommentHandling = JsonCommentHandling.Skip,
                 AllowTrailingCommas = true
             };
             routingSettings = JsonSerializer.Deserialize<ModelRoutingSettings>(configJson, options);
-            
+
             if (routingSettings == null) throw new JsonException("Parsed config is null");
         }
         catch (Exception ex)
@@ -79,16 +77,23 @@ class Program
         }
 
         // 2. Build a minimal host that uses the Server's configuration
-        var builder = Host.CreateApplicationBuilder();
+        var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        {
+            ContentRootPath = AppContext.BaseDirectory
+        });
+
+        // Explicitly add appsettings.json configuration
+        builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: false);
+        builder.Configuration.AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: false);
 
         // Logging
-        builder.Services.AddLogging(logging => 
+        builder.Services.AddLogging(logging =>
         {
             logging.ClearProviders();
             var loggerConfig = new LoggerConfiguration()
                 .WriteTo.Console();
-            
-            if (verbose) 
+
+            if (verbose)
                 loggerConfig.MinimumLevel.Debug();
             else
                 loggerConfig.MinimumLevel.Information();
@@ -132,7 +137,7 @@ class Program
         // 3. Start Benchmark using the IngestionJobManager (just like the UI does)
         var ingestionManager = services.GetRequiredService<IIngestionJobManager>();
         var benchmarkingService = services.GetRequiredService<IBenchmarkingService>();
-        
+
         string runName = name ?? $"Benchmark-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
         Console.WriteLine($"Starting benchmark '{runName}' for {input}...");
 
@@ -141,8 +146,8 @@ class Program
         {
             // Start Benchmark Run
             run = await benchmarkingService.StartBenchmarkRunAsync(
-                input, 
-                runName, 
+                input,
+                runName,
                 configJson);
 
             Console.WriteLine($"Benchmark Run ID: {run.Id}");
@@ -157,14 +162,16 @@ class Program
             {
                 await Task.Delay(2000);
                 var currentJob = await ingestionManager.GetJobAsync(job.Id);
-                
+
                 if (currentJob == null)
                 {
                     Console.WriteLine("Job not found!");
                     break;
                 }
 
-                Console.Write($"\r[{currentJob.Status}] {currentJob.CurrentPhase} - {currentJob.ProgressPercentage}%: {currentJob.Message}".PadRight(100));
+                Console.Write(
+                    $"\r[{currentJob.Status}] {currentJob.CurrentPhase} - {currentJob.ProgressPercentage}%: {currentJob.Message}"
+                        .PadRight(100));
 
                 if (currentJob.Status == IngestionStatus.Completed)
                 {
@@ -185,7 +192,7 @@ class Program
 
             // Complete Benchmark
             await benchmarkingService.CompleteBenchmarkRunAsync(run.Id);
-            
+
             // Allow time for async metrics to be processed
             await Task.Delay(2000);
 
@@ -197,7 +204,7 @@ class Program
         {
             Console.WriteLine($"\nCritical Error: {ex.Message}");
             if (verbose) Console.WriteLine(ex.StackTrace);
-            
+
             if (run != null)
                 await benchmarkingService.CancelBenchmarkRunAsync(run.Id);
         }

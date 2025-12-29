@@ -34,6 +34,13 @@ public class OllamaLLMService : ILLMClient, ILLMValidator
         _httpClient.BaseAddress = new Uri(_settings.BaseUrl);
         // Default to a long timeout (2 hours) to allow specific requests to control their own timeout via CancellationToken
         _httpClient.Timeout = TimeSpan.FromHours(2);
+        
+        // Log the actual configuration values being used
+        _logger.LogInformation(
+            "OllamaLLMService initialized with BaseUrl: {BaseUrl}, ContextSize: {ContextSize}, Temperature: {Temperature}",
+            _settings.BaseUrl,
+            _settings.ContextSize,
+            _settings.Temperature);
     }
 
     #region ILLMValidator Implementation

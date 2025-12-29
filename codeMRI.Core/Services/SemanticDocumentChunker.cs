@@ -22,8 +22,8 @@ public class SemanticDocumentChunker
         if (string.IsNullOrWhiteSpace(markdown)) return new List<string>();
 
         // Use Semantic Kernel's TextChunker which properly handles all text types
-        // Convert tokens to approximate character count (4 chars per token)
-        var maxChunkSize = _maxTokens ;
+        // TextChunker's maxTokensPerLine expects token counts and uses internal estimation
+        var maxChunkSize = _maxTokens;
         var overlapSize = _overlapTokens;
 
 #pragma warning disable SKEXP0050 // TextChunker is experimental but stable enough for our use
