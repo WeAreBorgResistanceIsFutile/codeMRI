@@ -9,9 +9,9 @@
   ],
   "EnableModelRouting": true,
   "EnableEnsembleGeneration": true,
-  "CodeAnalysisModel": "glm-4.7:cloud",
-  "NaturalLanguageModel": "ministral-3:14b-cloud",
-  "SynthesisJudgeModel": "ministral-3:14b-cloud",
+  "CodeAnalysisModel": "deepseek-v3.2:cloud",
+  "NaturalLanguageModel": "mistral-large-3:675b-cloud",
+  "SynthesisJudgeModel": "kimi-k2-thinking:cloud",
   "EnsembleModels": [
     "qwen3-coder:480b-cloud",
     "devstral-2:123b-cloud",
