@@ -1,0 +1,28 @@
+{
+  "DocumentationModel": "qwen3-coder:480b-cloud",
+  "ChatModel": "mistral-large-3:675b-cloud",
+  "JudgeModels": [
+    "minimax-m2.1:cloud",
+    "kimi-k2-thinking:cloud",
+    "deepseek-v3.2:cloud",
+    "glm-4.7:cloud",
+    "gpt-oss:120b-cloud"
+  ],
+  "EnableModelRouting": true,
+  "EnableEnsembleGeneration": true,
+  "CodeAnalysisModel": "glm-4.7:cloud",
+  "NaturalLanguageModel": "ministral-3:14b-cloud",
+  "SynthesisJudgeModel": "ministral-3:14b-cloud",
+  "EnsembleModels": [
+    "qwen3-coder:480b-cloud",
+    "devstral-2:123b-cloud",
+    "kimi-k2-thinking:cloud",
+    "deepseek-v3.2:cloud",
+    "minimax-m2.1:cloud",
+    "glm-4.7:cloud",
+    "nemotron-3-nano:30b-cloud",
+    "gpt-oss:120b-cloud",
+    "rnj-1:8b-cloud"
+  ],
+  "MinimumAgreementThreshold": 3
+}
