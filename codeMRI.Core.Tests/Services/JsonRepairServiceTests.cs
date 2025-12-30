@@ -24,76 +24,80 @@ public class JsonRepairServiceTests
     public void ExtractJsonString_WithValidJson_ReturnsJson()
     {
         // Arrange - most generic case: valid JSON
-        var input = @"{""name"": ""test""}";
+        var input = """{"name": "test"}""";
 
         // Act
         var result = _service.ExtractJsonString(input);
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.EqualTo(@"{""name"": ""test""}"));
+        Assert.That(result, Is.EqualTo("""{"name": "test"}"""));
     }
 
     [Test]
     public void ExtractJsonString_WithMarkdownJsonBlock_ExtractsJson()
     {
         // Arrange - more specific: JSON in markdown code block
-        var input = @"```json
-{""name"": ""test""}
-```";
+        var input = """
+                    ```json
+                    {"name": "test"}
+                    ```
+                    """;
 
         // Act
         var result = _service.ExtractJsonString(input);
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.EqualTo(@"{""name"": ""test""}"));
+        Assert.That(result, Is.EqualTo("""{"name": "test"}"""));
     }
 
     [Test]
     public void ExtractJsonString_WithChattyResponse_ExtractsJson()
     {
         // Arrange - more specific: JSON with text before and after
-        var input = @"Sure! Here's your JSON:
+        var input = """
+                    Sure! Here's your JSON:
 
-{""score"": 0.95, ""data"": ""value""}
+                    {"score": 0.95, "data": "value"}
 
-Hope this helps!";
+                    Hope this helps!
+                    """;
 
         // Act
         var result = _service.ExtractJsonString(input);
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result, Does.Contain(@"{""score"": 0.95"));
+        Assert.That(result, Does.Contain("""{"score": 0.95"""));
     }
 
     [Test]
     public void ExtractJsonString_WithNestedBraces_ExtractsCompleteJson()
     {
         // Arrange - more specific: nested JSON objects
-        var input = @"{""outer"": {""inner"": {""deep"": ""value""}}}";
+        var input = """{"outer": {"inner": {"deep": "value"}}}""";
 
         // Act
         var result = _service.ExtractJsonString(input);
 
         //Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.EqualTo(@"{""outer"": {""inner"": {""deep"": ""value""}}}"));
+        Assert.That(result, Is.EqualTo("""{"outer": {"inner": {"deep": "value"}}}"""));
     }
 
     [Test]
     public void ExtractJsonString_WithStringContainingBraces_HandlesCorrectly()
     {
         // Arrange - more specific: JSON with braces in string values
-        var input = @"{""message"": ""Use {braces} carefully""}";
+        var input = """{"message": "Use {braces} carefully"}""";
 
         // Act
         var result = _service.ExtractJsonString(input);
 
         // Assert
         Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.EqualTo(@"{""message"": ""Use {braces} carefully""}"));
+        Assert.That(result, Is.EqualTo("""{"message": "Use {braces} carefully"}"""));
     }
 
     #endregion
@@ -104,7 +108,7 @@ Hope this helps!";
     public void RepairJson_WithTrailingCommaInObject_RemovesComma()
     {
         // Arrange
-        var input = @"{""name"": ""test"", ""value"": 123,}";
+        var input = """{"name": "test", "value": 123,}""";
 
         // Act
         var result = _service.RepairJson(input);
@@ -118,7 +122,7 @@ Hope this helps!";
     public void RepairJson_WithTrailingCommaInArray_RemovesComma()
     {
         // Arrange
-        var input = @"{""items"": [1, 2, 3,]}";
+        var input = """{"items": [1, 2, 3,]}""";
 
         // Act
         var result = _service.RepairJson(input);
@@ -142,7 +146,7 @@ Hope this helps!";
     public void ExtractAndDeserialize_WithValidJson_DeserializesCorrectly()
     {
         // Arrange
-        var input = @"{""name"": ""test"", ""score"": 0.95}";
+        var input = """{"name": "test", "score": 0.95}""";
 
         // Act
         var result = _service.ExtractAndDeserialize<TestModel>(input);
@@ -157,9 +161,11 @@ Hope this helps!";
     public void ExtractAndDeserialize_WithMarkdownWrappedJson_DeserializesCorrectly()
     {
         // Arrange
-        var input = @"```json
-{""name"": ""test"", ""score"": 0.85}
-```";
+        var input = """
+                    ```json
+                    {"name": "test", "score": 0.85}
+                    ```
+                    """;
 
         // Act
         var result = _service.ExtractAndDeserialize<TestModel>(input);
@@ -181,6 +187,46 @@ Hope this helps!";
 
         // Assert
         Assert.That(result, Is.Null);
+    }
+    
+    [TestCase("""{"name": "test", "score": 0.95""")]
+    [TestCase("""{"name": "test", "score": 0.95}""")]
+    public void ExtractAndDeserialize_WithIncompleteJson_DeserializesCorrectly(string input)
+    {
+        // Act
+        var result = _service.ExtractAndDeserialize<TestModel>(input);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Name, Is.EqualTo("test"));
+        Assert.That(result.Score, Is.EqualTo(0.95));
+    }
+    
+    [TestCase("""{"name": "test", "score": 0}""")]
+    public void ExtractAndDeserialize_WithIncompleteJson_DeserializesCorrectly2(string input)
+    {
+        // Act
+        var result = _service.ExtractAndDeserialize<TestModel>(input);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Name, Is.EqualTo("test"));
+        Assert.That(result.Score, Is.EqualTo(0));
+    }
+    
+    [TestCase(@"{""name"": ""test"", ""score"": 0}", "test")]
+    [TestCase(@"{""name"": ""test", "test")]
+    [TestCase(@"{""name"": ""{test}"", ""score"": 0}", "{test}")]
+    [TestCase(@"{""name"": ""[test]"", ""score"": 0}", "[test]")]
+    public void ExtractAndDeserialize_WithIncompleteJson_DeserializesCorrectly3(string input, string expected)
+    {
+        // Act
+        var result = _service.ExtractAndDeserialize<TestModel>(input);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Name, Is.EqualTo(expected));
+        Assert.That(result.Score, Is.EqualTo(0));
     }
 
     #endregion
