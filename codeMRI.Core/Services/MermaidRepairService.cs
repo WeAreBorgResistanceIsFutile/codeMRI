@@ -37,6 +37,8 @@ public class MermaidRepairService : IMermaidRepairService
         var result = new System.Text.StringBuilder();
         var hasMermaidBlocks = mermaid.Contains("```mermaid");
         var isInMermaidBlock = !hasMermaidBlocks;
+        
+        var clickInteractions = new System.Collections.Generic.List<string>();
 
         foreach (var line in lines)
         {
@@ -62,10 +64,45 @@ public class MermaidRepairService : IMermaidRepairService
 
             var updatedLine = line;
 
+            // 0. Subgraph sanitization: subgraph Name With Spaces -> subgraph Name_With_Spaces ["Name With Spaces"]
+            // Match subgraph followed by space and then text (until end or comment)
+            if (trimmedLine.StartsWith("subgraph "))
+            {
+                var subgraphMatch = System.Text.RegularExpressions.Regex.Match(updatedLine, @"subgraph\s+(?<name>[^""\[\]\n]+?)\s*$");
+                if (subgraphMatch.Success)
+                {
+                    var name = subgraphMatch.Groups["name"].Value.Trim();
+                    if (name.Contains(" "))
+                    {
+                        var sanitizedId = name.Replace(" ", "_");
+                        updatedLine = updatedLine.Replace(name, $"{sanitizedId} [\"{name}\"]");
+                    }
+                }
+                result.AppendLine(updatedLine);
+                continue;
+            }
+
             // Pre-process: fix common arrow label hallucinations like -->"|Label|
             updatedLine = updatedLine.Replace("-->\"|", "-->|");
             updatedLine = updatedLine.Replace("-->\" |", "-->|");
             
+            // 0.5. Fix broken link syntax: ID[Label](Url) -> ID["Label"], click ID Url
+            // We use a regex to capture ID, Label (simple), and Url
+            updatedLine = System.Text.RegularExpressions.Regex.Replace(updatedLine, @"(?<=^|\s|-->|---|==>|\|)(?<id>[A-Za-z0-9_-]+)\s*\[(?<label>[^\]]+)\]\((?<url>[^)]+)\)", m => 
+            {
+                var id = m.Groups["id"].Value;
+                var label = m.Groups["label"].Value;
+                var url = m.Groups["url"].Value;
+                
+                // Escape generics in label
+                label = label.Replace("<", " &lt;").Replace(">", "&gt;");
+                
+                // Add click interaction
+                clickInteractions.Add($"click {id} {url}");
+
+                return $"{id}[\"{label}\"]";
+            });
+
             // 1. Arrow labels: A -->|Label| B
             updatedLine = System.Text.RegularExpressions.Regex.Replace(updatedLine, @"(\|)([^""|]+?)(\|)", m => 
             {
@@ -114,14 +151,34 @@ public class MermaidRepairService : IMermaidRepairService
                         if (label.StartsWith("\"")) label = label.Substring(1);
                         else if (label.EndsWith("\"")) label = label.Substring(0, label.Length - 1);
                     }
+                    
+                    // Escape generics
+                    if (label.Contains("<") || label.Contains(">")) 
+                    {
+                        label = label.Replace("<", " &lt;").Replace(">", "&gt;");
+                    }
 
-                    if (label.StartsWith("\"")) return m.Value;
+                    if (label.StartsWith("\"")) 
+                    {
+                        // Even if already quoted, we might have escaped generics, so we construct the string again
+                         return $"{id}{opener}{label}{closer}";
+                    }
 
                     return $"{id}{opener}\"{label.Replace("\"", "\\\"")}\"{closer}";
                 });
             }
 
             result.AppendLine(updatedLine);
+        }
+        
+        if (clickInteractions.Count > 0)
+        {
+            result.AppendLine();
+            result.AppendLine("%% Click interactions/Links");
+            foreach (var click in clickInteractions)
+            {
+                result.AppendLine(click);
+            }
         }
 
         return result.ToString().TrimEnd();
