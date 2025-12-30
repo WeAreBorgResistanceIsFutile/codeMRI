@@ -101,6 +101,7 @@ public class LLMServiceFacade : ILLMServiceFacade
                     compositionResult.Messages.Count);
 
                 var sw = System.Diagnostics.Stopwatch.StartNew();
+                Console.WriteLine("DEBUG: Calling ChatAsync");
                 var response = await _llmClient.ChatAsync(
                     compositionResult.Messages,
                     context.Model,
@@ -131,6 +132,7 @@ public class LLMServiceFacade : ILLMServiceFacade
                 _logger.LogInformation(
                     "LLM responded successfully (response length: {ResponseLength} chars, {Duration}ms)",
                     response?.Length ?? 0, sw.ElapsedMilliseconds);
+                Console.WriteLine("DEBUG: Callback finished");
                 
                 return new LLMResponse
                 {
@@ -143,6 +145,7 @@ public class LLMServiceFacade : ILLMServiceFacade
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"DEBUG: Exception in ExecuteAsync: {ex}");
             _logger.LogError(ex, "LLMServiceFacade execution failed");
             throw;
         }
