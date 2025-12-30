@@ -28,15 +28,50 @@ public class MermaidRepairService : IMermaidRepairService
         return response.Substring(startIndex, endIndex - startIndex).Trim();
     }
 
+    /// <summary>
+    ///     Checks if content looks like raw mermaid syntax (without code fences).
+    ///     Detects common mermaid diagram types.
+    /// </summary>
+    private bool IsRawMermaidSyntax(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return false;
+
+        var trimmed = content.TrimStart();
+        
+        // Check for common mermaid diagram type keywords
+        return trimmed.StartsWith("graph ") ||
+               trimmed.StartsWith("flowchart ") ||
+               trimmed.StartsWith("sequenceDiagram") ||
+               trimmed.StartsWith("classDiagram") ||
+               trimmed.StartsWith("stateDiagram") ||
+               trimmed.StartsWith("erDiagram") ||
+               trimmed.StartsWith("gantt") ||
+               trimmed.StartsWith("pie") ||
+               trimmed.StartsWith("journey") ||
+               trimmed.StartsWith("gitGraph") ||
+               trimmed.StartsWith("C4Context") ||
+               trimmed.StartsWith("mindmap") ||
+               trimmed.StartsWith("timeline");
+    }
+
     public string RepairMermaid(string mermaid)
     {
         if (string.IsNullOrWhiteSpace(mermaid))
             return mermaid;
 
+        // Check if this content contains mermaid blocks or looks like raw mermaid syntax
+        var hasMermaidBlocks = mermaid.Contains("```mermaid");
+        var looksLikeMermaid = IsRawMermaidSyntax(mermaid);
+        
+        // If it's neither fenced mermaid nor raw mermaid syntax, return unchanged
+        // This prevents processing regular markdown content
+        if (!hasMermaidBlocks && !looksLikeMermaid)
+            return mermaid;
+
         var lines = mermaid.Split('\n');
         var result = new System.Text.StringBuilder();
-        var hasMermaidBlocks = mermaid.Contains("```mermaid");
-        var isInMermaidBlock = !hasMermaidBlocks;
+        var isInMermaidBlock = looksLikeMermaid;  // If raw mermaid, process all lines; otherwise wait for fence
         
         var clickInteractions = new System.Collections.Generic.List<string>();
 

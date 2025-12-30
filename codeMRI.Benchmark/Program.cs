@@ -114,8 +114,6 @@ class Program
         builder.Services.Configure<ModelRoutingSettings>(settings =>
         {
             settings.EnableModelRouting = routingSettings.EnableModelRouting;
-            settings.CodeAnalysisModel = routingSettings.CodeAnalysisModel;
-            settings.NaturalLanguageModel = routingSettings.NaturalLanguageModel;
             settings.SynthesisJudgeModel = routingSettings.SynthesisJudgeModel;
             settings.DocumentationModel = routingSettings.DocumentationModel;
             settings.ChatModel = routingSettings.ChatModel;

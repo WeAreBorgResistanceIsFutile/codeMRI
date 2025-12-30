@@ -1,3 +1,5 @@
+using codeMRI.Core.Services.MessageComposition;
+
 namespace codeMRI.Core.Interfaces;
 
 /// <summary>
@@ -7,16 +9,20 @@ public interface IMultiModelOrchestrationService
 {
     /// <summary>
     ///     Generates documentation using multiple models in parallel and synthesizes the results.
+    ///     Each model in the ensemble uses the same orchestration mechanics (chunking, RAG, etc.)
+    ///     as single-model execution.
     /// </summary>
     /// <param name="systemPrompt">System prompt for the models</param>
     /// <param name="userPrompt">User prompt containing the documentation request</param>
     /// <param name="history">Conversation history</param>
+    /// <param name="baseOptions">Base composition options to use for all ensemble models (ModelName will be overridden per model)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Synthesized result with uncertainty metrics</returns>
     Task<MultiModelResult> GenerateWithEnsembleAsync(
         string systemPrompt,
         string userPrompt,
         List<ChatMessage> history,
+        MessageCompositionOptions? baseOptions = null,
         CancellationToken cancellationToken = default);
 }
 

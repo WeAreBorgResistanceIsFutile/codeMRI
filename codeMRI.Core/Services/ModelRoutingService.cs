@@ -30,10 +30,9 @@ public class ModelRoutingService : IModelRoutingService
 
         var selectedModel = taskType switch
         {
-            DocumentationTaskType.CodeAnalysis => _config.CodeAnalysisModel,
-            DocumentationTaskType.NaturalLanguage => _config.NaturalLanguageModel,
             DocumentationTaskType.Synthesis => _config.SynthesisJudgeModel,
             DocumentationTaskType.Default => null,
+            // CodeAnalysis and NaturalLanguage removed - bypassed by ensemble generation
             _ => null
         };
 
@@ -51,7 +50,5 @@ public class ModelRoutingService : IModelRoutingService
 public class ModelRoutingConfig
 {
     public bool EnableModelRouting { get; set; }
-    public string? CodeAnalysisModel { get; set; }
-    public string? NaturalLanguageModel { get; set; }
     public string? SynthesisJudgeModel { get; set; }
 }

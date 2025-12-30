@@ -31,10 +31,11 @@ public class MarkdownRepairService : IMarkdownRepairService
         if (string.IsNullOrWhiteSpace(markdown))
             return markdown;
 
-        // Convert [[WikiLink]] syntax to proper markdown links
+        // IMPORTANT: Convert wiki links BEFORE sanitizing mermaid diagrams
+        // This prevents the mermaid sanitizer from treating [[WikiLink]] as mermaid syntax
         var repaired = ConvertWikiLinksToMarkdown(markdown);
 
-        // Sanitize Mermaid diagrams
+        // Sanitize Mermaid diagrams (only processes content inside ```mermaid blocks)
         repaired = SanitizeMermaidDiagrams(repaired);
 
         return repaired;

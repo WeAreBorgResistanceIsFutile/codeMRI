@@ -209,8 +209,6 @@ public class WireUp
             var config = new ModelRoutingConfig
             {
                 EnableModelRouting = routingSettings.EnableModelRouting,
-                CodeAnalysisModel = routingSettings.CodeAnalysisModel,
-                NaturalLanguageModel = routingSettings.NaturalLanguageModel,
                 SynthesisJudgeModel = routingSettings.SynthesisJudgeModel
             };
             return new ModelRoutingService(config, sp.GetRequiredService<ILogger<ModelRoutingService>>());

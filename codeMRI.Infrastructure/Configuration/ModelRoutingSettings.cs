@@ -34,18 +34,6 @@ public class ModelRoutingSettings
     public bool EnableEnsembleGeneration { get; set; } = false;
 
     /// <summary>
-    ///     Model optimized for code analysis and technical documentation.
-    ///     Recommended: DeepSeek, Qwen, or other code-specialized models.
-    /// </summary>
-    public string CodeAnalysisModel { get; set; } = "deepseek-v3.1:671b-cloud";
-
-    /// <summary>
-    ///     Model optimized for natural language generation and readability.
-    ///     Recommended: Llama, Mistral for clear, well-structured prose.
-    /// </summary>
-    public string NaturalLanguageModel { get; set; } = "mistral-large-3:675b-cloud";
-
-    /// <summary>
     ///     Model used to synthesize outputs from multiple models in ensemble mode.
     ///     Should have strong reasoning capabilities for judging and merging content.
     /// </summary>

@@ -171,19 +171,51 @@ public class WikiGenerationService : IWikiGenerationService
 
         string content;
 
-        // Select model based on task type (code analysis for detailed technical pages)
-        var selectedModel = _routingService?.SelectModelForTask(DocumentationTaskType.CodeAnalysis) ??
-                            _documentationModel;
+        // Use ensemble generation if available to reduce variance
+        if (_orchestrationService != null)
+        {
+            _logger.LogInformation("Using ensemble generation for page '{PageTitle}' to reduce variance", pageTitle);
+            
+            // Prepare base options for ensemble (all models will use these settings)
+            var baseOptions = new MessageCompositionOptions
+            {
+                UseSemanticChunking = true,  // Enable chunking for large content
+                UseRag = false,              // RAG not typically needed for page generation
+                ModuleId = null,             // No module context for basic pages
+                Metadata = new Dictionary<string, object>()
+            };
+            
+            var ensembleResult = await _orchestrationService.GenerateWithEnsembleAsync(
+                systemPrompt: "",
+                userPrompt: prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent,
+                history: new List<ChatMessage>(),
+                baseOptions: baseOptions,
+                cancellationToken: default);
+            
+            content = ensembleResult.SynthesizedContent;
+            
+            _logger.LogInformation(
+                "Ensemble generation completed for '{PageTitle}': Agreement={Agreement:F2}, Uncertainty={Uncertainty:F2}, Models={ModelCount}",
+                pageTitle, ensembleResult.AgreementScore, ensembleResult.Uncertainty, ensembleResult.ParticipatingModels.Count);
+        }
+        else
+        {
+            // Fallback to single model if orchestration service not available
+            // Use Default task type since CodeAnalysis is obsolete (bypassed by ensemble)
+            var selectedModel = _routingService?.SelectModelForTask(DocumentationTaskType.Default) ??
+                                _documentationModel;
 
-        // Use facade to execute - it will automatically handle chunking if content is large
-        var llmResponse = await _llmFacade.ExecuteAsync(
-            systemPrompt: "",
-            textToProcess: prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent,
-            history: null,
-            options: new MessageCompositionOptions { ModelName = selectedModel },
-            cancellationToken: default);
-        
-        content = llmResponse.Content;
+            _logger.LogDebug("Using single model '{Model}' for page '{PageTitle}'", selectedModel, pageTitle);
+            
+            var llmResponse = await _llmFacade.ExecuteAsync(
+                systemPrompt: "",
+                textToProcess: prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent,
+                history: null,
+                options: new MessageCompositionOptions { ModelName = selectedModel },
+                cancellationToken: default);
+            
+            content = llmResponse.Content;
+        }
 
         // Generate enhanced interactive diagrams if we have a dependency graph
         try
@@ -419,21 +451,54 @@ public class WikiGenerationService : IWikiGenerationService
         var sourceFilesContent = contextBuilder.ToString();
         string content;
 
-        // Select model based on task type
-        var taskType = audience == AudienceType.Developer
-            ? DocumentationTaskType.CodeAnalysis
-            : DocumentationTaskType.NaturalLanguage;
-        var selectedModel = _routingService?.SelectModelForTask(taskType) ?? _documentationModel;
+        // Use ensemble generation if available to reduce variance
+        if (_orchestrationService != null)
+        {
+            _logger.LogInformation("Using ensemble generation for module '{ModuleName}' to reduce variance", module.Name);
+            
+            // Prepare base options for ensemble (all models will use these settings)
+            var baseOptions = new MessageCompositionOptions
+            {
+                UseSemanticChunking = true,  // Enable chunking for large content
+                UseRag = false,              // RAG not typically needed for module generation
+                ModuleId = module.Id,        // Track module context for metrics
+                Metadata = new Dictionary<string, object>
+                {
+                    ["Audience"] = audience.ToString(),
+                    ["ModuleName"] = module.Name
+                }
+            };
+            
+            var ensembleResult = await _orchestrationService.GenerateWithEnsembleAsync(
+                systemPrompt: "",
+                userPrompt: prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent,
+                history: new List<ChatMessage>(),
+                baseOptions: baseOptions,
+                cancellationToken: default);
+            
+            content = ensembleResult.SynthesizedContent;
+            
+            _logger.LogInformation(
+                "Ensemble generation completed for '{ModuleName}': Agreement={Agreement:F2}, Uncertainty={Uncertainty:F2}, Models={ModelCount}",
+                module.Name, ensembleResult.AgreementScore, ensembleResult.Uncertainty, ensembleResult.ParticipatingModels.Count);
+        }
+        else
+        {
+            // Fallback to single model if orchestration service not available
+            // Use Default task type since CodeAnalysis/NaturalLanguage are obsolete (bypassed by ensemble)
+            var selectedModel = _routingService?.SelectModelForTask(DocumentationTaskType.Default) ?? _documentationModel;
 
-        // Use facade to execute - it will automatically handle chunking if content is large
-        var llmResponse = await _llmFacade.ExecuteAsync(
-            systemPrompt: "",
-            textToProcess: prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent,
-            history: null,
-            options: new MessageCompositionOptions { ModelName = selectedModel, ModuleId = module.Id },
-            cancellationToken: default);
-        
-        content = llmResponse.Content;
+            _logger.LogDebug("Using single model '{Model}' for module '{ModuleName}'", selectedModel, module.Name);
+            
+            var llmResponse = await _llmFacade.ExecuteAsync(
+                systemPrompt: "",
+                textToProcess: prompt + "\n\nSOURCE FILES CONTENT:\n" + sourceFilesContent,
+                history: null,
+                options: new MessageCompositionOptions { ModelName = selectedModel, ModuleId = module.Id },
+                cancellationToken: default);
+            
+            content = llmResponse.Content;
+        }
 
         // Generate diagrams if available
         try

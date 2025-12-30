@@ -39,18 +39,19 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         string systemPrompt,
         string userPrompt,
         List<ChatMessage> history,
+        MessageCompositionOptions? baseOptions = null,
         CancellationToken cancellationToken = default)
     {
         if (!_config.EnableEnsembleGeneration || _config.EnsembleModels.Count == 0)
         {
             _logger.LogWarning("Ensemble generation is disabled or no models configured, falling back to single model");
 
-            // Fall back to single model generation via facade
+            // Fall back to single model generation via facade with original options
             var llmResponse = await _llmFacade.ExecuteAsync(
                 systemPrompt: systemPrompt,
                 textToProcess: userPrompt,
                 history: history,
-                options: null,
+                options: baseOptions,
                 cancellationToken: cancellationToken);
             
             return new MultiModelResult
@@ -65,9 +66,9 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
 
         _logger.LogInformation("Starting ensemble generation with {Count} models", _config.EnsembleModels.Count);
 
-        // Generate with all models in parallel
+        // Generate with all models in parallel, passing through base options
         var generateTasks = _config.EnsembleModels.Select(model =>
-            GenerateWithModelAsync(model, systemPrompt, userPrompt, history, cancellationToken)
+            GenerateWithModelAsync(model, systemPrompt, userPrompt, history, baseOptions, cancellationToken)
         ).ToList();
 
         var outputs = await Task.WhenAll(generateTasks);
@@ -105,12 +106,14 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
 
     /// <summary>
     ///     Generates content with a specific model and tracks timing.
+    ///     Uses the same orchestration mechanics (chunking, RAG, etc.) as single-model execution.
     /// </summary>
     private async Task<ModelOutput?> GenerateWithModelAsync(
         string modelName,
         string systemPrompt,
         string userPrompt,
         List<ChatMessage> history,
+        MessageCompositionOptions? baseOptions,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -119,11 +122,24 @@ public class MultiModelOrchestrationService : IMultiModelOrchestrationService
         {
             _logger.LogDebug("Generating with model: {Model}", modelName);
 
+            // Create options for this specific model, preserving all base options
+            // but overriding the ModelName
+            var modelOptions = baseOptions != null
+                ? new MessageCompositionOptions
+                {
+                    ModelName = modelName,
+                    UseSemanticChunking = baseOptions.UseSemanticChunking,
+                    UseRag = baseOptions.UseRag,
+                    ModuleId = baseOptions.ModuleId,
+                    Metadata = baseOptions.Metadata
+                }
+                : new MessageCompositionOptions { ModelName = modelName };
+
             var llmResponse = await _llmFacade.ExecuteAsync(
                 systemPrompt: systemPrompt,
                 textToProcess: userPrompt,
                 history: history,
-                options: new MessageCompositionOptions { ModelName = modelName },
+                options: modelOptions,
                 cancellationToken: cancellationToken);
 
             var content = llmResponse.Content;
