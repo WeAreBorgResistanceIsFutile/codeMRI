@@ -34,6 +34,7 @@ public class LLMServiceFacade : ILLMServiceFacade
         MessageCompositionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        Console.WriteLine("DEBUG: ExecuteAsync started");
         _logger.LogInformation(
             "LLMServiceFacade executing request (system: {SystemLen} chars, text: {TextLen} chars, history: {HistoryCount} messages)",
             systemPrompt?.Length ?? 0,

@@ -541,11 +541,15 @@ public class WikiGenerationService : IWikiGenerationService
     /// <summary>
     ///     Post-processes the LLM-generated content to remove unwanted preambles and ensure
     ///     the relevant files <details> block is at the very end.
+    ///     Strips LLM preamble text and converts [[WikiLink]] syntax to markdown links.
     /// </summary>
     private string CleanLLMPageContent(string llmContent, string pageTitle, List<string> filePaths,
         string? repoPath = null, string? remoteUrl = null, string? branch = null)
     {
         var cleanedContent = (llmContent ?? string.Empty).Trim();
+
+        // Strip any LLM preamble text before the actual markdown content
+        cleanedContent = StripLLMPreamble(cleanedContent);
 
         // 0. Strip markdown code fences that LLMs sometimes wrap around the entire output
         // This fixes the issue where ```markdown appears at the start and ``` at the end
@@ -559,9 +563,12 @@ public class WikiGenerationService : IWikiGenerationService
 
         cleanedContent = cleanedContent.Trim();
 
+        // Convert [[WikiLink]] syntax to proper markdown links
+        cleanedContent = ConvertWikiLinksToMarkdown(cleanedContent);
+
         // 1. Remove all existing <details> blocks related to source files
         // Using a regex that captures the specific "Relevant source files" summary to avoid removing other details blocks
-        var detailsPattern = @"<details>\s*<summary>\s*Relevant source files\s*<\/summary>.*?<\/details>";
+        var detailsPattern = @"<details>\s*<summary>\s*Relevant source files\s*</summary>.*?</details>";
         cleanedContent = Regex.Replace(cleanedContent, detailsPattern, "",
             RegexOptions.IgnoreCase | RegexOptions.Singleline).Trim();
 
@@ -634,6 +641,64 @@ public class WikiGenerationService : IWikiGenerationService
         sb.AppendLine("</details>");
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    ///     Strips any LLM preamble text that appears before the actual markdown content.
+    ///     Removes everything before the first # title or ```markdown code fence.
+    /// </summary>
+    private string StripLLMPreamble(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return content;
+
+        var lines = content.Split('\n');
+        var startIndex = -1;
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var trimmedLine = lines[i].TrimStart();
+            
+            // Found the start of actual markdown content
+            if (trimmedLine.StartsWith("# ") || trimmedLine.StartsWith("```markdown"))
+            {
+                startIndex = i;
+                break;
+            }
+        }
+
+        // If we found a markdown start, remove everything before it
+        if (startIndex > 0)
+        {
+            return string.Join('\n', lines.Skip(startIndex));
+        }
+
+        // No clear markdown start found, return as-is
+        return content;
+    }
+
+    /// <summary>
+    ///     Converts [[WikiLink]] syntax to proper markdown links.
+    ///     [[PageName]] becomes [PageName](#PageName) for same-document anchors.
+    /// </summary>
+    private string ConvertWikiLinksToMarkdown(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return content;
+
+        // Pattern to match [[WikiLink]] or [[Display Text|PageName]]
+        var wikiLinkPattern = @"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]";
+        
+        return Regex.Replace(content, wikiLinkPattern, match =>
+        {
+            var linkTarget = match.Groups[1].Value.Trim();
+            var displayText = match.Groups[2].Success ? match.Groups[2].Value.Trim() : linkTarget;
+            
+            // Convert to markdown link with anchor
+            // For wiki-style links, we'll use lowercase-dash format for anchors
+            var anchor = linkTarget.ToLower().Replace(' ', '-');
+            return $"[{displayText}](#{anchor})";
+        });
     }
 
     private string ExtractSummary(string content)
