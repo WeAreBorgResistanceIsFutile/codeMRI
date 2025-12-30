@@ -21,6 +21,7 @@ public class WikiGenerationService : IWikiGenerationService
     private readonly IReferenceManagementService _referenceManagementService;
     private readonly IModelRoutingService? _routingService;
     private readonly IDocumentationSynthesisService _synthesisService;
+    private readonly IMarkdownRepairService _markdownRepairService;
 
     public WikiGenerationService(
         ILLMServiceFacade llmFacade,
@@ -31,6 +32,7 @@ public class WikiGenerationService : IWikiGenerationService
         ILogger<WikiGenerationService> logger,
         IOptions<CodeWikiOptions> options,
         string documentationModel,
+        IMarkdownRepairService markdownRepairService,
         IModelRoutingService? routingService = null,
         IMultiModelOrchestrationService? orchestrationService = null)
     {
@@ -42,6 +44,7 @@ public class WikiGenerationService : IWikiGenerationService
         _logger = logger;
         _options = options.Value;
         _documentationModel = documentationModel;
+        _markdownRepairService = markdownRepairService;
         _routingService = routingService;
         _orchestrationService = orchestrationService;
     }
@@ -548,86 +551,53 @@ public class WikiGenerationService : IWikiGenerationService
     {
         var cleanedContent = (llmContent ?? string.Empty).Trim();
 
-        // Strip any LLM preamble text before the actual markdown content
-        cleanedContent = StripLLMPreamble(cleanedContent);
-
-        // 0. Strip markdown code fences that LLMs sometimes wrap around the entire output
-        // This fixes the issue where ```markdown appears at the start and ``` at the end
-        if (cleanedContent.StartsWith("```markdown"))
-            // Remove opening fence (```markdown) and any immediate newlines
-            cleanedContent = cleanedContent.Substring("```markdown".Length).TrimStart('\n', '\r');
-
-        // Remove closing fence if present at the end
-        if (cleanedContent.EndsWith("```"))
-            cleanedContent = cleanedContent.Substring(0, cleanedContent.Length - 3).TrimEnd();
-
-        cleanedContent = cleanedContent.Trim();
-
-        // Convert [[WikiLink]] syntax to proper markdown links
-        cleanedContent = ConvertWikiLinksToMarkdown(cleanedContent);
+        // Use centralized repair service
+        cleanedContent = _markdownRepairService.ExtractMarkdown(cleanedContent);
+        cleanedContent = _markdownRepairService.RepairMarkdown(cleanedContent);
 
         // 1. Remove all existing <details> blocks related to source files
-        // Using a regex that captures the specific "Relevant source files" summary to avoid removing other details blocks
         var detailsPattern = @"<details>\s*<summary>\s*Relevant source files\s*</summary>.*?</details>";
         cleanedContent = Regex.Replace(cleanedContent, detailsPattern, "",
             RegexOptions.IgnoreCase | RegexOptions.Singleline).Trim();
 
-        // 1.1 Remove LLM-generated "Source Files Used", "Citations", etc. sections
-        // Catch variations like "## Source Files Used", "### Source Files", "- Source Files:", etc.
+        // 1.1 Remove LLM-generated sections
         var listPattern =
             @"(?m)^(?:\s*|#+\s+)(?:Source Files|Files Used|Relevant Files|Citations).*?(\n\s*(?:-|\d+\.)\s+.*)+";
         cleanedContent = Regex.Replace(cleanedContent, listPattern, "",
             RegexOptions.IgnoreCase | RegexOptions.Singleline).Trim();
 
         // 2. Remove all main title headers (H1) that resemble the page title
-        // This handles "# Title", "#Title", " # Title" etc.
         var titlePattern = @"^\s*#\s*" + Regex.Escape(pageTitle) + @"\s*$";
         cleanedContent = Regex.Replace(cleanedContent, titlePattern, "",
             RegexOptions.IgnoreCase | RegexOptions.Multiline).Trim();
 
-        // Also remove the raw ID/Title if it appears as a standalone line at the very beginning (common LLM artifact)
         var rawTitlePattern = @"^\s*" + Regex.Escape(pageTitle) + @"\s*$";
         cleanedContent = Regex.Replace(cleanedContent, rawTitlePattern, "",
             RegexOptions.IgnoreCase | RegexOptions.Multiline).Trim();
 
         // 3. Construct the final clean content
         var sb = new StringBuilder();
-
-        // Add canonical Title
         sb.AppendLine($"# {pageTitle}");
         sb.AppendLine();
-
-        // Add content
         sb.Append(cleanedContent);
-
-        // Add canonical Details block
         sb.AppendLine();
         sb.AppendLine();
         sb.AppendLine("<details>");
         sb.AppendLine("<summary>Relevant source files</summary>");
         sb.AppendLine();
 
-        // Construct display paths and links
         var uniqueFiles = filePaths.Distinct().ToList();
         foreach (var path in uniqueFiles)
         {
             var displayPath = path;
             if (!string.IsNullOrEmpty(repoPath) && Path.IsPathRooted(path))
-                try
-                {
-                    displayPath = Path.GetRelativePath(repoPath, path);
-                }
-                catch
-                {
-                }
+            {
+                try { displayPath = Path.GetRelativePath(repoPath, path); } catch { }
+            }
 
             if (!string.IsNullOrEmpty(remoteUrl) && !string.IsNullOrEmpty(branch))
             {
-                // Remote link: {remoteUrl}/blob/{branch}/{path}
-                // Ensure path is relative and clean
-                var cleanRemoteUrl = remoteUrl.EndsWith(".git")
-                    ? remoteUrl.Substring(0, remoteUrl.Length - 4)
-                    : remoteUrl;
+                var cleanRemoteUrl = remoteUrl.EndsWith(".git") ? remoteUrl.Substring(0, remoteUrl.Length - 4) : remoteUrl;
                 var cleanPath = displayPath.Replace("\\", "/").TrimStart('/');
                 var link = $"{cleanRemoteUrl.TrimEnd('/')}/blob/{branch}/{cleanPath}";
                 sb.AppendLine($"- [{displayPath}]({link})");
@@ -639,66 +609,7 @@ public class WikiGenerationService : IWikiGenerationService
         }
 
         sb.AppendLine("</details>");
-
         return sb.ToString();
-    }
-
-    /// <summary>
-    ///     Strips any LLM preamble text that appears before the actual markdown content.
-    ///     Removes everything before the first # title or ```markdown code fence.
-    /// </summary>
-    private string StripLLMPreamble(string content)
-    {
-        if (string.IsNullOrWhiteSpace(content))
-            return content;
-
-        var lines = content.Split('\n');
-        var startIndex = -1;
-
-        for (var i = 0; i < lines.Length; i++)
-        {
-            var trimmedLine = lines[i].TrimStart();
-            
-            // Found the start of actual markdown content
-            if (trimmedLine.StartsWith("# ") || trimmedLine.StartsWith("```markdown"))
-            {
-                startIndex = i;
-                break;
-            }
-        }
-
-        // If we found a markdown start, remove everything before it
-        if (startIndex > 0)
-        {
-            return string.Join('\n', lines.Skip(startIndex));
-        }
-
-        // No clear markdown start found, return as-is
-        return content;
-    }
-
-    /// <summary>
-    ///     Converts [[WikiLink]] syntax to proper markdown links.
-    ///     [[PageName]] becomes [PageName](#PageName) for same-document anchors.
-    /// </summary>
-    private string ConvertWikiLinksToMarkdown(string content)
-    {
-        if (string.IsNullOrWhiteSpace(content))
-            return content;
-
-        // Pattern to match [[WikiLink]] or [[Display Text|PageName]]
-        var wikiLinkPattern = @"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]";
-        
-        return Regex.Replace(content, wikiLinkPattern, match =>
-        {
-            var linkTarget = match.Groups[1].Value.Trim();
-            var displayText = match.Groups[2].Success ? match.Groups[2].Value.Trim() : linkTarget;
-            
-            // Convert to markdown link with anchor
-            // For wiki-style links, we'll use lowercase-dash format for anchors
-            var anchor = linkTarget.ToLower().Replace(' ', '-');
-            return $"[{displayText}](#{anchor})";
-        });
     }
 
     private string ExtractSummary(string content)

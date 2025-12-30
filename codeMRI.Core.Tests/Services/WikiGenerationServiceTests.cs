@@ -29,6 +29,7 @@ public class WikiGenerationServiceTests
             .Returns<string, string>((c, id) => c!);
 
         var options = Options.Create(new CodeWikiOptions());
+        var repairService = new MarkdownRepairService();
 
         _service = new WikiGenerationService(
             _mockLlmFacade!.Object,
@@ -38,7 +39,8 @@ public class WikiGenerationServiceTests
             _mockRefService!.Object,
             _mockLogger!.Object,
             options,
-            "dummy_model");
+            "dummy_model",
+            repairService);
     }
 
     private Mock<ILLMServiceFacade>? _mockLlmFacade;
