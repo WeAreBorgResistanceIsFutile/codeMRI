@@ -61,6 +61,10 @@ public class MermaidRepairService : IMermaidRepairService
             }
 
             var updatedLine = line;
+
+            // Pre-process: fix common arrow label hallucinations like -->"|Label|
+            updatedLine = updatedLine.Replace("-->\"|", "-->|");
+            updatedLine = updatedLine.Replace("-->\" |", "-->|");
             
             // 1. Arrow labels: A -->|Label| B
             updatedLine = System.Text.RegularExpressions.Regex.Replace(updatedLine, @"(\|)([^""|]+?)(\|)", m => 
@@ -95,6 +99,22 @@ public class MermaidRepairService : IMermaidRepairService
                     var closer = shape.Item2.Replace("\\", "");
                     
                     var label = fullMatch.Substring(opener.Length, fullMatch.Length - opener.Length - closer.Length).Trim();
+                    
+                    // Heuristic fixes for LLM hallucinations:
+                    // 1. Fix broken function calls: (" -> ()
+                    if (label.EndsWith("(\"")) label = label.Substring(0, label.Length - 2) + "()";
+                    // 2. Fix broken function calls: ") -> )
+                    if (label.EndsWith("\")")) label = label.Substring(0, label.Length - 2) + ")";
+
+                    // 3. Fix unbalanced quotes (if odd number of quotes)
+                    var quoteCount = label.Split('"').Length - 1;
+                    if (quoteCount % 2 != 0)
+                    {
+                        // Prioritize stripping leading quote if present, otherwise trailing
+                        if (label.StartsWith("\"")) label = label.Substring(1);
+                        else if (label.EndsWith("\"")) label = label.Substring(0, label.Length - 1);
+                    }
+
                     if (label.StartsWith("\"")) return m.Value;
 
                     return $"{id}{opener}\"{label.Replace("\"", "\\\"")}\"{closer}";

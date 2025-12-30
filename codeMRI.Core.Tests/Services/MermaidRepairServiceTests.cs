@@ -134,6 +134,36 @@ public class MermaidRepairServiceTests
         Assert.That(result, Does.Contain(@"TokenList[""Token[]""]"));
         Assert.That(result, Does.Contain(@"List[""string""]"));
     }
+    
+    [Test]
+    public void RepairMermaid_1()
+    {
+        // Arrange
+        var input = """
+                    graph TD
+                    A["Start"] --> B["Identify current char type via TokenizerUtils"]
+                    B --> C["Peek next char using peek(1")]
+                    C --> D{"Type transition?"}
+                    D -->"|"Yes"| E[Check special patterns"]
+                    E --> F{"Valid pattern?"}
+                    F -->"|"Yes"| G[Tokenize buffer via tokenizeBufferContents(")]
+                    F -->"|"No"| H[Continue accumulation"]
+                    D -->|"No"| H
+                    G --> I["Reset buffer via resetBuffer(")]
+                    H --> J["Accumulate character to buffer"]
+                    J --> K["Advance currentPosition"]
+                    K --> B
+                    """;
+
+        // Act
+        var result = _service.RepairMermaid(input);
+
+        // Assert
+        Assert.That(result, Does.Contain("""C["Peek next char using peek(1)"]"""));
+        Assert.That(result, Does.Contain("""-->|"Yes"| E"""));
+        Assert.That(result, Does.Contain("""-->|"No"| H"""));
+        Assert.That(result, Does.Contain("""["Reset buffer via resetBuffer()"]"""));
+    }
 
     #endregion
 }
