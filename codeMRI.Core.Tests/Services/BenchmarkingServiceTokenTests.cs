@@ -70,4 +70,46 @@ public class BenchmarkingServiceTokenTests
         Assert.That(result.TotalInputTokens, Is.EqualTo(300), "TotalInputTokens should be calculated from repository metrics");
         Assert.That(result.TotalOutputTokens, Is.EqualTo(150), "TotalOutputTokens should be calculated from repository metrics");
     }
+    [Test]
+    public async Task CompleteBenchmarkRunAsync_ShouldCalculateTotalTokensFromBothRepositoryAndBuffer()
+    {
+        // Arrange
+        var runId = "test-run-id";
+        var existingRun = new BenchmarkRun
+        {
+            Id = runId,
+            Status = BenchmarkStatus.Running,
+            StartTime = DateTime.UtcNow.AddMinutes(-30)
+        };
+
+        var repoMetrics = new List<BenchmarkMetrics>
+        {
+            new() { Id = "m1", InputTokens = 100, OutputTokens = 50 }
+        };
+
+        _mockRepository
+            .Setup(r => r.GetByIdAsync(runId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingRun);
+        
+        _mockRepository
+            .Setup(r => r.GetPageBenchmarksAsync(runId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PageBenchmark>());
+
+        _mockRepository
+            .Setup(r => r.GetMetricsAsync(runId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(repoMetrics);
+
+        // Act
+        // Record a newer metric in the buffer (same ID, or different ID)
+        _service.RecordMetrics(runId, new BenchmarkMetrics { Id = "m1", InputTokens = 110, OutputTokens = 55 });
+        _service.RecordMetrics(runId, new BenchmarkMetrics { Id = "m2", InputTokens = 200, OutputTokens = 100 });
+
+        var result = await _service.CompleteBenchmarkRunAsync(runId);
+
+        // Assert
+        // Expected total: 110 (from buffer m1) + 200 (from buffer m2) = 310 input
+        // Expected total: 55 (from buffer m1) + 100 (from buffer m2) = 155 output
+        Assert.That(result.TotalInputTokens, Is.EqualTo(310), "TotalInputTokens should prefer buffer overlay");
+        Assert.That(result.TotalOutputTokens, Is.EqualTo(155), "TotalOutputTokens should prefer buffer overlay");
+    }
 }

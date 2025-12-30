@@ -34,7 +34,6 @@ public class LLMServiceFacade : ILLMServiceFacade
         MessageCompositionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        Console.WriteLine("DEBUG: ExecuteAsync started");
         _logger.LogInformation(
             "LLMServiceFacade executing request (system: {SystemLen} chars, text: {TextLen} chars, history: {HistoryCount} messages)",
             systemPrompt?.Length ?? 0,
@@ -77,12 +76,31 @@ public class LLMServiceFacade : ILLMServiceFacade
                     "Executing iterative strategy: {Strategy}",
                     compositionResult.StrategyUsed);
                 
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 var iterativeResult = await strategy.ExecuteAsync(context, _llmClient, cancellationToken);
+                sw.Stop();
                 
                 _logger.LogInformation(
-                    "Iterative strategy completed ({Iterations} iterations, response length: {ResponseLength} chars)",
+                    "Iterative strategy completed ({Iterations} iterations, response length: {ResponseLength} chars, {Duration}ms)",
                     iterativeResult.IterationsProcessed,
-                    iterativeResult.FinalResponse?.Length ?? 0);
+                    iterativeResult.FinalResponse?.Length ?? 0,
+                    sw.ElapsedMilliseconds);
+
+                // Record metrics for iterative strategy
+                _metricsCallback?.Invoke(new codeMRI.Core.Models.BenchmarkMetrics
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    ModelName = context.Model ?? "default",
+                    TaskType = compositionResult.StrategyUsed,
+                    Phase = "IterativeExecution",
+                    Timestamp = DateTime.UtcNow,
+                    Duration = sw.Elapsed,
+                    InputTokens = (int)iterativeResult.TotalInputTokens,
+                    OutputTokens = (int)iterativeResult.TotalOutputTokens,
+                    ContextWindowSize = 0,
+                    ModuleId = options?.ModuleId ?? string.Empty,
+                    Success = true
+                });
                 
                 return new LLMResponse
                 {
@@ -101,7 +119,6 @@ public class LLMServiceFacade : ILLMServiceFacade
                     compositionResult.Messages.Count);
 
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                Console.WriteLine("DEBUG: Calling ChatAsync");
                 var response = await _llmClient.ChatAsync(
                     compositionResult.Messages,
                     context.Model,
@@ -119,12 +136,12 @@ public class LLMServiceFacade : ILLMServiceFacade
                     Id = Guid.NewGuid().ToString(),
                     ModelName = context.Model ?? "default",
                     TaskType = compositionResult.StrategyUsed,
-                    Phase = "Execution", // Context specific, might need enrichment
+                    Phase = "Execution",
                     Timestamp = DateTime.UtcNow,
                     Duration = sw.Elapsed,
                     InputTokens = inputTokens,
                     OutputTokens = outputTokens,
-                    ContextWindowSize = 0, // Unknown
+                    ContextWindowSize = 0,
                     ModuleId = options?.ModuleId ?? string.Empty,
                     Success = true
                 });
@@ -132,7 +149,6 @@ public class LLMServiceFacade : ILLMServiceFacade
                 _logger.LogInformation(
                     "LLM responded successfully (response length: {ResponseLength} chars, {Duration}ms)",
                     response?.Length ?? 0, sw.ElapsedMilliseconds);
-                Console.WriteLine("DEBUG: Callback finished");
                 
                 return new LLMResponse
                 {
@@ -145,7 +161,6 @@ public class LLMServiceFacade : ILLMServiceFacade
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"DEBUG: Exception in ExecuteAsync: {ex}");
             _logger.LogError(ex, "LLMServiceFacade execution failed");
             throw;
         }

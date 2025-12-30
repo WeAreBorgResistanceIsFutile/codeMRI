@@ -88,6 +88,8 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
         // Process chunks iteratively
         var iterationFindings = new List<string>();
         var rollingState = string.Empty;
+        long totalInputTokens = 0;
+        long totalOutputTokens = 0;
         
         for (var i = 0; i < chunks.Count; i++)
         {
@@ -102,7 +104,10 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
                     findingsTokens,
                     maxFindingsTokens);
                 
-                rollingState = await CompactFindingsAsync(rollingState, maxFindingsTokens, llmClient, context.Model, cancellationToken);
+                var compactResult = await CompactFindingsWithTokensAsync(rollingState, maxFindingsTokens, llmClient, context.Model, cancellationToken);
+                rollingState = compactResult.Response;
+                totalInputTokens += compactResult.InputTokens;
+                totalOutputTokens += compactResult.OutputTokens;
             }
             
             // Build chunk prompt
@@ -126,7 +131,14 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
                 chunks.Count,
                 chunks[i].Length);
             
+            // Estimate input tokens
+            totalInputTokens += messages.Sum(m => m.Content.Length) / 4;
+
             var response = await llmClient.ChatAsync(messages, context.Model, cancellationToken);
+            
+            // Estimate output tokens
+            totalOutputTokens += (response?.Length ?? 0) / 4;
+
             iterationFindings.Add(response);
             rollingState = response; // For next iteration, our "rolling state" is the latest finding
         }
@@ -135,7 +147,7 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
         _logger.LogInformation("Reconstructing final result from {FindingsCount} iteration findings", 
             iterationFindings.Count);
         
-        var finalResult = await SynthesizeFinalResult(
+        var synthesisResult = await SynthesizeFinalResultWithTokens(
             context.SystemPrompt ?? "",
             iterationFindings,
             llmClient,
@@ -144,11 +156,16 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
             0, // Initial recursion depth
             cancellationToken
         );
+
+        totalInputTokens += synthesisResult.InputTokens;
+        totalOutputTokens += synthesisResult.OutputTokens;
         
         return new IterativeExecutionResult
         {
-            FinalResponse = finalResult,
+            FinalResponse = synthesisResult.Response,
             IterationsProcessed = chunks.Count,
+            TotalInputTokens = totalInputTokens,
+            TotalOutputTokens = totalOutputTokens,
             Metadata = new Dictionary<string, object>
             {
                 ["UseSemanticChunking"] = useSemanticChunking,
@@ -159,7 +176,14 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
         };
     }
 
-    private async Task<string> CompactFindingsAsync(
+    private class LlmCallResult
+    {
+        public string Response { get; set; } = string.Empty;
+        public long InputTokens { get; set; }
+        public long OutputTokens { get; set; }
+    }
+
+    private async Task<LlmCallResult> CompactFindingsWithTokensAsync(
         string findings,
         int maxTokens,
         ILLMClient llmClient,
@@ -181,7 +205,22 @@ public class ChunkingMessageStrategy : IIterativeExecutionStrategy
             }
         };
 
-        return await llmClient.ChatAsync(messages, model, cancellationToken);
+        var inputTokens = messages.Sum(m => m.Content.Length) / 4;
+        var response = await llmClient.ChatAsync(messages, model, cancellationToken);
+        var outputTokens = (response?.Length ?? 0) / 4;
+
+        return new LlmCallResult { Response = response, InputTokens = inputTokens, OutputTokens = outputTokens };
+    }
+
+    private async Task<string> CompactFindingsAsync(
+        string findings,
+        int maxTokens,
+        ILLMClient llmClient,
+        string? model,
+        CancellationToken cancellationToken)
+    {
+        var result = await CompactFindingsWithTokensAsync(findings, maxTokens, llmClient, model, cancellationToken);
+        return result.Response;
     }
     
     private string ReformulateSystemPrompt(string? originalSystemPrompt)
@@ -232,7 +271,7 @@ Provide updated comprehensive findings:";
         }
     }
     
-    private async Task<string> SynthesizeFinalResult(
+    private async Task<LlmCallResult> SynthesizeFinalResultWithTokens(
         string originalRequest,
         List<string> iterationFindings,
         ILLMClient llmClient,
@@ -245,14 +284,9 @@ Provide updated comprehensive findings:";
         if (recursionDepth > 5)
         {
             _logger.LogWarning("Hierarchical synthesis reached max recursion depth {Depth}. Forcing final synthesis with potentially large context.", recursionDepth);
-            // Optimization: If we have iterationFindings, we join them.
-            // But we already do that in combinedFindings below. 
-            // We should just proceed to ExecuteSynthesisCall directly below after check.
-            // But wait, the check 'findingsTokens <= available' is done first.
-            // We should force it.
             
             var forceCombined = string.Join("\n\n---\n\n", iterationFindings);
-            return await ExecuteSynthesisCall(originalRequest, forceCombined, llmClient, model, cancellationToken);
+            return await ExecuteSynthesisCallWithTokens(originalRequest, forceCombined, llmClient, model, cancellationToken);
         }
 
         var combinedFindings = string.Join("\n\n---\n\n", iterationFindings);
@@ -265,7 +299,7 @@ Provide updated comprehensive findings:";
         // If combined findings fit, do it in one call
         if (findingsTokens <= availableInputTokens * 0.8) // Use 80% to be safe
         {
-            return await ExecuteSynthesisCall(originalRequest, combinedFindings, llmClient, model, cancellationToken);
+            return await ExecuteSynthesisCallWithTokens(originalRequest, combinedFindings, llmClient, model, cancellationToken);
         }
 
         // Hierarchical Synthesis: We need to reduce findings in groups
@@ -275,6 +309,8 @@ Provide updated comprehensive findings:";
         var reducedFindings = new List<string>();
         var currentBatch = new List<string>();
         var currentBatchTokens = 0;
+        long totalInputTokens = 0;
+        long totalOutputTokens = 0;
 
         foreach (var finding in iterationFindings)
         {
@@ -283,8 +319,10 @@ Provide updated comprehensive findings:";
             {
                 // Process current batch
                 var batchString = string.Join("\n\n", currentBatch);
-                var summary = await CompactFindingsAsync(batchString, (int)(availableInputTokens * 0.4), llmClient, model, cancellationToken);
-                reducedFindings.Add(summary);
+                var compactResult = await CompactFindingsWithTokensAsync(batchString, (int)(availableInputTokens * 0.4), llmClient, model, cancellationToken);
+                reducedFindings.Add(compactResult.Response);
+                totalInputTokens += compactResult.InputTokens;
+                totalOutputTokens += compactResult.OutputTokens;
                 
                 currentBatch.Clear();
                 currentBatchTokens = 0;
@@ -297,15 +335,34 @@ Provide updated comprehensive findings:";
         if (currentBatch.Any())
         {
             var batchString = string.Join("\n\n", currentBatch);
-            var summary = await CompactFindingsAsync(batchString, (int)(availableInputTokens * 0.4), llmClient, model, cancellationToken);
-            reducedFindings.Add(summary);
+            var compactResult = await CompactFindingsWithTokensAsync(batchString, (int)(availableInputTokens * 0.4), llmClient, model, cancellationToken);
+            reducedFindings.Add(compactResult.Response);
+            totalInputTokens += compactResult.InputTokens;
+            totalOutputTokens += compactResult.OutputTokens;
         }
 
         // Final recursive call with reduced findings
-        return await SynthesizeFinalResult(originalRequest, reducedFindings, llmClient, validator, model, recursionDepth + 1, cancellationToken);
+        var finalResult = await SynthesizeFinalResultWithTokens(originalRequest, reducedFindings, llmClient, validator, model, recursionDepth + 1, cancellationToken);
+        totalInputTokens += finalResult.InputTokens;
+        totalOutputTokens += finalResult.OutputTokens;
+
+        return new LlmCallResult { Response = finalResult.Response, InputTokens = totalInputTokens, OutputTokens = totalOutputTokens };
     }
 
-    private async Task<string> ExecuteSynthesisCall(
+    private async Task<string> SynthesizeFinalResult(
+        string originalRequest,
+        List<string> iterationFindings,
+        ILLMClient llmClient,
+        ILLMValidator validator,
+        string? model,
+        int recursionDepth,
+        CancellationToken cancellationToken)
+    {
+        var result = await SynthesizeFinalResultWithTokens(originalRequest, iterationFindings, llmClient, validator, model, recursionDepth, cancellationToken);
+        return result.Response;
+    }
+
+    private async Task<LlmCallResult> ExecuteSynthesisCallWithTokens(
         string originalRequest,
         string combinedFindings,
         ILLMClient llmClient,
@@ -332,6 +389,21 @@ Provide a coherent, comprehensive final result that directly addresses the origi
             }
         };
         
-        return await llmClient.ChatAsync(messages, model, cancellationToken);
+        var inputTokens = messages.Sum(m => m.Content.Length) / 4;
+        var response = await llmClient.ChatAsync(messages, model, cancellationToken);
+        var outputTokens = (response?.Length ?? 0) / 4;
+
+        return new LlmCallResult { Response = response, InputTokens = inputTokens, OutputTokens = outputTokens };
+    }
+
+    private async Task<string> ExecuteSynthesisCall(
+        string originalRequest,
+        string combinedFindings,
+        ILLMClient llmClient,
+        string? model,
+        CancellationToken cancellationToken)
+    {
+        var result = await ExecuteSynthesisCallWithTokens(originalRequest, combinedFindings, llmClient, model, cancellationToken);
+        return result.Response;
     }
 }

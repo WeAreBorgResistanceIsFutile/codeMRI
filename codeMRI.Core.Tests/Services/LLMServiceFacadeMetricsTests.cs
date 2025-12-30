@@ -58,7 +58,7 @@ public class LLMServiceFacadeMetricsTests
         _facade.SetMetricsCallback(m => recordedMetrics = m);
 
         // Act
-        await _facade.ExecuteAsync("system", "text");
+        await _facade.ExecuteAsync("system", "text", options: new MessageCompositionOptions { ModelName = "test-model" });
 
         // Assert
         Assert.That(recordedMetrics, Is.Not.Null, "Metrics should be recorded for simple strategy");

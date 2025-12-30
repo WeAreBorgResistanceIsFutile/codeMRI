@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Serilog;
+using codeMRI.Core.Services.MessageComposition;
 
 namespace codeMRI.Benchmark;
 
@@ -142,11 +143,22 @@ class Program
         // 3. Start Benchmark using the IngestionJobManager (just like the UI does)
         var ingestionManager = services.GetRequiredService<IIngestionJobManager>();
         var benchmarkingService = services.GetRequiredService<IBenchmarkingService>();
+        var llmFacade = services.GetRequiredService<ILLMServiceFacade>();
+
+        BenchmarkRun? run = null;
+
+        // Wire up metrics callback to capture LLM usage during benchmark
+        llmFacade.SetMetricsCallback(metrics =>
+        {
+            if (run != null)
+            {
+                benchmarkingService.RecordMetrics(run.Id, metrics);
+            }
+        });
 
         string runName = name ?? $"Benchmark-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
         Console.WriteLine($"Starting benchmark '{runName}' for {input}...");
 
-        BenchmarkRun? run = null;
         try
         {
             // Start Benchmark Run

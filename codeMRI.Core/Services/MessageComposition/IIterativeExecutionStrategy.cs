@@ -57,6 +57,16 @@ public class IterativeExecutionResult
     public int IterationsProcessed { get; init; } = 1;
     
     /// <summary>
+    /// Total input tokens consumed across all iterations.
+    /// </summary>
+    public long TotalInputTokens { get; set; }
+    
+    /// <summary>
+    /// Total output tokens generated across all iterations.
+    /// </summary>
+    public long TotalOutputTokens { get; set; }
+
+    /// <summary>
     /// Additional metadata from the execution.
     /// </summary>
     public Dictionary<string, object> Metadata { get; init; } = new();

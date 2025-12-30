@@ -64,6 +64,8 @@ public class MultiPassReductionStrategy : IIterativeExecutionStrategy
         var reducedHistory = new List<ChatMessage>(context.History);
         var passNumber = 0;
         var maxPasses = 5; // Prevent infinite loops
+        long totalInputTokens = 0;
+        long totalOutputTokens = 0;
         
         // Iteratively reduce until history fits in context
         while (!HistoryFitsInContext(reducedHistory, context) && passNumber < maxPasses)
@@ -75,11 +77,15 @@ public class MultiPassReductionStrategy : IIterativeExecutionStrategy
                 passNumber,
                 reducedHistory.Count);
             
-            reducedHistory = await ReduceHistoryPass(
+            var reductionResult = await ReduceHistoryPass(
                 reducedHistory,
                 context,
                 llmClient,
                 cancellationToken);
+                
+            reducedHistory = reductionResult.Messages;
+            totalInputTokens += reductionResult.InputTokens;
+            totalOutputTokens += reductionResult.OutputTokens;
         }
         
         if (!HistoryFitsInContext(reducedHistory, context))
@@ -117,9 +123,15 @@ public class MultiPassReductionStrategy : IIterativeExecutionStrategy
             });
         }
         
+        // Final input tokens estimate
+        totalInputTokens += messages.Sum(m => m.Content.Length) / 4;
+
         // Execute final request with reduced history
         var finalResponse = await llmClient.ChatAsync(messages, context.Model, cancellationToken);
         
+        // Final output tokens estimate
+        totalOutputTokens += (finalResponse?.Length ?? 0) / 4;
+
         _logger.LogInformation(
             "MultiPassReduction completed after {PassCount} passes, final history: {FinalMessageCount} messages",
             passNumber,
@@ -129,6 +141,8 @@ public class MultiPassReductionStrategy : IIterativeExecutionStrategy
         {
             FinalResponse = finalResponse,
             IterationsProcessed = passNumber,
+            TotalInputTokens = totalInputTokens,
+            TotalOutputTokens = totalOutputTokens,
             Metadata = new Dictionary<string, object>
             {
                 ["OriginalHistoryCount"] = context.History.Count,
@@ -153,7 +167,7 @@ public class MultiPassReductionStrategy : IIterativeExecutionStrategy
         return totalTokens < availableTokens;
     }
     
-    private async Task<List<ChatMessage>> ReduceHistoryPass(
+    private async Task<(List<ChatMessage> Messages, long InputTokens, long OutputTokens)> ReduceHistoryPass(
         List<ChatMessage> history,
         MessageCompositionContext context,
         ILLMClient llmClient,
@@ -162,6 +176,8 @@ public class MultiPassReductionStrategy : IIterativeExecutionStrategy
         // Group messages into batches and summarize each batch
         var batchSize = Math.Max(3, history.Count / 3); // Reduce to ~1/3 each pass
         var reducedMessages = new List<ChatMessage>();
+        long inputTokens = 0;
+        long outputTokens = 0;
         
         for (int i = 0; i < history.Count; i += batchSize)
         {
@@ -194,8 +210,14 @@ Provide a brief summary (2-3 sentences):";
                 new() { Role = "user", Content = summaryPrompt }
             };
             
+            // Estimate input tokens for this call
+            inputTokens += summaryMessages.Sum(m => m.Content.Length) / 4;
+
             var summary = await llmClient.ChatAsync(summaryMessages, context.Model, cancellationToken);
             
+            // Estimate output tokens for this call
+            outputTokens += (summary?.Length ?? 0) / 4;
+
             // Add summarized batch as a single message
             reducedMessages.Add(new ChatMessage
             {
@@ -204,6 +226,6 @@ Provide a brief summary (2-3 sentences):";
             });
         }
         
-        return reducedMessages;
+        return (reducedMessages, inputTokens, outputTokens);
     }
 }
