@@ -14,19 +14,22 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
     private readonly ILogger<DocumentationSynthesisService> _logger;
     private readonly CodeWikiOptions _options;
     private readonly IHierarchicalSummaryService? _summaryService;
+    private readonly IModelRoutingService? _routingService;
 
     public DocumentationSynthesisService(
         ILLMServiceFacade llmFacade,
         ILLMValidator validator,
         ILogger<DocumentationSynthesisService> logger,
         IOptions<CodeWikiOptions> options,
-        IHierarchicalSummaryService? summaryService = null)
+        IHierarchicalSummaryService? summaryService = null,
+        IModelRoutingService? routingService = null)
     {
         _llmFacade = llmFacade;
         _validator = validator;
         _logger = logger;
         _options = options.Value;
         _summaryService = summaryService;
+        _routingService = routingService;
     }
 
     public async Task<WikiPage> SynthesizeParentPageAsync(ModuleNode module, List<WikiPage> childPages,
@@ -185,12 +188,17 @@ public class DocumentationSynthesisService : IDocumentationSynthesisService
                 entities?.HasEntities == true ? "Entity-Anchored" : "Direct", module.Name);
         }
 
+        // Use model routing to select the best model for synthesis
+        var selectedModel = _routingService?.SelectModelForTask(DocumentationTaskType.Synthesis);
+        _logger.LogDebug("Using model '{Model}' for synthesis of module '{ModuleName}'", 
+            selectedModel ?? "default", module.Name);
+
         // Use facade to execute - it will automatically handle chunking if content is large
         var response3 = await _llmFacade.ExecuteAsync(
             systemPrompt: "You are a master software architect generating high-quality documentation.",
             textToProcess: prompt,
             history: null,
-            options: new MessageCompositionOptions { ModuleId = module.Id },
+            options: new MessageCompositionOptions { ModelName = selectedModel, ModuleId = module.Id },
             cancellationToken: cancellationToken);
         
         string overviewContent = response3.Content;

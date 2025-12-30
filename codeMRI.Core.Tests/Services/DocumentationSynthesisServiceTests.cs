@@ -18,6 +18,7 @@ public class DocumentationSynthesisServiceTests
         _mockLlmFacade = new Mock<ILLMServiceFacade>();
         _mockValidator = new Mock<ILLMValidator>();
         _mockLogger = new Mock<ILogger<DocumentationSynthesisService>>();
+        _mockRoutingService = new Mock<IModelRoutingService>();
 
         _mockValidator.Setup(v => v.ContextSize).Returns(4096);
 
@@ -26,12 +27,15 @@ public class DocumentationSynthesisServiceTests
             _mockLlmFacade.Object, 
             _mockValidator.Object, 
             _mockLogger.Object, 
-            options);
+            options,
+            null,
+            _mockRoutingService.Object);
     }
 
     private Mock<ILLMServiceFacade> _mockLlmFacade;
     private Mock<ILLMValidator> _mockValidator;
     private Mock<ILogger<DocumentationSynthesisService>> _mockLogger;
+    private Mock<IModelRoutingService> _mockRoutingService;
     private DocumentationSynthesisService _service;
 
     [Test]
@@ -159,5 +163,34 @@ public class DocumentationSynthesisServiceTests
         // Assert
         Assert.That(result.Content, Does.Contain("# CleanModule"));
         Assert.That(result.Content, Does.Not.Contain("```markdown"));
+    }
+    [Test]
+    public async Task SynthesizeParentPageAsync_ShouldUseSynthesisModelFromRoutingService()
+    {
+        // Arrange
+        var module = new ModuleNode { Id = "mod-routing", Name = "RoutingModule" };
+        var childPages = new List<WikiPage> { new() { Title = "Child", Content = "Content" } };
+        
+        _mockRoutingService.Setup(r => r.SelectModelForTask(DocumentationTaskType.Synthesis))
+            .Returns("synthesis-judge-model");
+
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<ChatMessage>>(), 
+                It.IsAny<MessageCompositionOptions?>(), 
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = "# RoutingModule\n\nContent", StrategyUsed = "Simple" });
+
+        // Act
+        await _service.SynthesizeParentPageAsync(module, childPages);
+
+        // Assert
+        _mockLlmFacade.Verify(x => x.ExecuteAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<List<ChatMessage>>(),
+            It.Is<MessageCompositionOptions>(o => o.ModelName == "synthesis-judge-model"),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }
