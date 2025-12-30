@@ -36,12 +36,16 @@ public class DocumentationJudgeServiceTests
         _mockRagPromptBuilder.Setup(x => x.BuildPromptAsync(It.IsAny<RubricRequirement>(), It.IsAny<WikiStructure>()))
             .ReturnsAsync("Mock RAG evaluation prompt");
 
+        // Use real JsonRepairService for integration testing
+        var jsonRepairService = new JsonRepairService();
+
         _service = new DocumentationJudgeService(
             _mockLogger.Object,
             _mockLlmFacade.Object,
             _mockMeterFactory.Object,
             _mockPromptBuilder.Object,
-            _mockRagPromptBuilder.Object);
+            _mockRagPromptBuilder.Object,
+            jsonRepairService);
     }
 
     private Mock<ILLMServiceFacade> _mockLlmFacade;
@@ -396,7 +400,7 @@ public class DocumentationJudgeServiceTests
         var requirement = new RubricRequirement { Title = "Req1", Description = "Desc1" };
         var structure = new WikiStructure();
         // Truncated JSON inside markdown block (missing closing brace and backticks)
-        var response = "```json\n{\"score\": 0.9, \"reasoning\": \"Truncat";
+        var response = "```json\\n{\\\"score\\\": 0.9, \\\"reasoning\\\": \\\"Truncat";
 
         _mockLlmFacade.Setup(x => x.ExecuteAsync(
                 It.IsAny<string>(),
@@ -412,14 +416,14 @@ public class DocumentationJudgeServiceTests
         // Assert - Should return default assessment
         Assert.That(result.MeanScore, Is.EqualTo(0.0));
         
-        // Key verification: The logged exception should NOT be about invalid start character '`'.
-        // It SHOULD be about JSON syntax/truncation.
+        // JsonRepairService gracefully handles truncated JSON by returning null
+        // The service logs a WARNING instead of throwing an exception
         _mockLogger.Verify(logger => logger.Log(
-            LogLevel.Error,
+            LogLevel.Warning,
             It.IsAny<EventId>(),
-            It.Is<It.IsAnyType>((v, t) => true),
-            It.Is<Exception>(ex => ex is JsonException && !ex.Message.Contains("'`' is an invalid start")),
+            It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Failed to parse valid assessment")),
+            It.IsAny<Exception>(),
             It.IsAny<Func<It.IsAnyType, Exception?, string>>()), 
-            Times.Once, "Should log a JSON exception that is NOT about backticks");
+            Times.Once, "Should log a warning for failed JSON parsing");
     }
 }

@@ -26,6 +26,9 @@ public class WireUp
         // LLM Services
         services.AddSingleton<OllamaLLMService>();
         
+        // JSON Processing
+        services.AddSingleton<IJsonRepairService, JsonRepairService>();
+        
         // Debug and Context Services
         services.AddSingleton<ILLMInvocationContext, LLMInvocationContext>();
         services.AddSingleton<IDebugSnapshotService, DebugSnapshotService>();

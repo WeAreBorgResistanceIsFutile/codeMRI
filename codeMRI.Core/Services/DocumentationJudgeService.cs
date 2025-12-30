@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services.MessageComposition;
@@ -31,6 +30,7 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
     private readonly Meter _meter;
     private readonly IEvaluationPromptBuilder _defaultPromptBuilder;
     private readonly RagEvaluationPromptBuilder _ragPromptBuilder;
+    private readonly IJsonRepairService _jsonRepairService;
     private readonly Histogram<double> _scoreDistribution;
     private readonly Histogram<double> _standardDeviationHistogram;
 
@@ -39,13 +39,15 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         ILLMServiceFacade llmFacade,
         IMeterFactory meterFactory,
         IEvaluationPromptBuilder promptBuilder,
-        RagEvaluationPromptBuilder ragPromptBuilder)
+        RagEvaluationPromptBuilder ragPromptBuilder,
+        IJsonRepairService jsonRepairService)
     {
         _logger = logger;
         _llmFacade = llmFacade;
         _meter = meterFactory.Create("CodeMRI.Judge");
         _defaultPromptBuilder = promptBuilder;
         _ragPromptBuilder = ragPromptBuilder;
+        _jsonRepairService = jsonRepairService;
 
         // Initialize metrics
         _evaluationCounter = _meter.CreateCounter<long>(
@@ -211,8 +213,7 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         return assessments;
     }
 
-    [GeneratedRegex(@"```(?:json)?\s*(.*?)\s*```", RegexOptions.Singleline)]
-    private static partial Regex MarkdownJsonBlockRegex();
+
 
     private RequirementAssessment AggregateAssessments(
         List<ModelAssessment> modelAssessments,
@@ -253,34 +254,8 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
 
     private RequirementAssessment ParseAssessmentFromResponse(string response, RubricRequirement requirement)
     {
-        // 1. Try to extract from markdown blocks
-        if (response.Contains("```"))
-        {
-            var match = MarkdownJsonBlockRegex().Match(response);
-            if (match.Success)
-            {
-                response = match.Groups[1].Value;
-            }
-            else
-            {
-                // Fallback: strip leading ```json or ``` if present, to help with truncated responses
-                var trimmed = response.TrimStart();
-                if (trimmed.StartsWith("```"))
-                {
-                    var newlineIndex = trimmed.IndexOf('\n');
-                    if (newlineIndex >= 0)
-                        response = trimmed.Substring(newlineIndex + 1);
-                    else if (trimmed.Length >= 3)
-                        response = trimmed.Substring(3);
-                }
-            }
-        }
-
-        // 2. Fallback: Use bracket counting or simple index finding to extract valid JSON
-        var extractedJson = ExtractValidJson(response);
-        if (!string.IsNullOrWhiteSpace(extractedJson)) response = extractedJson;
-
-        var assessment = JsonSerializer.Deserialize<JudgeResponse>(response, JsonParsingOptions);
+        // Use JsonRepairService to extract and deserialize
+        var assessment = _jsonRepairService.ExtractAndDeserialize<JudgeResponse>(response, JsonParsingOptions);
 
         if (assessment == null || !IsValidAssessment(assessment))
         {
@@ -300,18 +275,7 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
         };
     }
 
-    /// <summary>
-    ///     Extracts a valid JSON object by finding the first '{' and the last '}'.
-    ///     This is more robust against chatty introductions and conclusions.
-    /// </summary>
-    private static string? ExtractValidJson(string response)
-    {
-        var startIdx = response.IndexOf('{');
-        var endIdx = response.LastIndexOf('}');
 
-        if (startIdx >= 0 && endIdx > startIdx) return response.Substring(startIdx, endIdx - startIdx + 1);
-        return null;
-    }
 
     /// <summary>
     ///     Validates that a parsed assessment has reasonable values.

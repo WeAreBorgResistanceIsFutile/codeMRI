@@ -14,13 +14,16 @@ public class NavigationStructureService : INavigationStructureService
 {
     private readonly ILLMServiceFacade _llmFacade;
     private readonly ILogger<NavigationStructureService> _logger;
+    private readonly IJsonRepairService _jsonRepairService;
 
     public NavigationStructureService(
         ILLMServiceFacade llmFacade,
-        ILogger<NavigationStructureService> logger)
+        ILogger<NavigationStructureService> logger,
+        IJsonRepairService jsonRepairService)
     {
         _llmFacade = llmFacade;
         _logger = logger;
+        _jsonRepairService = jsonRepairService;
     }
 
     public async Task<WikiStructure> GenerateDocumentationStructureAsync(
@@ -76,8 +79,8 @@ public class NavigationStructureService : INavigationStructureService
 
     private WikiStructure ParseNavigationResponse(string jsonResponse, RepositoryInfo repositoryInfo)
     {
-        // Extract JSON from response (handle text before/after JSON)
-        var cleanJson = ExtractJson(jsonResponse);
+        // Extract JSON from response using JsonRepairService
+        var cleanJson = _jsonRepairService.ExtractJsonString(jsonResponse);
 
         var options = new JsonSerializerOptions
         {
@@ -113,75 +116,7 @@ public class NavigationStructureService : INavigationStructureService
         }
     }
 
-    private string ExtractJson(string response)
-    {
-        var trimmed = response.Trim();
-        
-        // Remove markdown code blocks
-        if (trimmed.StartsWith("```json"))
-            trimmed = trimmed.Substring(7);
-        else if (trimmed.StartsWith("```"))
-            trimmed = trimmed.Substring(3);
-            
-        if (trimmed.EndsWith("```"))
-            trimmed = trimmed.Substring(0, trimmed.Length - 3);
-            
-        trimmed = trimmed.Trim();
 
-        // Find JSON object boundaries
-        var firstBrace = trimmed.IndexOf('{');
-        if (firstBrace == -1)
-            throw new InvalidOperationException("No JSON object found in response");
-
-        // Find matching closing brace
-        var braceCount = 0;
-        var lastBrace = firstBrace;
-        var inString = false;
-        var escapeNext = false;
-
-        for (int i = firstBrace; i < trimmed.Length; i++)
-        {
-            var c = trimmed[i];
-
-            if (escapeNext)
-            {
-                escapeNext = false;
-                continue;
-            }
-
-            if (c == '\\')
-            {
-                escapeNext = true;
-                continue;
-            }
-
-            if (c == '"')
-            {
-                inString = !inString;
-                continue;
-            }
-
-            if (!inString)
-            {
-                if (c == '{')
-                    braceCount++;
-                else if (c == '}')
-                {
-                    braceCount--;
-                    if (braceCount == 0)
-                    {
-                        lastBrace = i;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (braceCount != 0)
-            throw new InvalidOperationException("Unmatched braces in JSON");
-
-        return trimmed.Substring(firstBrace, lastBrace - firstBrace + 1);
-    }
 
     private WikiSection ConvertSection(SectionDto dto)
     {

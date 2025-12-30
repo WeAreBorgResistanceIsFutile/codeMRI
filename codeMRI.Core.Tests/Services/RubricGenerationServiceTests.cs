@@ -16,7 +16,11 @@ public class RubricGenerationServiceTests
     {
         _loggerMock = new Mock<ILogger<RubricGenerationService>>();
         _llmFacadeMock = new Mock<ILLMServiceFacade>();
-        _service = new RubricGenerationService(_loggerMock.Object, _llmFacadeMock.Object);
+        
+        // Use real JsonRepairService for integration testing
+        var jsonRepairService = new JsonRepairService();
+        
+        _service = new RubricGenerationService(_loggerMock.Object, _llmFacadeMock.Object, jsonRepairService);
     }
 
     private Mock<ILogger<RubricGenerationService>> _loggerMock;

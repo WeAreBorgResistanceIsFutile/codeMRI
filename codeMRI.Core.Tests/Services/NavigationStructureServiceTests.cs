@@ -21,7 +21,11 @@ public class NavigationStructureServiceTests
     {
         _mockLlmFacade = new Mock<ILLMServiceFacade>();
         _mockLogger = new Mock<ILogger<NavigationStructureService>>();
-        _service = new NavigationStructureService(_mockLlmFacade.Object, _mockLogger.Object);
+        
+        // Use real JsonRepairService for integration testing
+        var jsonRepairService = new JsonRepairService();
+        
+        _service = new NavigationStructureService(_mockLlmFacade.Object, _mockLogger.Object, jsonRepairService);
     }
 
     [Test]
