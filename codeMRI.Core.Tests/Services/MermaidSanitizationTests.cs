@@ -15,6 +15,7 @@ public class MermaidSanitizationTests
     private Mock<ILLMServiceFacade> _mockLlmFacade;
     private Mock<ILogger<DocumentationRevisionService>> _mockLogger;
     private DocumentationRevisionService _service;
+    private IMarkdownRepairService _repairService;
 
     [SetUp]
     public void Setup()
@@ -22,7 +23,9 @@ public class MermaidSanitizationTests
         _mockLlmFacade = new Mock<ILLMServiceFacade>();
         _mockLogger = new Mock<ILogger<DocumentationRevisionService>>();
         var options = Options.Create(new CodeWikiOptions());
-        _service = new DocumentationRevisionService(_mockLlmFacade.Object, _mockLogger.Object, options);
+        var markdownRepair = new MarkdownRepairService();
+        var mermaidRepair = new MermaidRepairService();
+        _service = new DocumentationRevisionService(_mockLlmFacade.Object, _mockLogger.Object, options, markdownRepair, mermaidRepair);
     }
 
     [Test]
@@ -90,5 +93,37 @@ graph TD
         // Assert
         Assert.That(result.Content, Does.Contain(@"|""Defines Math Op: PLUS""|"));
         Assert.That(result.Content, Does.Contain(@"|""Uses Character Classification: isSymbol()""|"));
+    }
+
+    [Test]
+    public async Task ReviseParentDocumentationAsync_ShouldSanitizeNestedBrackets()
+    {
+        // Arrange
+        var parentPage = new WikiPage { Id = "1", Title = "NestedModule", Content = "# NestedModule" };
+        var parentModule = new ModuleNode { Id = "mod-1", Name = "NestedModule" };
+        var childPages = new List<WikiPage> { new() { Title = "Child", Content = "Content" } };
+
+        var mermaidContent = @"# NestedModule
+
+```mermaid
+graph TD
+    A -->|returns| TokenList[Token[]]
+    B -->|returns| List[string]
+```";
+
+        _mockLlmFacade.Setup(x => x.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<ChatMessage>>(),
+                It.IsAny<MessageCompositionOptions?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LLMResponse { Content = mermaidContent, StrategyUsed = "Simple" });
+
+        // Act
+        var result = await _service.ReviseParentDocumentationAsync(parentPage, parentModule, childPages);
+
+        // Assert
+        Assert.That(result.Content, Does.Contain(@"TokenList[""Token[]""]"));
+        Assert.That(result.Content, Does.Contain(@"List[""string""]"));
     }
 }

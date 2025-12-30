@@ -19,7 +19,9 @@ public class DocumentationRevisionServiceTests
         _mockLogger = new Mock<ILogger<DocumentationRevisionService>>();
 
         var options = Options.Create(new CodeWikiOptions());
-        _service = new DocumentationRevisionService(_mockLlmFacade.Object, _mockLogger.Object, options);
+        var markdownRepair = new MarkdownRepairService();
+        var mermaidRepair = new MermaidRepairService();
+        _service = new DocumentationRevisionService(_mockLlmFacade.Object, _mockLogger.Object, options, markdownRepair, mermaidRepair);
     }
 
     private Mock<ILLMServiceFacade> _mockLlmFacade;

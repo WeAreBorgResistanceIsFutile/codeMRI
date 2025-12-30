@@ -28,6 +28,8 @@ public class WireUp
         
         // JSON Processing
         services.AddSingleton<IJsonRepairService, JsonRepairService>();
+        services.AddSingleton<IMarkdownRepairService, MarkdownRepairService>();
+        services.AddSingleton<IMermaidRepairService, MermaidRepairService>();
         
         // Debug and Context Services
         services.AddSingleton<ILLMInvocationContext, LLMInvocationContext>();
@@ -159,6 +161,7 @@ public class WireUp
                 sp.GetRequiredService<ILogger<WikiGenerationService>>(),
                 sp.GetRequiredService<IOptions<CodeWikiOptions>>(),
                 docModel,
+                sp.GetRequiredService<IMarkdownRepairService>(),
                 sp.GetService<IModelRoutingService>(),
                 sp.GetService<IMultiModelOrchestrationService>());
 

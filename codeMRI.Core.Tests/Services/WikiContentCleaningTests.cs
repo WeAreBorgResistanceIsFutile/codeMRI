@@ -22,11 +22,15 @@ public class WikiContentCleaningTests
         var mockFacade = new Mock<ILLMServiceFacade>();
         var mockLogger = new Mock<ILogger<DocumentationRevisionService>>();
         var mockOptions = Options.Create(new CodeWikiOptions());
+        var markdownRepair = new MarkdownRepairService();
+        var mermaidRepair = new MermaidRepairService();
         
         _revisionService = new DocumentationRevisionService(
             mockFacade.Object,
             mockLogger.Object,
-            mockOptions);
+            mockOptions,
+            markdownRepair,
+            mermaidRepair);
     }
 
     [Test]
