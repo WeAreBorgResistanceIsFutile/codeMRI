@@ -1,11 +1,9 @@
-using System.Text.Json;
 using codeMRI.Core.Interfaces;
 using codeMRI.Core.Models;
 using codeMRI.Core.Services;
 using codeMRI.Core.Services.MessageComposition;
 using Microsoft.Extensions.Logging;
 using Moq;
-using NUnit.Framework;
 using System.Diagnostics.Metrics;
 
 namespace codeMRI.Core.Tests.Services;
@@ -59,14 +57,14 @@ public class DocumentationJudgeServiceRetryTests
         var requirement = new RubricRequirement { Title = "Req1", Description = "Test Requirement" };
         var structure = new WikiStructure();
         
-        // 1. First response: Invalid JSON (Object in string list) - This matches the user reported error
+        // 1. First response: Truly invalid JSON (unclosed brace/string)
         var invalidJson = @"
         {
             ""requirement_id"": ""Req1"",
             ""score"": 0.5,
-            ""reasoning"": ""Bad format"",
-            ""evidence"": [ { ""file"": ""test.cs"", ""line"": 10 } ]
-        }";
+            ""reasoning"": ""Broken JSON...,
+            ""evidence"": [ ""Should fail"" ]
+        "; // Missing closing quote for reasoning and closing braces
 
         // 2. Second response: Valid JSON
         var validJson = @"

@@ -296,7 +296,7 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
             StandardDeviation = 0.0,
             IndividualScores = new List<double> { Math.Clamp(assessment.Score, 0.0, 1.0) },
             Reasoning = new List<string> { assessment.Reasoning ?? "No reasoning provided" },
-            Evidence = assessment.Evidence ?? new List<string>()
+            Evidence = assessment.Evidence?.Select(e => e.ToString()).ToList() ?? new List<string>()
         };
     }
 
