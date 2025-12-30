@@ -83,17 +83,7 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
             { "model", model ?? "default" }
         };
 
-        string prompt;
-        // Simple heuristic for now: use RAG if there are many pages or explicitly configured (could add settings later)
-        if (documentationStructure.Pages.Count > 10)
-        {
-            _logger.LogInformation("Using RAG evaluation for requirement {RequirementTitle}", requirement.Title);
-            prompt = await _ragPromptBuilder.BuildPromptAsync(requirement, documentationStructure);
-        }
-        else
-        {
-            prompt = await _defaultPromptBuilder.BuildPromptAsync(requirement, documentationStructure);
-        }
+        string prompt = await _ragPromptBuilder.BuildPromptAsync(requirement, documentationStructure);
 
         const int maxRetries = 1;
         
@@ -105,7 +95,7 @@ public partial class DocumentationJudgeService : IDocumentationJudgeService
                     systemPrompt: SystemPrompt,
                     textToProcess: prompt,
                     history: null,
-                    options: new MessageCompositionOptions { ModelName = model },
+                    options: new MessageCompositionOptions { ModelName = model, UseRag = true},
                     cancellationToken: cancellationToken);
 
                 var assessment = ParseAssessmentFromResponse(llmResponse.Content, requirement);

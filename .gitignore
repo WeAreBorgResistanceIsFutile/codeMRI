@@ -50,3 +50,4 @@
 ./*.log
 ./codewiki_paper.txt
 /.codeMRI/
+/logs/*.log
