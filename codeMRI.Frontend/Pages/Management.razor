@@ -3,6 +3,7 @@
 @using codeMRI.Core.Models
 @using codeMRI.Frontend.Services
 @using codeMRI.Frontend.Components
+@using System.Linq
 @using System.Text.Json
 @inject WikiApiClient WikiApi
 @inject AppState AppState
@@ -175,16 +176,26 @@
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Name</th>
-                                    <th>Repository</th>
-                                    <th class="status-col">Status</th>
-                                    <th>Quality</th>
-                                    <th class="date-col">Start Time</th>
+                                    <th @onclick='() => SortBenchmarks("Name")' style="cursor: pointer; user-select: none;">
+                                        Name @(GetBenchmarkSortIndicator("Name"))
+                                    </th>
+                                    <th @onclick='() => SortBenchmarks("Repository")' style="cursor: pointer; user-select: none;">
+                                        Repository @(GetBenchmarkSortIndicator("Repository"))
+                                    </th>
+                                    <th @onclick='() => SortBenchmarks("Status")' style="cursor: pointer; user-select: none; width: 120px;" class="status-col">
+                                        Status @(GetBenchmarkSortIndicator("Status"))
+                                    </th>
+                                    <th @onclick='() => SortBenchmarks("Quality")' style="cursor: pointer; user-select: none;">
+                                        Quality @(GetBenchmarkSortIndicator("Quality"))
+                                    </th>
+                                    <th @onclick='() => SortBenchmarks("StartTime")' style="cursor: pointer; user-select: none; width: 150px;" class="date-col">
+                                        Start Time @(GetBenchmarkSortIndicator("StartTime"))
+                                    </th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var run in benchmarks)
+                                @foreach (var run in SortedBenchmarks)
                                 {
                                     <tr>
                                         <td title="@run.Name"><strong>@run.Name</strong></td>
@@ -336,6 +347,12 @@
         text-transform: uppercase;
         letter-spacing: 0.05em;
         border-bottom: 1px solid var(--border-color);
+        transition: background-color 0.2s;
+    }
+
+    th[style*="cursor: pointer"]:hover {
+        background: #f1f3f4;
+        color: var(--text-primary);
     }
     
     /* Define consistent column widths where applicable */
@@ -637,5 +654,30 @@
             await WikiApi.DeleteBenchmarkAsync(runId);
             await LoadData();
         }
+    }
+
+    private string benchmarkSortColumn = "StartTime";
+    private bool benchmarkSortAscending = false;
+
+    private IEnumerable<BenchmarkRun> SortedBenchmarks => 
+        BenchmarkSorter.SortRuns(benchmarks, benchmarkSortColumn, benchmarkSortAscending);
+
+    private void SortBenchmarks(string column)
+    {
+        if (benchmarkSortColumn == column)
+        {
+            benchmarkSortAscending = !benchmarkSortAscending;
+        }
+        else
+        {
+            benchmarkSortColumn = column;
+            benchmarkSortAscending = true;
+        }
+    }
+
+    private string GetBenchmarkSortIndicator(string column)
+    {
+        if (benchmarkSortColumn != column) return "↕️";
+        return benchmarkSortAscending ? "🔼" : "🔽";
     }
 }

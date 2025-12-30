@@ -1,6 +1,7 @@
 @page "/benchmarks/{RunId}"
 @using codeMRI.Core.Models
 @using codeMRI.Frontend.Services
+@using System.Linq
 @inject WikiApiClient WikiApi
 @inject NavigationManager Navigation
 
@@ -77,15 +78,25 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Page Title</th>
-                            <th>Quality Score</th>
-                            <th>Word Count</th>
-                            <th>Tokens</th>
-                            <th>Latency</th>
+                            <th @onclick='() => SortTable("ModuleName")' style="cursor: pointer;">
+                                Page Title @(GetSortIndicator("ModuleName"))
+                            </th>
+                            <th @onclick='() => SortTable("QualityScore")' style="cursor: pointer;">
+                                Quality Score @(GetSortIndicator("QualityScore"))
+                            </th>
+                            <th @onclick='() => SortTable("WordCount")' style="cursor: pointer;">
+                                Word Count @(GetSortIndicator("WordCount"))
+                            </th>
+                            <th @onclick='() => SortTable("Tokens")' style="cursor: pointer;">
+                                Tokens @(GetSortIndicator("Tokens"))
+                            </th>
+                            <th @onclick='() => SortTable("Latency")' style="cursor: pointer;">
+                                Latency @(GetSortIndicator("Latency"))
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var p in run.PageBenchmarks)
+                        @foreach (var p in SortedBenchmarks)
                         {
                             <tr>
                                 <td><strong>@p.ModuleName</strong></td>
@@ -213,6 +224,12 @@
         color: var(--text-secondary);
         font-size: 0.75rem;
         text-transform: uppercase;
+        user-select: none;
+    }
+
+    th:hover {
+        background: rgba(0,0,0,0.05);
+        color: var(--text-primary);
     }
 
     td {
@@ -359,6 +376,30 @@
     private string? report;
     private bool isLoading = true;
     private bool showConfigDetails = false;
+    private string sortColumn = "ModuleName";
+    private bool sortAscending = true;
+    
+    private IEnumerable<PageBenchmark> SortedBenchmarks => 
+        run != null ? BenchmarkSorter.Sort(run.PageBenchmarks, sortColumn, sortAscending) : Enumerable.Empty<PageBenchmark>();
+
+    private void SortTable(string column)
+    {
+        if (sortColumn == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+    }
+
+    private string GetSortIndicator(string column)
+    {
+        if (sortColumn != column) return "↕️";
+        return sortAscending ? "🔼" : "🔽";
+    }
     
     // Properties to support configuration display
     private bool IsComplexConfiguration => run != null && BenchmarkFormatter.ParseConfiguration(run.ModelConfiguration).Count > 0;
