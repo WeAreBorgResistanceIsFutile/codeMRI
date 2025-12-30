@@ -1,5 +1,5 @@
 {
-  "DocumentationModel": "qwen3-coder:480b-cloud",
+  "DocumentationModel": "deepseek-v3.2:cloud",
   "ChatModel": "mistral-large-3:675b-cloud",
   "JudgeModels": [
     "mistral-large-3:675b-cloud",
@@ -9,9 +9,9 @@
   ],
   "EnableModelRouting": true,
   "EnableEnsembleGeneration": true,
-  "CodeAnalysisModel": "deepseek-v3.2:cloud",
+  "CodeAnalysisModel": "gpt-oss:120b-cloud",
   "NaturalLanguageModel": "mistral-large-3:675b-cloud",
-  "SynthesisJudgeModel": "kimi-k2-thinking:cloud",
+  "SynthesisJudgeModel": "mistral-large-3:675b-cloud",
   "EnsembleModels": [
     "qwen3-coder:480b-cloud",
     "devstral-2:123b-cloud",
@@ -25,5 +25,5 @@
     "gpt-oss:120b-cloud",
     "rnj-1:8b-cloud"
   ],
-  "MinimumAgreementThreshold": 3
+  "MinimumAgreementThreshold": 2
 }

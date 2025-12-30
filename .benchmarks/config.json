@@ -1,5 +1,5 @@
 {
-  "DocumentationModel": "mistral-large-3:675b-cloud",
+  "DocumentationModel": "deepseek-v3.2:cloud",
   "ChatModel": "mistral-large-3:675b-cloud",
   "JudgeModels": [
     "mistral-large-3:675b-cloud",
@@ -9,7 +9,7 @@
   ],
   "EnableModelRouting": true,
   "EnableEnsembleGeneration": true,
-  "CodeAnalysisModel": "mistral-large-3:675b-cloud",
+  "CodeAnalysisModel": "devstral-small-2:24b-cloud",
   "NaturalLanguageModel": "mistral-large-3:675b-cloud",
   "SynthesisJudgeModel": "mistral-large-3:675b-cloud",
   "EnsembleModels": [
